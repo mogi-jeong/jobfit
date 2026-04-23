@@ -95,6 +95,65 @@
 
   /* 카카오맵 로딩 실패 시 */
   .map-error { display: flex; align-items: center; justify-content: center; height: 100%; background: #FEF3C7; color: #92400E; font-size: 13px; text-align: center; padding: 20px; border-radius: 8px; }
+
+  /* 탭 공용 */
+  .jf-tabs { display: flex; gap: 2px; border-bottom: 0.5px solid rgba(0,0,0,0.12); margin-bottom: 20px; }
+  .jf-tab { padding: 10px 20px; cursor: pointer; font-size: 13px; color: #6B7684; border-bottom: 2px solid transparent; margin-bottom: -0.5px; transition: all 0.1s; user-select: none; }
+  .jf-tab:hover { color: #111827; }
+  .jf-tab.active { color: #2563EB; border-bottom-color: #2563EB; font-weight: 500; }
+
+  /* 공고 관리 — 필터 */
+  .jobs-filters { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+  .jobs-filters select { min-width: 130px; }
+  .jobs-view-toggle { margin-left: auto; display: inline-flex; border: 0.5px solid rgba(0,0,0,0.15); border-radius: 8px; overflow: hidden; height: 36px; }
+  .jobs-view-toggle button { border: 0; border-radius: 0; padding: 0 14px; font-size: 12px; height: 100%; color: #6B7684; }
+  .jobs-view-toggle button.active { background: #1B3A6B; color: #fff; }
+
+  /* 공고 카드 */
+  .jobs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+  .jobs-card { background: #fff; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.1s; }
+  .jobs-card:hover { border-color: #2563EB; box-shadow: 0 2px 10px rgba(37,99,235,0.08); }
+  .jobs-card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 8px; }
+  .jobs-card-title { font-weight: 500; font-size: 14px; color: #111827; line-height: 1.3; }
+  .jobs-card-sub { font-size: 11px; color: #6B7684; margin-top: 2px; }
+  .jobs-status { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: 500; white-space: nowrap; flex-shrink: 0; }
+  .jobs-status-open { background: #DBEAFE; color: #1E40AF; }
+  .jobs-status-progress { background: #DCFCE7; color: #166534; }
+  .jobs-status-closed { background: #FEF3C7; color: #92400E; }
+  .jobs-status-done { background: #F3F4F6; color: #6B7684; }
+  .jobs-card-row { display: flex; justify-content: space-between; font-size: 12px; color: #6B7684; padding: 3px 0; }
+  .jobs-card-row strong { color: #111827; font-weight: 500; }
+  .jobs-card-foot { display: flex; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 0.5px solid rgba(0,0,0,0.06); }
+  .jobs-card-foot button { flex: 1; font-size: 11px; height: 30px; padding: 0; }
+  .jobs-progress-bar { height: 5px; background: #E5E7EB; border-radius: 3px; margin-top: 8px; overflow: hidden; }
+  .jobs-progress-bar-fill { height: 100%; background: #2563EB; transition: width 0.2s; }
+  .jobs-progress-label { font-size: 11px; color: #6B7684; margin-top: 4px; display: flex; justify-content: space-between; }
+
+  /* 달력 뷰 */
+  .jobs-cal { background: #fff; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 12px; padding: 18px; }
+  .jobs-cal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .jobs-cal-month { font-size: 16px; font-weight: 500; color: #111827; }
+  .jobs-cal-nav { display: flex; gap: 4px; }
+  .jobs-cal-nav button { padding: 0 12px; height: 32px; font-size: 13px; }
+  .jobs-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .jobs-cal-dow { font-size: 11px; color: #6B7684; text-align: center; padding: 6px 0; font-weight: 500; }
+  .jobs-cal-day { aspect-ratio: 1.2; padding: 6px 8px; border: 0.5px solid rgba(0,0,0,0.08); border-radius: 6px; display: flex; flex-direction: column; font-size: 12px; transition: all 0.1s; background: #fff; }
+  .jobs-cal-day.empty { background: transparent; border: none; }
+  .jobs-cal-day.today { background: #F0F9FF; border-color: #2563EB; }
+  .jobs-cal-day.has-jobs { cursor: pointer; }
+  .jobs-cal-day.has-jobs:hover { background: #F5F7FA; border-color: #2563EB; }
+  .jobs-cal-day-num { font-weight: 500; color: #111827; }
+  .jobs-cal-day-num.sun { color: #EF4444; }
+  .jobs-cal-day-num.sat { color: #2563EB; }
+  .jobs-cal-day-count { font-size: 10px; color: #2563EB; margin-top: auto; font-weight: 500; }
+  .jobs-cal-day-dots { display: flex; gap: 2px; margin-top: 3px; flex-wrap: wrap; }
+  .jobs-cal-day-dot { width: 5px; height: 5px; border-radius: 50%; }
+
+  /* 준비 중 플레이스홀더 */
+  .jf-placeholder { padding: 80px 20px; text-align: center; background: #fff; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 12px; }
+  .jf-placeholder-icon { font-size: 40px; margin-bottom: 14px; opacity: 0.4; }
+  .jf-placeholder-title { font-size: 16px; font-weight: 500; color: #111827; margin-bottom: 6px; }
+  .jf-placeholder-desc { font-size: 13px; color: #6B7684; }
 </style>
 </head>
 <body>
@@ -167,6 +226,48 @@
       ]
     }
   };
+
+  // 오늘 기준(개발 중): 2026-04-23
+  const TODAY = '2026-04-23';
+
+  // 공고 샘플 데이터 — 시간대: 주간/야간/새벽/웨딩
+  const jobs = [
+    // 진행중 (오늘)
+    { id: 'j001', siteId: 'gonjiam',  date: '2026-04-23', slot: '주간', start: '07:00', end: '15:00', cap: 30, apply: 28, wage: 110000, wageType: '일급', contact: '010-1234-5678', contract: true, safety: true },
+    { id: 'j002', siteId: 'icheon',   date: '2026-04-23', slot: '야간', start: '22:00', end: '06:00', cap: 20, apply: 20, wage: 115000, wageType: '일급', contact: '010-5678-9012', contract: true, safety: true },
+    { id: 'j003', siteId: 'jincheon', date: '2026-04-23', slot: '주간', start: '08:00', end: '17:00', cap: 25, apply: 22, wage: 115000, wageType: '일급', contact: '010-7890-1234', contract: true, safety: false },
+    { id: 'j004', siteId: 'ltower',   date: '2026-04-23', slot: '웨딩', start: '10:00', end: '18:00', cap: 12, apply: 10, wage: 120000, wageType: '일급', contact: '010-0123-4567', contract: true, safety: true },
+
+    // 모집 중 (내일 이후)
+    { id: 'j005', siteId: 'gonjiam',  date: '2026-04-24', slot: '주간', start: '07:00', end: '15:00', cap: 30, apply: 18, wage: 110000, wageType: '일급', contact: '010-1234-5678', contract: true, safety: true },
+    { id: 'j006', siteId: 'gonjiam',  date: '2026-04-24', slot: '야간', start: '22:00', end: '06:00', cap: 25, apply: 12, wage: 115000, wageType: '일급', contact: '010-1234-5678', contract: true, safety: true },
+    { id: 'j007', siteId: 'yongin',   date: '2026-04-25', slot: '주간', start: '07:00', end: '15:00', cap: 20, apply: 8,  wage: 105000, wageType: '일급', contact: '010-2345-6789', contract: true, safety: true },
+    { id: 'j008', siteId: 'anseong',  date: '2026-04-25', slot: '새벽', start: '04:00', end: '12:00', cap: 18, apply: 5,  wage: 108000, wageType: '일급', contact: '010-6789-0123', contract: true, safety: true },
+    { id: 'j009', siteId: 'whills',   date: '2026-04-26', slot: '웨딩', start: '09:00', end: '17:00', cap: 15, apply: 7,  wage: 125000, wageType: '일급', contact: '010-1234-0987', contract: true, safety: true },
+    { id: 'j010', siteId: 'gunpo_l',  date: '2026-04-26', slot: '주간', start: '08:00', end: '16:00', cap: 22, apply: 3,  wage: 105000, wageType: '일급', contact: '010-9012-3456', contract: true, safety: true },
+    { id: 'j011', siteId: 'icheon',   date: '2026-04-27', slot: '주간', start: '07:00', end: '15:00', cap: 20, apply: 4,  wage: 105000, wageType: '일급', contact: '010-5678-9012', contract: true, safety: true },
+    { id: 'j012', siteId: 'jincheon', date: '2026-04-28', slot: '야간', start: '22:00', end: '06:00', cap: 25, apply: 0,  wage: 120000, wageType: '일급', contact: '010-7890-1234', contract: true, safety: true },
+    { id: 'j013', siteId: 'ltower',   date: '2026-04-30', slot: '웨딩', start: '10:00', end: '20:00', cap: 15, apply: 2,  wage: 120000, wageType: '일급', contact: '010-0123-4567', contract: true, safety: true },
+
+    // 마감 (모집 완료 · 시작 전)
+    { id: 'j014', siteId: 'gonjiam',  date: '2026-04-24', slot: '새벽', start: '04:00', end: '12:00', cap: 15, apply: 15, wage: 112000, wageType: '일급', contact: '010-1234-5678', contract: true, safety: true },
+    { id: 'j015', siteId: 'anseong',  date: '2026-04-25', slot: '주간', start: '07:00', end: '15:00', cap: 20, apply: 20, wage: 105000, wageType: '일급', contact: '010-6789-0123', contract: true, safety: true },
+    { id: 'j016', siteId: 'gunpo_a',  date: '2026-04-26', slot: '주간', start: '08:00', end: '16:00', cap: 18, apply: 18, wage: 100000, wageType: '일급', contact: '010-3456-7890', contract: true, safety: true },
+
+    // 종료 (과거)
+    { id: 'j017', siteId: 'gonjiam',  date: '2026-04-22', slot: '주간', start: '07:00', end: '15:00', cap: 30, apply: 29, wage: 110000, wageType: '일급', contact: '010-1234-5678', contract: true, safety: true },
+    { id: 'j018', siteId: 'jincheon', date: '2026-04-22', slot: '야간', start: '22:00', end: '06:00', cap: 25, apply: 24, wage: 120000, wageType: '일급', contact: '010-7890-1234', contract: true, safety: true },
+    { id: 'j019', siteId: 'whills',   date: '2026-04-20', slot: '웨딩', start: '10:00', end: '18:00', cap: 15, apply: 14, wage: 125000, wageType: '일급', contact: '010-1234-0987', contract: true, safety: true },
+    { id: 'j020', siteId: 'icheon',   date: '2026-04-21', slot: '주간', start: '07:00', end: '15:00', cap: 20, apply: 19, wage: 105000, wageType: '일급', contact: '010-5678-9012', contract: true, safety: true },
+  ];
+
+  // 공고 상태 판정: open(모집중) · closed(마감·시작전) · progress(진행중) · done(종료)
+  function jobStatus(j) {
+    if (j.date < TODAY) return 'done';
+    if (j.date === TODAY) return 'progress';
+    return j.apply >= j.cap ? 'closed' : 'open';
+  }
+  const STATUS_LABEL = { open: '모집중', closed: '마감', progress: '진행중', done: '종료' };
 
   function findSite(siteId) {
     for (const key in worksites) {
@@ -709,6 +810,298 @@
     }, 100);
   }
 
+  // ───────────────────────────────────────────────────────
+  // 공고 관리 페이지
+  // ───────────────────────────────────────────────────────
+  const jobsState = {
+    tab: 'list',           // list / create / template
+    view: 'list',          // list / calendar
+    partnerKey: '',        // 파트너사 필터
+    siteId: '',            // 근무지 필터
+    status: '',            // 상태 필터
+    slot: '',              // 시간대 필터
+    calYear: 2026,
+    calMonth: 4,           // 1~12
+  };
+
+  function jobsTabsHtml() {
+    const tabs = [
+      { id: 'list',     label: '공고 리스트' },
+      { id: 'create',   label: '공고 등록' },
+      { id: 'template', label: '템플릿 관리' },
+    ];
+    return `<div class="jf-tabs">${tabs.map(t =>
+      `<div class="jf-tab ${jobsState.tab === t.id ? 'active' : ''}" onclick="window.__jobsTab('${t.id}')">${t.label}</div>`
+    ).join('')}</div>`;
+  }
+
+  function renderJobs() {
+    if (jobsState.tab === 'list')     renderJobsList();
+    if (jobsState.tab === 'create')   renderJobsCreate();
+    if (jobsState.tab === 'template') renderJobsTemplate();
+  }
+
+  function renderJobsList() {
+    // 현재 필터 적용된 공고
+    const filtered = jobs.filter(j => {
+      const st = jobStatus(j);
+      if (jobsState.status && jobsState.status !== st) return false;
+      if (jobsState.slot && jobsState.slot !== j.slot) return false;
+      const site = findSite(j.siteId);
+      if (!site) return false;
+      if (jobsState.partnerKey && jobsState.partnerKey !== site.partnerKey) return false;
+      if (jobsState.siteId && jobsState.siteId !== j.siteId) return false;
+      return true;
+    });
+
+    // 메트릭 (전체 공고 기준)
+    const total = jobs.length;
+    const progress = jobs.filter(j => jobStatus(j) === 'progress').length;
+    const open = jobs.filter(j => jobStatus(j) === 'open').length;
+    const closed = jobs.filter(j => jobStatus(j) === 'closed').length;
+    // 이번 주 등록: 간단히 지난 7일 내에 '생성됨'이라 가정 (샘플 데이터에는 생성일 없으므로 최근 날짜 공고 수로 대체)
+    const thisWeek = jobs.filter(j => {
+      const d = new Date(j.date); const today = new Date(TODAY);
+      const diff = (today - d) / 86400000;
+      return diff >= -7 && diff <= 7;
+    }).length;
+
+    // 파트너사/근무지 옵션
+    const partnerOpts = Object.keys(worksites).map(k =>
+      `<option value="${k}" ${jobsState.partnerKey === k ? 'selected' : ''}>${worksites[k].name}</option>`).join('');
+    const siteOpts = (() => {
+      const sites = jobsState.partnerKey
+        ? worksites[jobsState.partnerKey].sites
+        : Object.values(worksites).flatMap(p => p.sites);
+      return sites.map(s => `<option value="${s.id}" ${jobsState.siteId === s.id ? 'selected' : ''}>${s.name}</option>`).join('');
+    })();
+
+    let html = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">공고 관리</div>
+          <div class="jf-subtitle">파트너사 · 근무지 기준 공고 등록 및 관리</div>
+        </div>
+        <div class="ws-actions">
+          <button onclick="alert('엑셀 업/다운로드는 추후 구현')">엑셀</button>
+          <button class="btn-primary" onclick="window.__jobsTab('create')">+ 새 공고 등록</button>
+        </div>
+      </div>
+
+      ${jobsTabsHtml()}
+
+      <div class="jf-metric-grid">
+        <div class="jf-metric"><div class="jf-metric-label">진행 중</div><div class="jf-metric-value">${progress}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">오늘 근무 중인 공고</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">모집 중</div><div class="jf-metric-value" style="color:#2563EB;">${open}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">신청 받는 중</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">마감</div><div class="jf-metric-value" style="color:#92400E;">${closed}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">모집 완료 · 시작 전</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">이번 주 공고</div><div class="jf-metric-value">${thisWeek}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">최근 ±7일 기준</div></div>
+      </div>
+
+      <div class="jobs-filters">
+        <select onchange="window.__jobsFilter('partnerKey', this.value)">
+          <option value="">전체 파트너사</option>${partnerOpts}
+        </select>
+        <select onchange="window.__jobsFilter('siteId', this.value)">
+          <option value="">전체 근무지</option>${siteOpts}
+        </select>
+        <select onchange="window.__jobsFilter('status', this.value)">
+          <option value="">전체 상태</option>
+          <option value="progress" ${jobsState.status==='progress'?'selected':''}>진행중</option>
+          <option value="open"     ${jobsState.status==='open'?'selected':''}>모집중</option>
+          <option value="closed"   ${jobsState.status==='closed'?'selected':''}>마감</option>
+          <option value="done"     ${jobsState.status==='done'?'selected':''}>종료</option>
+        </select>
+        <select onchange="window.__jobsFilter('slot', this.value)">
+          <option value="">전체 시간대</option>
+          <option value="주간" ${jobsState.slot==='주간'?'selected':''}>주간</option>
+          <option value="야간" ${jobsState.slot==='야간'?'selected':''}>야간</option>
+          <option value="새벽" ${jobsState.slot==='새벽'?'selected':''}>새벽</option>
+          <option value="웨딩" ${jobsState.slot==='웨딩'?'selected':''}>웨딩</option>
+        </select>
+        ${(jobsState.partnerKey||jobsState.siteId||jobsState.status||jobsState.slot) ? `<button onclick="window.__jobsClearFilter()" style="font-size:12px;">필터 초기화</button>` : ''}
+        <div class="jobs-view-toggle">
+          <button class="${jobsState.view==='list'?'active':''}" onclick="window.__jobsView('list')">리스트</button>
+          <button class="${jobsState.view==='calendar'?'active':''}" onclick="window.__jobsView('calendar')">캘린더</button>
+        </div>
+      </div>
+    `;
+
+    if (jobsState.view === 'list') {
+      if (filtered.length === 0) {
+        html += `<div class="jf-placeholder"><div class="jf-placeholder-icon">📋</div><div class="jf-placeholder-title">조건에 맞는 공고가 없습니다</div><div class="jf-placeholder-desc">필터를 변경하거나 새 공고를 등록해주세요.</div></div>`;
+      } else {
+        // 날짜 오름차순, 같은 날짜는 시간대 순서
+        const slotOrder = { 새벽: 0, 주간: 1, 야간: 2, 웨딩: 3 };
+        const sorted = [...filtered].sort((a, b) => a.date.localeCompare(b.date) || (slotOrder[a.slot]||9) - (slotOrder[b.slot]||9));
+        html += `<div class="jobs-grid">`;
+        sorted.forEach(j => {
+          const site = findSite(j.siteId);
+          const st = jobStatus(j);
+          const pct = Math.round((j.apply / j.cap) * 100);
+          html += `
+            <div class="jobs-card" onclick="alert('공고 상세 페이지는 추후 구현\\n\\n공고 ID: ${j.id}\\n근무지: ${site.site.name}\\n날짜: ${j.date} (${j.slot})')">
+              <div class="jobs-card-head">
+                <div>
+                  <div class="jobs-card-title">${site.site.name}</div>
+                  <div class="jobs-card-sub">${site.partner} · ${j.slot} ${j.start}~${j.end}</div>
+                </div>
+                <span class="jobs-status jobs-status-${st}">${STATUS_LABEL[st]}</span>
+              </div>
+              <div class="jobs-card-row"><span>날짜</span><strong>${j.date}</strong></div>
+              <div class="jobs-card-row"><span>${j.wageType}</span><strong>${j.wage.toLocaleString()}원</strong></div>
+              <div class="jobs-card-row"><span>담당자</span><strong>${j.contact}</strong></div>
+              <div class="jobs-progress-bar"><div class="jobs-progress-bar-fill" style="width:${pct}%;"></div></div>
+              <div class="jobs-progress-label"><span>모집 ${j.apply} / ${j.cap}명</span><span>${pct}%</span></div>
+              <div class="jobs-card-foot" onclick="event.stopPropagation()">
+                <button onclick="alert('신청자 목록은 추후 구현')">신청자</button>
+                <button onclick="alert('공고 수정 폼은 추후 구현')">수정</button>
+              </div>
+            </div>
+          `;
+        });
+        html += `</div>`;
+      }
+    } else {
+      // 캘린더 뷰
+      html += renderJobsCalendar(filtered);
+    }
+
+    main.innerHTML = html;
+  }
+
+  function renderJobsCalendar(filtered) {
+    const y = jobsState.calYear, m = jobsState.calMonth;
+    const first = new Date(y, m - 1, 1);
+    const firstDow = first.getDay(); // 0=일
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < firstDow; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+    while (cells.length % 7 !== 0) cells.push(null);
+
+    // 날짜별 공고 집계
+    const byDate = {};
+    filtered.forEach(j => {
+      if (!byDate[j.date]) byDate[j.date] = [];
+      byDate[j.date].push(j);
+    });
+
+    const dows = ['일','월','화','수','목','금','토'];
+    const dowHtml = dows.map((d, i) => `<div class="jobs-cal-dow" style="color:${i===0?'#EF4444':i===6?'#2563EB':'#6B7684'};">${d}</div>`).join('');
+
+    let daysHtml = '';
+    cells.forEach((d, idx) => {
+      if (d === null) {
+        daysHtml += `<div class="jobs-cal-day empty"></div>`;
+        return;
+      }
+      const dateStr = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const dayJobs = byDate[dateStr] || [];
+      const isToday = dateStr === TODAY;
+      const dow = idx % 7;
+      const numClass = dow === 0 ? 'sun' : dow === 6 ? 'sat' : '';
+      const statusColors = { open:'#2563EB', progress:'#22C55E', closed:'#F59E0B', done:'#9CA3AF' };
+      const dots = dayJobs.slice(0, 6).map(j =>
+        `<span class="jobs-cal-day-dot" style="background:${statusColors[jobStatus(j)]};"></span>`).join('');
+      daysHtml += `
+        <div class="jobs-cal-day ${dayJobs.length > 0 ? 'has-jobs' : ''} ${isToday ? 'today' : ''}"
+             ${dayJobs.length > 0 ? `onclick="window.__jobsCalDay('${dateStr}')"` : ''}>
+          <div class="jobs-cal-day-num ${numClass}">${d}</div>
+          ${dots ? `<div class="jobs-cal-day-dots">${dots}</div>` : ''}
+          ${dayJobs.length > 0 ? `<div class="jobs-cal-day-count">${dayJobs.length}건</div>` : ''}
+        </div>
+      `;
+    });
+
+    return `
+      <div class="jobs-cal">
+        <div class="jobs-cal-head">
+          <div class="jobs-cal-month">${y}년 ${m}월</div>
+          <div class="jobs-cal-nav">
+            <button onclick="window.__jobsCalMove(-1)">‹</button>
+            <button onclick="window.__jobsCalMove(0)">오늘</button>
+            <button onclick="window.__jobsCalMove(1)">›</button>
+          </div>
+        </div>
+        <div class="jobs-cal-grid">${dowHtml}${daysHtml}</div>
+        <div style="margin-top:14px; padding-top:12px; border-top:0.5px solid rgba(0,0,0,0.08); display:flex; gap:14px; font-size:11px; color:#6B7684;">
+          <span><span class="jobs-cal-day-dot" style="background:#22C55E; display:inline-block; margin-right:4px;"></span>진행중</span>
+          <span><span class="jobs-cal-day-dot" style="background:#2563EB; display:inline-block; margin-right:4px;"></span>모집중</span>
+          <span><span class="jobs-cal-day-dot" style="background:#F59E0B; display:inline-block; margin-right:4px;"></span>마감</span>
+          <span><span class="jobs-cal-day-dot" style="background:#9CA3AF; display:inline-block; margin-right:4px;"></span>종료</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderJobsCreate() {
+    main.innerHTML = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">공고 관리</div>
+          <div class="jf-subtitle">새 공고 등록</div>
+        </div>
+      </div>
+      ${jobsTabsHtml()}
+      <div class="jf-placeholder">
+        <div class="jf-placeholder-icon">📝</div>
+        <div class="jf-placeholder-title">공고 등록 폼 준비 중</div>
+        <div class="jf-placeholder-desc">
+          달력 기반 복수 날짜 선택 · 시간대별 인원/시급 설정 · 계약서/안전교육 토글 등<br>
+          기획안 v1.3 기준으로 다음 단계에서 구현됩니다.
+        </div>
+      </div>
+    `;
+  }
+
+  function renderJobsTemplate() {
+    main.innerHTML = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">공고 관리</div>
+          <div class="jf-subtitle">근로계약서 · 안전교육 템플릿 관리</div>
+        </div>
+      </div>
+      ${jobsTabsHtml()}
+      <div class="jf-placeholder">
+        <div class="jf-placeholder-icon">📄</div>
+        <div class="jf-placeholder-title">템플릿 관리 준비 중</div>
+        <div class="jf-placeholder-desc">
+          근로계약서 템플릿 · 현장별 안전교육 자료 업로드 및 버전 관리<br>
+          마스터 / 관리자 1등급 전용 기능입니다.
+        </div>
+      </div>
+    `;
+  }
+
+  // 공고 관리 전역 핸들러
+  window.__jobsTab = function(id) { jobsState.tab = id; renderJobs(); };
+  window.__jobsView = function(v) { jobsState.view = v; renderJobsList(); };
+  window.__jobsFilter = function(key, val) {
+    jobsState[key] = val;
+    if (key === 'partnerKey') jobsState.siteId = ''; // 파트너사 바뀌면 근무지 리셋
+    renderJobsList();
+  };
+  window.__jobsClearFilter = function() {
+    jobsState.partnerKey = ''; jobsState.siteId = ''; jobsState.status = ''; jobsState.slot = '';
+    renderJobsList();
+  };
+  window.__jobsCalMove = function(dir) {
+    if (dir === 0) {
+      const t = new Date(TODAY);
+      jobsState.calYear = t.getFullYear();
+      jobsState.calMonth = t.getMonth() + 1;
+    } else {
+      jobsState.calMonth += dir;
+      if (jobsState.calMonth < 1) { jobsState.calMonth = 12; jobsState.calYear--; }
+      if (jobsState.calMonth > 12) { jobsState.calMonth = 1; jobsState.calYear++; }
+    }
+    renderJobsList();
+  };
+  window.__jobsCalDay = function(dateStr) {
+    alert(dateStr + ' 일 공고 상세 리스트는 추후 구현\n(리스트 뷰로 전환하거나 모달로 표시 예정)');
+  };
+
   window.__wsToggle = function(key) {
     const el = document.querySelector('.ws-partner[data-partner="' + key + '"]');
     if (el) el.classList.toggle('open');
@@ -717,16 +1110,22 @@
   window.__wsGps = function(id) { renderGpsEditor(id); };
   window.__wsBack = function() { renderList(); };
 
+  const pageRouters = {
+    worksite: renderList,
+    jobs: () => { jobsState.tab = 'list'; renderJobs(); },
+  };
+
   navItems.forEach(item => {
     item.addEventListener('click', () => {
       const page = item.getAttribute('data-page');
-      if (page !== 'worksite') {
-        alert(pageNameFor(page) + ' 페이지는 아직 구현되지 않았습니다. 근무지 관리 페이지를 먼저 확인해주세요.');
+      const renderer = pageRouters[page];
+      if (!renderer) {
+        alert(pageNameFor(page) + ' 페이지는 아직 구현되지 않았습니다.');
         return;
       }
       navItems.forEach(i => i.classList.remove('active'));
       item.classList.add('active');
-      renderList();
+      renderer();
     });
   });
 
