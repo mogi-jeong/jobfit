@@ -1734,6 +1734,13 @@
     return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>`;
   }
 
+  // 잡핏 포인트 보상 — 시간대별 (알바비와는 별개, 잡핏은 중계 업체로 포인트만 지급)
+  // 알바비(일급)는 파트너사가 알바생에게 직접 지급함
+  const POINT_REWARDS = { 주간: 2000, 야간: 2500, 새벽: 3000, 웨딩: 2500 };
+  function pointRewardFor(job) {
+    return POINT_REWARDS[job.slot] || 2000;
+  }
+
   // 출결 → 도넛 segments + 중앙 텍스트 생성
   function attendanceDonut(sum, size = 90, thick = 10) {
     const segments = [
@@ -1936,18 +1943,27 @@
     const stLabel = STATUS_LABEL[st];
     const stColor = { open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
 
-    // 포인트 지급 내역 (종료된 공고만)
+    // 잡핏 포인트 지급 내역 (종료된 공고만)
+    // 알바비(일급)는 파트너사가 알바생에게 직접 지급 — 잡핏은 중계업체로 포인트만 지급
+    const reward = pointRewardFor(j);
+    const paidCount = sum.출근 + sum.지각;
     const payoutHtml = st === 'done'
       ? `<div class="jf-panel" style="margin-top:12px;">
-          <div class="ws-section-title">포인트 지급 내역</div>
-          ${attend.filter(a => a.status !== '결근' && a.status !== '대기').map(a =>
-            `<div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:0.5px solid rgba(0,0,0,0.06); font-size:13px;">
-              <span>${a.worker.name} <span style="color:#6B7684; font-size:11px;">${a.worker.phone}</span></span>
-              <strong style="color:#2563EB;">+${j.wage.toLocaleString()} P</strong>
-            </div>`).join('')}
+          <div class="ws-section-title">
+            잡핏 포인트 지급 내역
+            <span style="font-size:11px; color:#6B7684; font-weight:400;">중계 수수료 성격 · 알바비(${j.wage.toLocaleString()}원)는 ${site.partner}에서 직접 지급</span>
+          </div>
+          ${paidCount === 0
+            ? '<div style="padding:14px 0; color:#6B7684; font-size:12px; text-align:center;">지급 대상자가 없습니다.</div>'
+            : attend.filter(a => a.status !== '결근' && a.status !== '대기').map(a =>
+              `<div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:0.5px solid rgba(0,0,0,0.06); font-size:13px;">
+                <span>${a.worker.name} <span style="color:#6B7684; font-size:11px;">${a.worker.phone}</span></span>
+                <strong style="color:#2563EB;">+${reward.toLocaleString()} P</strong>
+              </div>`).join('')
+          }
           <div style="display:flex; justify-content:space-between; padding:12px 0 0; font-size:13px; font-weight:500;">
-            <span>총 지급</span>
-            <strong>${((sum.출근+sum.지각) * j.wage).toLocaleString()} P</strong>
+            <span>잡핏 포인트 총 지급</span>
+            <strong>${(paidCount * reward).toLocaleString()} P <span style="color:#6B7684; font-size:11px; font-weight:400;">(${paidCount}명 × ${reward.toLocaleString()}P)</span></strong>
           </div>
         </div>`
       : '';
@@ -1957,7 +1973,7 @@
       <div class="jf-header">
         <div>
           <div class="jf-title">${site.site.name} <span class="ws-mini-tag" style="vertical-align:middle;">${site.partner}</span></div>
-          <div class="jf-subtitle">${j.date} · ${j.slot} ${j.start}~${j.end} · ${j.wage.toLocaleString()}원/${j.wageType}</div>
+          <div class="jf-subtitle">${j.date} · ${j.slot} ${j.start}~${j.end} · 알바비 ${j.wage.toLocaleString()}원 <span style="color:#9CA3AF;">(${site.partner} 직접 지급)</span> · 잡핏 포인트 ${reward.toLocaleString()}P</div>
         </div>
         <div>
           <span class="jobs-status" style="background:${stColor}22; color:${stColor}; font-size:13px; padding:6px 14px;">${stLabel}</span>
@@ -2121,7 +2137,7 @@
       <div class="jf-metric-grid">
         <div class="jf-metric"><div class="jf-metric-label">대기 중 요청</div><div class="jf-metric-value" style="color:${pendingW.length>0?'#F59E0B':'#111827'};">${pendingW.length}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">총 ${pendingAmount.toLocaleString()}P</div></div>
         <div class="jf-metric"><div class="jf-metric-label">오늘 처리</div><div class="jf-metric-value">${todayProcessed}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">완료 + 실패</div></div>
-        <div class="jf-metric"><div class="jf-metric-label">이번 달 지급</div><div class="jf-metric-value">${paidThisMonth.toLocaleString()}<span style="font-size:13px; color:#6B7684; font-weight:400;"> P</span></div><div class="jf-metric-hint">${thisMonth} 완료 기준</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">이번 달 포인트 출금</div><div class="jf-metric-value">${paidThisMonth.toLocaleString()}<span style="font-size:13px; color:#6B7684; font-weight:400;"> P</span></div><div class="jf-metric-hint">${thisMonth} 출금 완료 기준</div></div>
         <div class="jf-metric"><div class="jf-metric-label">출금 실패</div><div class="jf-metric-value" style="color:${failedCount>0?'#EF4444':'#16A34A'};">${failedCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">${failedCount>0?'재처리 필요':'모두 정상'}</div></div>
       </div>
 
