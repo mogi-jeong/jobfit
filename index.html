@@ -185,13 +185,21 @@
   .ctrl-card-time { font-size: 11px; color: #6B7684; margin-bottom: 3px; }
   .ctrl-card-site { font-weight: 500; font-size: 14px; color: #111827; }
   .ctrl-card-partner { font-size: 11px; color: #6B7684; margin-top: 2px; }
-  .ctrl-atd-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 12px; text-align: center; }
-  .ctrl-atd-cell { padding: 6px 4px; border-radius: 6px; font-size: 11px; }
-  .ctrl-atd-cell strong { display: block; font-size: 16px; font-weight: 500; margin-bottom: 2px; }
-  .ctrl-atd-ok { background: #DCFCE7; color: #166534; }
-  .ctrl-atd-late { background: #FEF3C7; color: #92400E; }
-  .ctrl-atd-no { background: #FEE2E2; color: #991B1B; }
-  .ctrl-atd-wait { background: #F3F4F6; color: #6B7684; }
+
+  /* 도넛 차트 */
+  .ctrl-donut-row { display: flex; gap: 16px; align-items: center; margin-top: 12px; padding-top: 12px; border-top: 0.5px solid rgba(0,0,0,0.06); }
+  .ctrl-donut-wrap { position: relative; flex-shrink: 0; }
+  .ctrl-donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+  .ctrl-donut-pct { font-size: 16px; font-weight: 600; color: #111827; line-height: 1; }
+  .ctrl-donut-label { font-size: 10px; color: #6B7684; margin-top: 3px; }
+  .ctrl-donut-big .ctrl-donut-pct { font-size: 32px; }
+  .ctrl-donut-big .ctrl-donut-label { font-size: 12px; margin-top: 6px; }
+  .ctrl-donut-legend { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 12px; color: #6B7684; }
+  .ctrl-donut-legend > div { display: flex; align-items: center; gap: 6px; }
+  .ctrl-donut-legend strong { color: #111827; font-weight: 500; margin-left: auto; }
+  .ctrl-donut-legend-big { grid-template-columns: 1fr 1fr; gap: 12px 24px; font-size: 14px; }
+  .ctrl-donut-legend-big strong { font-size: 18px; }
+  .ctrl-donut-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 
   /* 명단 리스트 */
   .ctrl-roster { display: flex; flex-direction: column; gap: 2px; }
@@ -362,6 +370,47 @@
     { id: 'w008', name: '오채원', phone: '010-1111-2008', warnings: 0, total: 3,  noshow: 0, negotiation: false, points: 5500,   lastWorked: '2026-04-19', joinedAt: '2026-03-28', favParts: [] },
     { id: 'w009', name: '송현우', phone: '010-1111-2009', warnings: 2, total: 19, noshow: 2, negotiation: false, points: 28000,  lastWorked: '2026-04-15', joinedAt: '2025-10-11', favParts: ['lotte'] },
     { id: 'w010', name: '윤하늘', phone: '010-1111-2010', warnings: 0, total: 51, noshow: 0, negotiation: false, points: 89000,  lastWorked: '2026-04-22', joinedAt: '2025-06-30', favParts: ['cj','convention'] },
+    // 추가 40명 — 다양한 프로필 (경고/협의대상/신규/베테랑 혼합)
+    { id: 'w011', name: '정수아', phone: '010-2222-3011', warnings: 0, total: 5,  noshow: 0, negotiation: false, points: 8000,   lastWorked: '2026-04-19', joinedAt: '2026-02-14', favParts: ['cj'] },
+    { id: 'w012', name: '김태현', phone: '010-2222-3012', warnings: 0, total: 28, noshow: 0, negotiation: false, points: 42000,  lastWorked: '2026-04-22', joinedAt: '2025-09-03', favParts: ['lotte','convention'] },
+    { id: 'w013', name: '이서우', phone: '010-2222-3013', warnings: 1, total: 15, noshow: 1, negotiation: false, points: 18000,  lastWorked: '2026-04-18', joinedAt: '2025-12-01', favParts: ['cj'] },
+    { id: 'w014', name: '박도윤', phone: '010-2222-3014', warnings: 0, total: 3,  noshow: 0, negotiation: false, points: 6500,   lastWorked: '2026-04-20', joinedAt: '2026-03-15', favParts: [] },
+    { id: 'w015', name: '최하윤', phone: '010-2222-3015', warnings: 2, total: 22, noshow: 2, negotiation: false, points: 27000,  lastWorked: '2026-04-17', joinedAt: '2025-10-08', favParts: ['cj','lotte'] },
+    { id: 'w016', name: '정예준', phone: '010-2222-3016', warnings: 0, total: 58, noshow: 0, negotiation: false, points: 95000,  lastWorked: '2026-04-23', joinedAt: '2025-05-12', favParts: ['lotte'] },
+    { id: 'w017', name: '강지우', phone: '010-2222-3017', warnings: 0, total: 12, noshow: 0, negotiation: false, points: 17000,  lastWorked: '2026-04-21', joinedAt: '2025-11-20', favParts: ['convention'] },
+    { id: 'w018', name: '조서연', phone: '010-2222-3018', warnings: 0, total: 38, noshow: 0, negotiation: false, points: 61000,  lastWorked: '2026-04-22', joinedAt: '2025-07-18', favParts: ['cj','convention'] },
+    { id: 'w019', name: '윤민재', phone: '010-2222-3019', warnings: 3, total: 9,  noshow: 4, negotiation: true,  points: 2500,   lastWorked: '2026-02-28', joinedAt: '2025-12-05', favParts: ['cj'] },
+    { id: 'w020', name: '장수아', phone: '010-2222-3020', warnings: 0, total: 25, noshow: 0, negotiation: false, points: 38000,  lastWorked: '2026-04-20', joinedAt: '2025-08-25', favParts: ['lotte'] },
+    { id: 'w021', name: '임지호', phone: '010-2222-3021', warnings: 1, total: 7,  noshow: 1, negotiation: false, points: 11000,  lastWorked: '2026-04-16', joinedAt: '2026-01-22', favParts: ['cj'] },
+    { id: 'w022', name: '한채원', phone: '010-2222-3022', warnings: 0, total: 41, noshow: 0, negotiation: false, points: 72000,  lastWorked: '2026-04-23', joinedAt: '2025-06-10', favParts: ['cj','convention','lotte'] },
+    { id: 'w023', name: '오건우', phone: '010-2222-3023', warnings: 0, total: 18, noshow: 0, negotiation: false, points: 29000,  lastWorked: '2026-04-22', joinedAt: '2025-10-30', favParts: ['lotte'] },
+    { id: 'w024', name: '서하은', phone: '010-2222-3024', warnings: 2, total: 14, noshow: 1, negotiation: false, points: 16000,  lastWorked: '2026-04-10', joinedAt: '2025-09-28', favParts: ['cj'] },
+    { id: 'w025', name: '신지유', phone: '010-2222-3025', warnings: 0, total: 6,  noshow: 0, negotiation: false, points: 9500,   lastWorked: '2026-04-21', joinedAt: '2026-02-03', favParts: [] },
+    { id: 'w026', name: '권도윤', phone: '010-2222-3026', warnings: 0, total: 32, noshow: 0, negotiation: false, points: 48000,  lastWorked: '2026-04-22', joinedAt: '2025-08-05', favParts: ['cj'] },
+    { id: 'w027', name: '황유나', phone: '010-2222-3027', warnings: 0, total: 2,  noshow: 0, negotiation: false, points: 4000,   lastWorked: '2026-04-19', joinedAt: '2026-04-01', favParts: [] },
+    { id: 'w028', name: '안우진', phone: '010-2222-3028', warnings: 3, total: 11, noshow: 3, negotiation: true,  points: 5000,   lastWorked: '2026-03-22', joinedAt: '2025-11-08', favParts: ['cj'] },
+    { id: 'w029', name: '송예린', phone: '010-2222-3029', warnings: 0, total: 47, noshow: 0, negotiation: false, points: 84000,  lastWorked: '2026-04-23', joinedAt: '2025-05-25', favParts: ['convention','cj'] },
+    { id: 'w030', name: '유지후', phone: '010-2222-3030', warnings: 1, total: 20, noshow: 1, negotiation: false, points: 24000,  lastWorked: '2026-04-20', joinedAt: '2025-10-15', favParts: ['lotte'] },
+    { id: 'w031', name: '홍지민', phone: '010-2222-3031', warnings: 0, total: 10, noshow: 0, negotiation: false, points: 14000,  lastWorked: '2026-04-18', joinedAt: '2026-01-05', favParts: ['cj'] },
+    { id: 'w032', name: '김현우', phone: '010-2222-3032', warnings: 0, total: 35, noshow: 0, negotiation: false, points: 55000,  lastWorked: '2026-04-22', joinedAt: '2025-07-22', favParts: ['cj','lotte'] },
+    { id: 'w033', name: '이민우', phone: '010-2222-3033', warnings: 0, total: 16, noshow: 0, negotiation: false, points: 22000,  lastWorked: '2026-04-21', joinedAt: '2025-12-14', favParts: ['convention'] },
+    { id: 'w034', name: '박서윤', phone: '010-2222-3034', warnings: 2, total: 26, noshow: 2, negotiation: false, points: 35000,  lastWorked: '2026-04-14', joinedAt: '2025-09-12', favParts: ['cj'] },
+    { id: 'w035', name: '최예지', phone: '010-2222-3035', warnings: 0, total: 44, noshow: 0, negotiation: false, points: 68000,  lastWorked: '2026-04-23', joinedAt: '2025-06-28', favParts: ['lotte','convention'] },
+    { id: 'w036', name: '정하늘', phone: '010-2222-3036', warnings: 0, total: 8,  noshow: 0, negotiation: false, points: 12500,  lastWorked: '2026-04-17', joinedAt: '2026-02-20', favParts: ['cj'] },
+    { id: 'w037', name: '강민재', phone: '010-2222-3037', warnings: 0, total: 4,  noshow: 0, negotiation: false, points: 7000,   lastWorked: '2026-04-15', joinedAt: '2026-03-08', favParts: [] },
+    { id: 'w038', name: '조지호', phone: '010-2222-3038', warnings: 1, total: 21, noshow: 1, negotiation: false, points: 26000,  lastWorked: '2026-04-19', joinedAt: '2025-11-25', favParts: ['cj','lotte'] },
+    { id: 'w039', name: '윤예린', phone: '010-2222-3039', warnings: 0, total: 30, noshow: 0, negotiation: false, points: 45000,  lastWorked: '2026-04-22', joinedAt: '2025-08-18', favParts: ['convention'] },
+    { id: 'w040', name: '장건우', phone: '010-2222-3040', warnings: 0, total: 52, noshow: 0, negotiation: false, points: 98000,  lastWorked: '2026-04-23', joinedAt: '2025-04-30', favParts: ['cj','lotte','convention'] },
+    { id: 'w041', name: '임민지', phone: '010-2222-3041', warnings: 0, total: 13, noshow: 0, negotiation: false, points: 19000,  lastWorked: '2026-04-20', joinedAt: '2025-12-20', favParts: ['lotte'] },
+    { id: 'w042', name: '한수아', phone: '010-2222-3042', warnings: 0, total: 5,  noshow: 0, negotiation: false, points: 8500,   lastWorked: '2026-04-16', joinedAt: '2026-02-28', favParts: ['cj'] },
+    { id: 'w043', name: '오서연', phone: '010-2222-3043', warnings: 0, total: 39, noshow: 0, negotiation: false, points: 63000,  lastWorked: '2026-04-22', joinedAt: '2025-07-08', favParts: ['cj','convention'] },
+    { id: 'w044', name: '서도윤', phone: '010-2222-3044', warnings: 2, total: 17, noshow: 1, negotiation: false, points: 21000,  lastWorked: '2026-04-12', joinedAt: '2025-10-22', favParts: ['cj'] },
+    { id: 'w045', name: '신현우', phone: '010-2222-3045', warnings: 0, total: 1,  noshow: 0, negotiation: false, points: 2000,   lastWorked: '2026-04-20', joinedAt: '2026-04-05', favParts: [] },
+    { id: 'w046', name: '권채원', phone: '010-2222-3046', warnings: 0, total: 27, noshow: 0, negotiation: false, points: 41000,  lastWorked: '2026-04-23', joinedAt: '2025-09-05', favParts: ['lotte'] },
+    { id: 'w047', name: '황지우', phone: '010-2222-3047', warnings: 1, total: 19, noshow: 1, negotiation: false, points: 23000,  lastWorked: '2026-04-18', joinedAt: '2025-11-10', favParts: ['cj','convention'] },
+    { id: 'w048', name: '안하은', phone: '010-2222-3048', warnings: 0, total: 36, noshow: 0, negotiation: false, points: 57000,  lastWorked: '2026-04-22', joinedAt: '2025-06-15', favParts: ['cj'] },
+    { id: 'w049', name: '송지유', phone: '010-2222-3049', warnings: 0, total: 9,  noshow: 0, negotiation: false, points: 13000,  lastWorked: '2026-04-19', joinedAt: '2026-01-28', favParts: ['lotte'] },
+    { id: 'w050', name: '유서우', phone: '010-2222-3050', warnings: 3, total: 6,  noshow: 3, negotiation: true,  points: 4000,   lastWorked: '2026-03-05', joinedAt: '2025-11-30', favParts: ['cj'] },
   ];
   function findWorker(id) { return workers.find(w => w.id === id); }
 
@@ -393,6 +442,9 @@
     { id: 'n003', phone: '010-2222-3001', name: '(탈퇴 · 번호만)', registeredAt: '2025-11-10', reason: 'manual',  sub: '지속적 무응답 — 마스터 직접 등록', lastSite: '롯데 남양주 Hub',  lastDate: '2025-11-08', workerId: null,  registeredBy: '테스트(마스터)' },
     { id: 'n004', phone: '010-2222-3002', name: '홍길동',     registeredAt: '2025-09-05', reason: 'manual',  sub: '도난 의심 사안 — 조사 후 등록', lastSite: 'CJ 군포 Hub_A',    lastDate: '2025-09-01', workerId: null,  registeredBy: '테스트(마스터)' },
     { id: 'n005', phone: '010-1111-2099', name: '(탈퇴)',     registeredAt: '2025-08-14', reason: 'rematch', sub: '과거 번호 재가입 자동 매칭',     lastSite: '컨벤션 L타워 웨딩홀', lastDate: '2025-07-20', workerId: null,  registeredBy: '시스템' },
+    { id: 'n006', phone: '010-2222-3019', name: '윤민재',     registeredAt: '2026-02-28', reason: 'auto',    sub: '경고 3회 누적 (무단결근 반복)', lastSite: 'CJ 용인 Hub',       lastDate: '2026-02-28', workerId: 'w019', registeredBy: '시스템' },
+    { id: 'n007', phone: '010-2222-3028', name: '안우진',     registeredAt: '2026-03-22', reason: 'auto',    sub: '경고 3회 누적 (지각 반복)',     lastSite: 'CJ 곤지암 MegaHub', lastDate: '2026-03-22', workerId: 'w028', registeredBy: '시스템' },
+    { id: 'n008', phone: '010-2222-3050', name: '유서우',     registeredAt: '2026-03-05', reason: 'auto',    sub: '경고 3회 누적 (무응답)',        lastSite: 'CJ 이천 MpHub',     lastDate: '2026-03-05', workerId: 'w050', registeredBy: '시스템' },
   ];
   function findNeg(id) { return negotiations.find(n => n.id === id); }
 
@@ -420,10 +472,10 @@
 
   // 관리자 계정 — role: master / admin1 / admin2
   const admins = [
-    { id: 'adm_master', name: '김진호',   phone: '010-0000-0001', role: 'master', sites: [],                           active: true,  lastLogin: '2026-04-23 08:42', joinedAt: '2025-04-01', createdBy: '시스템' },
-    { id: 'adm_001',    name: '김관리',   phone: '010-0000-0101', role: 'admin1', sites: [],                           active: true,  lastLogin: '2026-04-23 10:15', joinedAt: '2025-05-10', createdBy: '김진호(마스터)' },
-    { id: 'adm_002',    name: '박관리',   phone: '010-0000-0102', role: 'admin1', sites: [],                           active: true,  lastLogin: '2026-04-22 19:30', joinedAt: '2025-07-22', createdBy: '김진호(마스터)' },
-    { id: 'adm_003',    name: '최관리',   phone: '010-0000-0103', role: 'admin1', sites: [],                           active: false, lastLogin: '2026-02-10 14:00', joinedAt: '2025-06-05', createdBy: '김진호(마스터)' },
+    { id: 'adm_master', name: '테스트',   phone: '010-0000-0001', role: 'master', sites: [],                           active: true,  lastLogin: '2026-04-23 08:42', joinedAt: '2025-04-01', createdBy: '시스템' },
+    { id: 'adm_001',    name: '김관리',   phone: '010-0000-0101', role: 'admin1', sites: [],                           active: true,  lastLogin: '2026-04-23 10:15', joinedAt: '2025-05-10', createdBy: '테스트(마스터)' },
+    { id: 'adm_002',    name: '박관리',   phone: '010-0000-0102', role: 'admin1', sites: [],                           active: true,  lastLogin: '2026-04-22 19:30', joinedAt: '2025-07-22', createdBy: '테스트(마스터)' },
+    { id: 'adm_003',    name: '최관리',   phone: '010-0000-0103', role: 'admin1', sites: [],                           active: false, lastLogin: '2026-02-10 14:00', joinedAt: '2025-06-05', createdBy: '테스트(마스터)' },
     { id: 'adm_004',    name: '이담당',   phone: '010-0000-0201', role: 'admin2', sites: ['gonjiam','gunpo_b'],        active: true,  lastLogin: '2026-04-23 07:30', joinedAt: '2025-09-01', createdBy: '김관리(1등급)' },
     { id: 'adm_005',    name: '박담당',   phone: '010-0000-0202', role: 'admin2', sites: ['yongin','gunpo_l'],         active: true,  lastLogin: '2026-04-23 09:05', joinedAt: '2025-10-12', createdBy: '김관리(1등급)' },
     { id: 'adm_006',    name: '김담당',   phone: '010-0000-0203', role: 'admin2', sites: ['gunpo_a','jincheon'],       active: true,  lastLogin: '2026-04-22 22:10', joinedAt: '2025-11-20', createdBy: '박관리(1등급)' },
@@ -1657,6 +1709,56 @@
     return String(Math.floor(total/60) % 24).padStart(2,'0') + ':' + String(total%60).padStart(2,'0');
   }
 
+  // 도넛 SVG — segments: [{value, color}]
+  function donutSvg(segments, size = 90, thick = 10) {
+    const center = size / 2;
+    const r = (size - thick) / 2;
+    const circ = 2 * Math.PI * r;
+    const total = segments.reduce((s, seg) => s + seg.value, 0);
+    let paths = '';
+    if (total === 0) {
+      paths = `<circle cx="${center}" cy="${center}" r="${r}" fill="none" stroke="#E5E7EB" stroke-width="${thick}"/>`;
+    } else {
+      let offset = 0;
+      paths = `<circle cx="${center}" cy="${center}" r="${r}" fill="none" stroke="#F3F4F6" stroke-width="${thick}"/>`;
+      segments.forEach(seg => {
+        if (seg.value === 0) return;
+        const len = (seg.value / total) * circ;
+        paths += `<circle cx="${center}" cy="${center}" r="${r}" fill="none" stroke="${seg.color}" stroke-width="${thick}"
+          stroke-dasharray="${len.toFixed(2)} ${(circ - len).toFixed(2)}"
+          stroke-dashoffset="${(-offset).toFixed(2)}"
+          transform="rotate(-90 ${center} ${center})"/>`;
+        offset += len;
+      });
+    }
+    return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>`;
+  }
+
+  // 출결 → 도넛 segments + 중앙 텍스트 생성
+  function attendanceDonut(sum, size = 90, thick = 10) {
+    const segments = [
+      { value: sum.출근, color: '#22C55E' },
+      { value: sum.지각, color: '#F59E0B' },
+      { value: sum.결근, color: '#EF4444' },
+      { value: sum.대기, color: '#D1D5DB' },
+    ];
+    const attended = sum.출근 + sum.지각 + sum.결근;
+    let centerHtml;
+    if (attended === 0) {
+      const totalWait = sum.대기;
+      centerHtml = `<div class="ctrl-donut-pct">${totalWait}</div><div class="ctrl-donut-label">대기 명</div>`;
+    } else {
+      const rate = Math.round((sum.출근 + sum.지각) / attended * 100);
+      centerHtml = `<div class="ctrl-donut-pct">${rate}%</div><div class="ctrl-donut-label">출근율</div>`;
+    }
+    return `
+      <div class="ctrl-donut-wrap" style="width:${size}px; height:${size}px;">
+        ${donutSvg(segments, size, thick)}
+        <div class="ctrl-donut-center">${centerHtml}</div>
+      </div>
+    `;
+  }
+
   // 결정적 출결 시뮬레이션 — 공고 상태에 따라 분포 조정
   function getAttendance(jobId) {
     const job = findJob(jobId); if (!job) return [];
@@ -1807,11 +1909,14 @@
               </div>
               <span class="jobs-status" style="background:${stColor}22; color:${stColor};">${stLabel}</span>
             </div>
-            <div class="ctrl-atd-row">
-              <div class="ctrl-atd-cell ctrl-atd-ok"><strong>${sum.출근}</strong>🟢 출근</div>
-              <div class="ctrl-atd-cell ctrl-atd-late"><strong>${sum.지각}</strong>🟡 지각</div>
-              <div class="ctrl-atd-cell ctrl-atd-no"><strong>${sum.결근}</strong>🔴 결근</div>
-              <div class="ctrl-atd-cell ctrl-atd-wait"><strong>${sum.대기}</strong>⚪ 대기</div>
+            <div class="ctrl-donut-row">
+              ${attendanceDonut(sum, 92, 11)}
+              <div class="ctrl-donut-legend">
+                <div><span class="ctrl-donut-dot" style="background:#22C55E;"></span>출근<strong>${sum.출근}</strong></div>
+                <div><span class="ctrl-donut-dot" style="background:#F59E0B;"></span>지각<strong>${sum.지각}</strong></div>
+                <div><span class="ctrl-donut-dot" style="background:#EF4444;"></span>결근<strong>${sum.결근}</strong></div>
+                <div><span class="ctrl-donut-dot" style="background:#D1D5DB;"></span>대기<strong>${sum.대기}</strong></div>
+              </div>
             </div>
           </div>
         `;
@@ -1859,11 +1964,26 @@
         </div>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px;">
-        <div class="jf-metric"><div class="jf-metric-label">🟢 출근</div><div class="jf-metric-value" style="color:#22C55E;">${sum.출근}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div></div>
-        <div class="jf-metric"><div class="jf-metric-label">🟡 지각</div><div class="jf-metric-value" style="color:#F59E0B;">${sum.지각}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div></div>
-        <div class="jf-metric"><div class="jf-metric-label">🔴 결근</div><div class="jf-metric-value" style="color:#EF4444;">${sum.결근}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div></div>
-        <div class="jf-metric"><div class="jf-metric-label">⚪ 대기</div><div class="jf-metric-value" style="color:#6B7684;">${sum.대기}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div></div>
+      <div class="jf-panel" style="margin-bottom: 16px; padding: 28px;">
+        <div style="display: flex; gap: 32px; align-items: center;">
+          <div class="ctrl-donut-big">
+            ${attendanceDonut(sum, 200, 22)}
+          </div>
+          <div style="flex: 1;">
+            <div style="font-size: 13px; color: #6B7684; margin-bottom: 14px; font-weight: 500;">출결 현황</div>
+            <div class="ctrl-donut-legend ctrl-donut-legend-big">
+              <div><span class="ctrl-donut-dot" style="background:#22C55E; width:12px; height:12px;"></span>🟢 출근<strong>${sum.출근}</strong></div>
+              <div><span class="ctrl-donut-dot" style="background:#F59E0B; width:12px; height:12px;"></span>🟡 지각<strong>${sum.지각}</strong></div>
+              <div><span class="ctrl-donut-dot" style="background:#EF4444; width:12px; height:12px;"></span>🔴 결근<strong>${sum.결근}</strong></div>
+              <div><span class="ctrl-donut-dot" style="background:#D1D5DB; width:12px; height:12px;"></span>⚪ 대기<strong>${sum.대기}</strong></div>
+            </div>
+            <div style="margin-top: 16px; padding-top: 14px; border-top: 0.5px solid rgba(0,0,0,0.08); font-size: 12px; color: #6B7684;">
+              ${(sum.출근 + sum.지각 + sum.결근) > 0
+                ? `확정 ${sum.출근 + sum.지각 + sum.결근 + sum.대기}명 중 출석 ${sum.출근 + sum.지각}명 · 결근 ${sum.결근}명`
+                : `확정 ${sum.대기}명 · 근무 시작 전 대기 상태`}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="jf-panel">
