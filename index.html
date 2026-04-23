@@ -149,6 +149,32 @@
   .jobs-cal-day-dots { display: flex; gap: 2px; margin-top: 3px; flex-wrap: wrap; }
   .jobs-cal-day-dot { width: 5px; height: 5px; border-radius: 50%; }
 
+  /* 신청 승인 */
+  .apv-list { display: flex; flex-direction: column; gap: 10px; }
+  .apv-card { background: #fff; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 12px; padding: 16px; display: grid; grid-template-columns: 1.2fr 1.5fr 1fr auto; gap: 16px; align-items: center; }
+  .apv-card.urgent { border-left: 3px solid #F59E0B; }
+  .apv-card.neg { border-left: 3px solid #EF4444; }
+  .apv-worker { display: flex; flex-direction: column; gap: 4px; }
+  .apv-worker-name { font-weight: 500; font-size: 14px; color: #111827; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .apv-worker-phone { font-size: 12px; color: #6B7684; font-family: 'SF Mono', Monaco, monospace; }
+  .apv-worker-stat { font-size: 11px; color: #6B7684; margin-top: 2px; }
+  .apv-worker-stat strong { color: #111827; font-weight: 500; }
+  .apv-job { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+  .apv-job-title { font-weight: 500; color: #111827; font-size: 13px; }
+  .apv-job-sub { color: #6B7684; }
+  .apv-badges { display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
+  .apv-badge { padding: 3px 8px; border-radius: 4px; font-weight: 500; display: inline-block; width: fit-content; }
+  .apv-badge-urgent { background: #FEF3C7; color: #92400E; }
+  .apv-badge-warn { background: #FEE2E2; color: #991B1B; }
+  .apv-badge-neg { background: #1F2937; color: #fff; }
+  .apv-badge-auto { background: #DCFCE7; color: #166534; }
+  .apv-actions { display: flex; gap: 6px; }
+  .apv-actions button { font-size: 12px; height: 34px; padding: 0 16px; }
+  .btn-approve { background: #22C55E !important; color: #fff !important; border-color: #22C55E !important; }
+  .btn-approve:hover:not(:disabled) { background: #16A34A !important; }
+  .btn-reject { background: #fff !important; color: #EF4444 !important; border-color: #EF4444 !important; }
+  .btn-reject:hover:not(:disabled) { background: #FEE2E2 !important; }
+
   /* 준비 중 플레이스홀더 */
   .jf-placeholder { padding: 80px 20px; text-align: center; background: #fff; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 12px; }
   .jf-placeholder-icon { font-size: 40px; margin-bottom: 14px; opacity: 0.4; }
@@ -166,7 +192,7 @@
     </div>
     <div class="jf-nav-item" data-page="home"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7l6-5 6 5v7a1 1 0 01-1 1H3a1 1 0 01-1-1V7z"/></svg>홈</div>
     <div class="jf-nav-item" data-page="jobs"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="11" rx="1"/><path d="M5 1v3M11 1v3M2 7h12"/></svg>공고 관리</div>
-    <div class="jf-nav-item" data-page="approval"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8l3 3 7-7"/></svg>신청 승인 <span style="margin-left:auto; background:#EF4444; color:#fff; font-size:10px; padding:1px 6px; border-radius:8px;">7</span></div>
+    <div class="jf-nav-item" data-page="approval"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8l3 3 7-7"/></svg>신청 승인 <span data-role="badge" style="margin-left:auto; background:#EF4444; color:#fff; font-size:10px; padding:1px 6px; border-radius:8px;">7</span></div>
     <div class="jf-nav-item" data-page="workers"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/></svg>근무자 관리</div>
     <div class="jf-nav-item" data-page="control"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg>관제 시스템</div>
     <div class="jf-nav-item active" data-page="worksite"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1l6 3v5c0 3.5-3 6-6 6s-6-2.5-6-6V4l6-3z"/></svg>근무지 관리</div>
@@ -260,6 +286,41 @@
     { id: 'j019', siteId: 'whills',   date: '2026-04-20', slot: '웨딩', start: '10:00', end: '18:00', cap: 15, apply: 14, wage: 125000, wageType: '일급', contact: '010-1234-0987', contract: true, safety: true },
     { id: 'j020', siteId: 'icheon',   date: '2026-04-21', slot: '주간', start: '07:00', end: '15:00', cap: 20, apply: 19, wage: 105000, wageType: '일급', contact: '010-5678-9012', contract: true, safety: true },
   ];
+
+  // 알바생(근무자) 샘플 데이터
+  const workers = [
+    { id: 'w001', name: '김서연', phone: '010-1111-2001', warnings: 0, total: 45, noshow: 0, negotiation: false },
+    { id: 'w002', name: '이준호', phone: '010-1111-2002', warnings: 3, total: 12, noshow: 3, negotiation: true },
+    { id: 'w003', name: '박민지', phone: '010-1111-2003', warnings: 2, total: 28, noshow: 1, negotiation: false },
+    { id: 'w004', name: '최예린', phone: '010-1111-2004', warnings: 0, total: 8,  noshow: 0, negotiation: false },
+    { id: 'w005', name: '정다은', phone: '010-1111-2005', warnings: 1, total: 33, noshow: 1, negotiation: false },
+    { id: 'w006', name: '강시우', phone: '010-1111-2006', warnings: 3, total: 7,  noshow: 4, negotiation: true },
+    { id: 'w007', name: '한지민', phone: '010-1111-2007', warnings: 0, total: 62, noshow: 0, negotiation: false },
+    { id: 'w008', name: '오채원', phone: '010-1111-2008', warnings: 0, total: 3,  noshow: 0, negotiation: false },
+    { id: 'w009', name: '송현우', phone: '010-1111-2009', warnings: 2, total: 19, noshow: 2, negotiation: false },
+    { id: 'w010', name: '윤하늘', phone: '010-1111-2010', warnings: 0, total: 51, noshow: 0, negotiation: false },
+  ];
+  function findWorker(id) { return workers.find(w => w.id === id); }
+
+  // 공고별 신청 — 상태: pending(대기) / approved / rejected
+  // reason: normal(일반·12h이전) / urgent(12h이내) / warn3(경고3회) / neg(협의대상번호)
+  const applications = [
+    // 7건 pending (사이드바 뱃지 숫자 일치)
+    { id: 'a001', workerId: 'w001', jobId: 'j005', appliedAt: '2026-04-23 20:15', status: 'pending', reason: 'urgent' },   // 내일 주간 · 12h 이내
+    { id: 'a002', workerId: 'w002', jobId: 'j006', appliedAt: '2026-04-23 15:40', status: 'pending', reason: 'neg' },       // 협의대상
+    { id: 'a003', workerId: 'w003', jobId: 'j007', appliedAt: '2026-04-24 22:10', status: 'pending', reason: 'urgent' },
+    { id: 'a004', workerId: 'w005', jobId: 'j008', appliedAt: '2026-04-24 19:30', status: 'pending', reason: 'urgent' },
+    { id: 'a005', workerId: 'w006', jobId: 'j009', appliedAt: '2026-04-25 20:00', status: 'pending', reason: 'neg' },
+    { id: 'a006', workerId: 'w009', jobId: 'j011', appliedAt: '2026-04-26 15:20', status: 'pending', reason: 'warn3' },     // 경고 가까운 케이스
+    { id: 'a007', workerId: 'w004', jobId: 'j010', appliedAt: '2026-04-25 18:45', status: 'pending', reason: 'urgent' },
+    // 최근 처리된 것 (오늘 처리 완료 카운트용)
+    { id: 'a008', workerId: 'w007', jobId: 'j005', appliedAt: '2026-04-23 09:00', status: 'approved', reason: 'urgent', processedAt: '2026-04-23 10:12', processedBy: '테스트(마스터)' },
+    { id: 'a009', workerId: 'w008', jobId: 'j007', appliedAt: '2026-04-23 11:00', status: 'approved', reason: 'normal', processedAt: '2026-04-23 11:02', processedBy: '자동' },
+    { id: 'a010', workerId: 'w010', jobId: 'j011', appliedAt: '2026-04-23 08:30', status: 'rejected', reason: 'urgent', processedAt: '2026-04-23 09:15', processedBy: '테스트(마스터)', rejectReason: '해당 근무지 주 4일 초과' },
+  ];
+
+  function findJob(id) { return jobs.find(j => j.id === id); }
+  function findApp(id) { return applications.find(a => a.id === id); }
 
   // 공고 상태 판정: open(모집중) · closed(마감·시작전) · progress(진행중) · done(종료)
   function jobStatus(j) {
@@ -811,6 +872,192 @@
   }
 
   // ───────────────────────────────────────────────────────
+  // 신청 승인 페이지
+  // ───────────────────────────────────────────────────────
+  const apvState = {
+    partnerKey: '',
+    siteId: '',
+    reason: '',    // '' / urgent / warn3 / neg
+  };
+
+  function updateApprovalBadge() {
+    const pending = applications.filter(a => a.status === 'pending').length;
+    const navItem = document.querySelector('.jf-nav-item[data-page="approval"]');
+    if (!navItem) return;
+    const existing = navItem.querySelector('span[data-role="badge"]');
+    if (pending > 0) {
+      if (existing) {
+        existing.textContent = pending;
+      } else {
+        const sp = document.createElement('span');
+        sp.setAttribute('data-role', 'badge');
+        sp.style.cssText = 'margin-left:auto; background:#EF4444; color:#fff; font-size:10px; padding:1px 6px; border-radius:8px;';
+        sp.textContent = pending;
+        navItem.appendChild(sp);
+      }
+    } else if (existing) {
+      existing.remove();
+    }
+  }
+
+  function renderApproval() {
+    const pending = applications.filter(a => a.status === 'pending');
+    const today = TODAY;
+    const processedToday = applications.filter(a =>
+      a.status !== 'pending' && a.processedAt && a.processedAt.startsWith(today)
+    ).length;
+    const urgentCount = pending.filter(a => a.reason === 'urgent').length;
+    const negCount = pending.filter(a => a.reason === 'neg').length;
+    const warnCount = pending.filter(a => a.reason === 'warn3').length;
+
+    // 파트너사/근무지 옵션 (공고의 siteId 기준)
+    const partnerOpts = Object.keys(worksites).map(k =>
+      `<option value="${k}" ${apvState.partnerKey === k ? 'selected' : ''}>${worksites[k].name}</option>`).join('');
+    const siteOpts = (() => {
+      const sites = apvState.partnerKey
+        ? worksites[apvState.partnerKey].sites
+        : Object.values(worksites).flatMap(p => p.sites);
+      return sites.map(s => `<option value="${s.id}" ${apvState.siteId === s.id ? 'selected' : ''}>${s.name}</option>`).join('');
+    })();
+
+    // 필터 적용
+    const filtered = pending.filter(a => {
+      if (apvState.reason && apvState.reason !== a.reason) return false;
+      const j = findJob(a.jobId); if (!j) return false;
+      const site = findSite(j.siteId); if (!site) return false;
+      if (apvState.partnerKey && apvState.partnerKey !== site.partnerKey) return false;
+      if (apvState.siteId && apvState.siteId !== j.siteId) return false;
+      return true;
+    });
+
+    // 우선순위 정렬: 협의대상 > 경고3회 > 12h이내, 동순위는 신청시간 오래된 것 우선
+    const reasonPriority = { neg: 0, warn3: 1, urgent: 2, normal: 3 };
+    const sorted = [...filtered].sort((a, b) =>
+      (reasonPriority[a.reason] ?? 9) - (reasonPriority[b.reason] ?? 9) ||
+      a.appliedAt.localeCompare(b.appliedAt)
+    );
+
+    let html = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">신청 승인</div>
+          <div class="jf-subtitle">대기 중인 알바생 신청을 검토하고 승인/거절합니다</div>
+        </div>
+        <div class="ws-actions">
+          <button onclick="alert('처리 이력 전체 보기는 추후 구현')">처리 이력</button>
+        </div>
+      </div>
+
+      <div class="jf-metric-grid">
+        <div class="jf-metric"><div class="jf-metric-label">대기 중</div><div class="jf-metric-value" style="color:${pending.length>0?'#EF4444':'#111827'};">${pending.length}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">${pending.length>0?'승인 대기 최대 6시간':'모두 처리됨'}</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">12h 이내 신청</div><div class="jf-metric-value" style="color:#F59E0B;">${urgentCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">근무 시작 임박</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">협의대상 / 경고3회</div><div class="jf-metric-value" style="color:#EF4444;">${negCount + warnCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">협의대상 ${negCount} · 경고 ${warnCount}</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">오늘 처리 완료</div><div class="jf-metric-value">${processedToday}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">승인 + 거절 합계</div></div>
+      </div>
+
+      ${pending.length > 0 && pending.some(a => a.reason === 'neg' || a.reason === 'warn3')
+        ? `<div class="ws-warn-box">⚠ 협의대상 또는 경고 3회 이상 누적 알바생의 신청이 있습니다. 마스터/관리자가 직접 검토해주세요.</div>` : ''}
+
+      <div class="jobs-filters">
+        <select onchange="window.__apvFilter('partnerKey', this.value)">
+          <option value="">전체 파트너사</option>${partnerOpts}
+        </select>
+        <select onchange="window.__apvFilter('siteId', this.value)">
+          <option value="">전체 근무지</option>${siteOpts}
+        </select>
+        <select onchange="window.__apvFilter('reason', this.value)">
+          <option value="">전체 사유</option>
+          <option value="neg"    ${apvState.reason==='neg'?'selected':''}>협의대상</option>
+          <option value="warn3"  ${apvState.reason==='warn3'?'selected':''}>경고 3회 이상</option>
+          <option value="urgent" ${apvState.reason==='urgent'?'selected':''}>12시간 이내</option>
+        </select>
+        ${(apvState.partnerKey||apvState.siteId||apvState.reason) ? `<button onclick="window.__apvClearFilter()" style="font-size:12px;">필터 초기화</button>` : ''}
+      </div>
+    `;
+
+    if (sorted.length === 0) {
+      html += `<div class="jf-placeholder"><div class="jf-placeholder-icon">✅</div><div class="jf-placeholder-title">${pending.length === 0 ? '대기 중인 신청이 없습니다' : '조건에 맞는 신청이 없습니다'}</div><div class="jf-placeholder-desc">${pending.length === 0 ? '자동 승인 대상이 아닌 신청만 여기에 표시됩니다.' : '필터를 변경해보세요.'}</div></div>`;
+    } else {
+      html += `<div class="apv-list">`;
+      sorted.forEach(a => {
+        const w = findWorker(a.workerId);
+        const j = findJob(a.jobId);
+        const site = findSite(j.siteId);
+        const cardCls = a.reason === 'neg' ? 'neg' : (a.reason === 'urgent' || a.reason === 'warn3') ? 'urgent' : '';
+
+        const badges = [];
+        if (a.reason === 'neg')    badges.push('<span class="apv-badge apv-badge-neg">협의대상</span>');
+        if (a.reason === 'warn3')  badges.push('<span class="apv-badge apv-badge-warn">경고 3회 이상</span>');
+        if (a.reason === 'urgent') badges.push('<span class="apv-badge apv-badge-urgent">12h 이내</span>');
+
+        const noshow = w.noshow > 0 ? `<span style="color:#EF4444;">No-show ${w.noshow}</span>` : '<span>No-show 0</span>';
+        const warnStat = w.warnings > 0 ? `<span style="color:#EF4444;">경고 <strong>${w.warnings}</strong></span>` : `<span>경고 <strong>0</strong></span>`;
+
+        html += `
+          <div class="apv-card ${cardCls}">
+            <div class="apv-worker">
+              <div class="apv-worker-name">
+                ${w.name}
+                ${w.negotiation ? '<span class="apv-badge apv-badge-neg" style="font-size:10px; padding:2px 6px;">협의대상</span>' : ''}
+              </div>
+              <div class="apv-worker-phone">${w.phone}</div>
+              <div class="apv-worker-stat">누적 근무 <strong>${w.total}</strong>회 · ${warnStat} · ${noshow}</div>
+            </div>
+            <div class="apv-job">
+              <div class="apv-job-title">${site.site.name} <span class="ws-mini-tag" style="font-size:10px;">${site.partner}</span></div>
+              <div class="apv-job-sub">${j.date} · ${j.slot} ${j.start}~${j.end}</div>
+              <div class="apv-job-sub">${j.wageType} ${j.wage.toLocaleString()}원 · 모집 ${j.apply}/${j.cap}</div>
+              <div class="apv-job-sub">신청 ${a.appliedAt}</div>
+            </div>
+            <div class="apv-badges">${badges.join('')}</div>
+            <div class="apv-actions">
+              <button class="btn-reject" onclick="window.__apvReject('${a.id}')">거절</button>
+              <button class="btn-approve" onclick="window.__apvApprove('${a.id}')">승인</button>
+            </div>
+          </div>
+        `;
+      });
+      html += `</div>`;
+    }
+
+    main.innerHTML = html;
+  }
+
+  window.__apvFilter = function(key, val) {
+    apvState[key] = val;
+    if (key === 'partnerKey') apvState.siteId = '';
+    renderApproval();
+  };
+  window.__apvClearFilter = function() {
+    apvState.partnerKey = ''; apvState.siteId = ''; apvState.reason = '';
+    renderApproval();
+  };
+  window.__apvApprove = function(appId) {
+    const a = findApp(appId); if (!a) return;
+    const w = findWorker(a.workerId);
+    const j = findJob(a.jobId);
+    if (!confirm(`${w.name} (${w.phone}) 님의 신청을 승인하시겠습니까?\n\n근무지: ${findSite(j.siteId).site.name}\n일시: ${j.date} ${j.slot} ${j.start}~${j.end}`)) return;
+    a.status = 'approved';
+    a.processedAt = TODAY + ' ' + new Date().toTimeString().slice(0,5);
+    a.processedBy = '테스트(마스터)';
+    j.apply = Math.min(j.apply + 1, j.cap); // 공고 모집인원 업데이트
+    updateApprovalBadge();
+    renderApproval();
+  };
+  window.__apvReject = function(appId) {
+    const a = findApp(appId); if (!a) return;
+    const w = findWorker(a.workerId);
+    const reason = prompt(`${w.name} 님의 신청을 거절합니다.\n거절 사유를 입력하세요 (알바생에게 알림 발송):`);
+    if (!reason) return; // 취소 또는 빈 값
+    a.status = 'rejected';
+    a.processedAt = TODAY + ' ' + new Date().toTimeString().slice(0,5);
+    a.processedBy = '테스트(마스터)';
+    a.rejectReason = reason;
+    updateApprovalBadge();
+    renderApproval();
+  };
+
+  // ───────────────────────────────────────────────────────
   // 공고 관리 페이지
   // ───────────────────────────────────────────────────────
   const jobsState = {
@@ -1113,6 +1360,7 @@
   const pageRouters = {
     worksite: renderList,
     jobs: () => { jobsState.tab = 'list'; renderJobs(); },
+    approval: renderApproval,
   };
 
   navItems.forEach(item => {
@@ -1134,6 +1382,7 @@
     return names[page] || '';
   }
 
+  updateApprovalBadge();
   renderList();
 })();
 </script>
