@@ -246,6 +246,74 @@
   .tl-title { font-size: 13px; font-weight: 500; color: #111827; margin-top: 2px; }
   .tl-sub { font-size: 12px; color: #6B7684; margin-top: 2px; }
 
+  /* 로그인 화면 */
+  .login-overlay { position: fixed; inset: 0; background: linear-gradient(135deg, #1B3A6B 0%, #1E40AF 100%); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 24px; }
+  .login-card { background: #fff; border-radius: 20px; width: 100%; max-width: 420px; padding: 40px 36px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+  .login-brand { text-align: center; margin-bottom: 28px; }
+  .login-brand-name { font-size: 28px; font-weight: 600; color: #1B3A6B; letter-spacing: -0.5px; }
+  .login-brand-sub { font-size: 13px; color: #6B7684; margin-top: 6px; }
+  .login-brand-badge { display: inline-block; margin-top: 10px; padding: 4px 12px; background: #DBEAFE; color: #1E40AF; border-radius: 20px; font-size: 11px; font-weight: 500; }
+  .login-section { margin-bottom: 22px; }
+  .login-label { font-size: 12px; color: #374151; font-weight: 500; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .login-step-num { width: 18px; height: 18px; background: #E5E7EB; color: #6B7684; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; }
+  .login-step-num.done { background: #22C55E; color: #fff; }
+  .login-step-num.active { background: #2563EB; color: #fff; }
+  .login-kakao { background: #FEE500 !important; color: #000 !important; border: 0 !important; width: 100%; height: 48px; font-size: 14px; font-weight: 500; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .login-kakao:hover { background: #FDD835 !important; }
+  .login-kakao.done { background: #DCFCE7 !important; color: #166534 !important; }
+  .login-phone-row { display: flex; gap: 6px; }
+  .login-phone-row input { flex: 1; height: 44px; }
+  .login-phone-row button { height: 44px; }
+  .login-code { letter-spacing: 4px; text-align: center; font-family: 'SF Mono', Monaco, monospace; font-size: 16px; font-weight: 500; height: 48px; }
+  .login-timer { font-size: 11px; color: #EF4444; margin-top: 4px; text-align: right; font-family: 'SF Mono', Monaco, monospace; }
+  .login-submit { width: 100%; height: 48px; font-size: 14px; font-weight: 500; margin-top: 12px; }
+  .login-role-picker { display: flex; gap: 6px; margin-top: 10px; }
+  .login-role-btn { flex: 1; height: 36px; font-size: 11px; padding: 0; border: 0.5px solid rgba(0,0,0,0.15); background: #fff; border-radius: 8px; cursor: pointer; transition: all 0.1s; }
+  .login-role-btn.active { background: #1B3A6B; color: #fff; border-color: #1B3A6B; }
+  .login-footer { margin-top: 24px; padding-top: 16px; border-top: 0.5px solid rgba(0,0,0,0.08); font-size: 11px; color: #9CA3AF; text-align: center; line-height: 1.7; }
+
+  /* 스텝 인디케이터 (wizard) */
+  .jf-stepper { display: flex; gap: 0; margin-bottom: 24px; background: #F5F7FA; border-radius: 12px; padding: 12px 16px; }
+  .jf-step { flex: 1; display: flex; align-items: center; gap: 10px; position: relative; }
+  .jf-step-num { width: 28px; height: 28px; border-radius: 50%; background: #E5E7EB; color: #9CA3AF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; flex-shrink: 0; transition: all 0.15s; }
+  .jf-step.active .jf-step-num { background: #2563EB; color: #fff; }
+  .jf-step.done .jf-step-num { background: #22C55E; color: #fff; }
+  .jf-step-label { font-size: 13px; color: #9CA3AF; flex: 1; }
+  .jf-step.active .jf-step-label { color: #111827; font-weight: 500; }
+  .jf-step.done .jf-step-label { color: #6B7684; }
+  .jf-step:not(:last-child)::after { content: ''; height: 1px; background: #E5E7EB; flex: 1; margin-left: 4px; }
+  .jf-step.done:not(:last-child)::after { background: #22C55E; }
+
+  /* 폼 공용 */
+  .jf-form-row { display: grid; grid-template-columns: 140px 1fr; gap: 16px; padding: 10px 0; align-items: center; }
+  .jf-form-row.top { align-items: start; }
+  .jf-form-label { font-size: 13px; color: #374151; font-weight: 500; padding-top: 8px; }
+  .jf-form-label .req { color: #EF4444; margin-left: 3px; }
+  .jf-form-hint { font-size: 11px; color: #6B7684; margin-top: 4px; }
+  textarea { font-family: inherit; font-size: 13px; padding: 10px 12px; border: 0.5px solid rgba(0,0,0,0.15); border-radius: 8px; background: #fff; width: 100%; resize: vertical; line-height: 1.6; }
+  textarea:focus { outline: none; box-shadow: 0 0 0 2px rgba(37,99,235,0.2); }
+  .jf-toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .jf-toggle input { width: 0; height: 0; opacity: 0; position: absolute; }
+  .jf-toggle-switch { width: 40px; height: 22px; background: #D1D5DB; border-radius: 20px; position: relative; transition: background 0.15s; flex-shrink: 0; }
+  .jf-toggle-switch::after { content: ''; width: 16px; height: 16px; background: #fff; border-radius: 50%; position: absolute; top: 3px; left: 3px; transition: left 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+  .jf-toggle input:checked + .jf-toggle-switch { background: #2563EB; }
+  .jf-toggle input:checked + .jf-toggle-switch::after { left: 21px; }
+  .jf-toggle-text { font-size: 13px; }
+  .jf-toggle-sub { font-size: 11px; color: #6B7684; margin-left: 48px; margin-top: 2px; }
+
+  /* 폼 달력 (날짜 복수 선택) */
+  .form-cal-day.selected { background: #2563EB; color: #fff; border-color: #2563EB; }
+  .form-cal-day.selected .jobs-cal-day-num { color: #fff; }
+  .form-cal-day.past { opacity: 0.35; cursor: not-allowed; }
+  .form-date-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .form-date-chip { background: #DBEAFE; color: #1E40AF; padding: 4px 8px 4px 10px; border-radius: 16px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; }
+  .form-date-chip button { background: none; border: 0; padding: 0; cursor: pointer; color: #1E40AF; font-size: 14px; height: auto; line-height: 1; }
+
+  /* 시간대 슬롯 테이블 */
+  .form-slot-row { display: grid; grid-template-columns: 0.8fr 0.8fr 0.8fr 0.8fr 1fr 1.2fr auto; gap: 8px; padding: 8px 0; align-items: center; border-bottom: 0.5px solid rgba(0,0,0,0.06); }
+  .form-slot-row input, .form-slot-row select { height: 34px; font-size: 12px; padding: 0 8px; }
+  .form-slot-head { font-size: 11px; color: #6B7684; font-weight: 500; padding-bottom: 4px; }
+
   /* 준비 중 플레이스홀더 */
   .jf-placeholder { padding: 80px 20px; text-align: center; background: #fff; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 12px; }
   .jf-placeholder-icon { font-size: 40px; margin-bottom: 14px; opacity: 0.4; }
@@ -272,7 +340,10 @@
     <div class="jf-nav-item" data-page="inquiry"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v9H5l-3 3V3z"/></svg>문의</div>
     <div class="jf-nav-item" data-page="accounts"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="2.5"/><path d="M3 13c0-2.5 2-4 5-4s5 1.5 5 4"/><circle cx="12" cy="4" r="1.5" fill="currentColor"/></svg>관리자 계정</div>
     <div class="jf-user">
-      <div><span class="jf-user-name">테스트</span><span class="jf-user-badge">마스터</span></div>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+        <div><span class="jf-user-name">테스트</span><span class="jf-user-badge">마스터</span></div>
+        <button onclick="window.__logout()" style="background:transparent; border:0.5px solid rgba(255,255,255,0.2); color:#BFDBFE; font-size:11px; padding:4px 10px; height:auto; cursor:pointer;">로그아웃</button>
+      </div>
     </div>
   </aside>
 
@@ -496,6 +567,19 @@
   ];
   function findInquiry(id) { return inquiries.find(q => q.id === id); }
 
+  // 템플릿 (근로계약서 · 안전교육 자료)
+  // type: contract(근로계약서) / safety(안전교육)
+  // partnerKeys: 적용 파트너사 (복수) / siteIds: 특정 근무지 한정 (optional)
+  const templates = [
+    { id: 't001', type: 'contract', name: '택배 허브 표준 근로계약서',  partnerKeys: ['cj','lotte'],   siteIds: [],          version: 'v2.1', uploadedAt: '2026-02-10', fileName: 'contract_logistics_v21.pdf', fileSize: '312KB', inUse: 15, uploadedBy: '테스트(마스터)' },
+    { id: 't002', type: 'contract', name: '웨딩홀 기본 근로계약서',       partnerKeys: ['convention'],  siteIds: [],          version: 'v1.3', uploadedAt: '2025-12-05', fileName: 'contract_wedding_v13.pdf',    fileSize: '198KB', inUse: 4,  uploadedBy: '테스트(마스터)' },
+    { id: 't003', type: 'safety',   name: '물류센터 표준 안전교육',       partnerKeys: ['cj','lotte'],   siteIds: [],          version: 'v3.0', uploadedAt: '2026-01-20', fileName: 'safety_logistics_v30.pdf',    fileSize: '2.1MB', inUse: 9,  uploadedBy: '김관리(1등급)' },
+    { id: 't004', type: 'safety',   name: '웨딩홀 안전수칙',             partnerKeys: ['convention'],  siteIds: [],          version: 'v1.0', uploadedAt: '2025-11-15', fileName: 'safety_wedding_v10.pdf',      fileSize: '540KB', inUse: 2,  uploadedBy: '김관리(1등급)' },
+    { id: 't005', type: 'safety',   name: 'CJ 곤지암 특수 안전교육',     partnerKeys: ['cj'],           siteIds: ['gonjiam'], version: 'v1.0', uploadedAt: '2026-03-01', fileName: 'safety_cj_gonjiam.pdf',       fileSize: '1.3MB', inUse: 5,  uploadedBy: '테스트(마스터)' },
+    { id: 't006', type: 'safety',   name: '이천·안성 공통 안전교육',      partnerKeys: ['cj'],           siteIds: ['icheon','anseong'], version: 'v2.0', uploadedAt: '2026-02-28', fileName: 'safety_cj_mphub.pdf',   fileSize: '890KB', inUse: 4, uploadedBy: '김관리(1등급)' },
+  ];
+  function findTemplate(id) { return templates.find(t => t.id === id); }
+
   // 공고 상태 판정: open(모집중) · closed(마감·시작전) · progress(진행중) · done(종료)
   function jobStatus(j) {
     if (j.date < TODAY) return 'done';
@@ -572,7 +656,7 @@
         <div class="ws-actions">
           <button onclick="alert('엑셀 업/다운로드는 추후 단계에서 구현')">엑셀</button>
           <button onclick="alert('파트너사 추가 폼은 추후 단계에서 구현')">+ 파트너사 추가</button>
-          <button class="btn-primary" onclick="alert('근무지 추가 단계별 폼은 추후 단계에서 구현')">+ 근무지 추가</button>
+          <button class="btn-primary" onclick="window.__wsAddSite()">+ 근무지 추가</button>
         </div>
       </div>
 
@@ -3013,7 +3097,7 @@
           const st = jobStatus(j);
           const pct = Math.round((j.apply / j.cap) * 100);
           html += `
-            <div class="jobs-card" onclick="alert('공고 상세 페이지는 추후 구현\\n\\n공고 ID: ${j.id}\\n근무지: ${site.site.name}\\n날짜: ${j.date} (${j.slot})')">
+            <div class="jobs-card" onclick="window.__jobsDetail('${j.id}')">
               <div class="jobs-card-head">
                 <div>
                   <div class="jobs-card-title">${site.site.name}</div>
@@ -3108,45 +3192,1080 @@
     `;
   }
 
-  function renderJobsCreate() {
-    main.innerHTML = `
-      <div class="jf-header">
-        <div>
-          <div class="jf-title">공고 관리</div>
-          <div class="jf-subtitle">새 공고 등록</div>
+  // ───────────────────────────────────────────────────────
+  // 관리자 로그인 화면
+  // ───────────────────────────────────────────────────────
+  const loginState = {
+    role: 'master',          // master / admin1 / admin2
+    kakaoDone: false,
+    phone: '',
+    codeSent: false,
+    code: '',
+    timer: 0,
+    timerInterval: null,
+  };
+
+  function renderLoginOverlay() {
+    // 기존 오버레이가 있으면 제거
+    document.querySelectorAll('.login-overlay').forEach(el => el.remove());
+
+    const l = loginState;
+    const need2FA = l.role === 'master' || l.role === 'admin1';
+    const canSubmit = l.kakaoDone && (!need2FA || (l.codeSent && l.code.length === 6));
+
+    const overlay = document.createElement('div');
+    overlay.className = 'login-overlay';
+    overlay.innerHTML = `
+      <div class="login-card">
+        <div class="login-brand">
+          <div class="login-brand-name">잡핏 JobFit</div>
+          <div class="login-brand-sub">관리자 웹 · 알바생 앱과 분리된 별도 서비스</div>
+          <div class="login-brand-badge">관리자 전용</div>
+        </div>
+
+        <div class="login-section">
+          <div class="login-label">로그인 등급 선택 <span style="color:#9CA3AF; font-weight:400;">(데모)</span></div>
+          <div class="login-role-picker">
+            <button class="login-role-btn ${l.role==='master'?'active':''}" onclick="window.__loginRole('master')">마스터</button>
+            <button class="login-role-btn ${l.role==='admin1'?'active':''}" onclick="window.__loginRole('admin1')">관리자 1등급</button>
+            <button class="login-role-btn ${l.role==='admin2'?'active':''}" onclick="window.__loginRole('admin2')">관리자 2등급</button>
+          </div>
+        </div>
+
+        <div class="login-section">
+          <div class="login-label">
+            <span class="login-step-num ${l.kakaoDone ? 'done' : 'active'}">${l.kakaoDone ? '✓' : '1'}</span>
+            카카오 로그인
+          </div>
+          <button class="login-kakao ${l.kakaoDone ? 'done' : ''}" onclick="window.__loginKakao()">
+            ${l.kakaoDone
+              ? '✓ 카카오 계정 인증 완료'
+              : '<span style="font-size:16px;">💬</span> 카카오로 시작하기'}
+          </button>
+        </div>
+
+        ${need2FA ? `
+          <div class="login-section">
+            <div class="login-label">
+              <span class="login-step-num ${l.kakaoDone ? (l.codeSent && l.code.length === 6 ? 'done' : 'active') : ''}">${l.codeSent && l.code.length === 6 ? '✓' : '2'}</span>
+              전화번호 인증 <span style="color:#EF4444; font-weight:400;">(2FA)</span>
+            </div>
+            <div class="login-phone-row">
+              <input type="tel" placeholder="010-XXXX-XXXX" value="${l.phone}" oninput="window.__loginPhoneInput(this.value)" ${!l.kakaoDone ? 'disabled' : ''} />
+              <button class="btn-primary" onclick="window.__loginSendCode()" ${!l.kakaoDone || !l.phone ? 'disabled' : ''}>
+                ${l.codeSent ? '재발송' : '인증번호 발송'}
+              </button>
+            </div>
+            ${l.codeSent ? `
+              <div style="margin-top: 10px;">
+                <input class="login-code" type="text" placeholder="● ● ● ● ● ●" maxlength="6" value="${l.code}" oninput="window.__loginCodeInput(this.value)" />
+                ${l.timer > 0 ? `<div class="login-timer">남은 시간 ${Math.floor(l.timer/60)}:${String(l.timer%60).padStart(2,'0')}</div>` : '<div class="login-timer">인증번호 만료</div>'}
+              </div>
+            ` : ''}
+          </div>
+        ` : `
+          <div class="login-section" style="padding: 10px 12px; background: #F5F7FA; border-radius: 8px; font-size: 11px; color: #6B7684;">
+            ℹ 관리자 2등급은 카카오 로그인만으로 접근 가능합니다. (2FA 미적용 — N18 이월 안건)
+          </div>
+        `}
+
+        <button class="btn-primary login-submit" onclick="window.__loginSubmit()" ${!canSubmit ? 'disabled' : ''}>
+          ${canSubmit ? '관리자 웹 입장' : '위 단계를 완료해주세요'}
+        </button>
+
+        <div class="login-footer">
+          이 화면은 <strong>데모용 프로토타입</strong>입니다.<br>
+          실제 앱에서는 카카오 SDK 연동 + Supabase Auth로 구현됩니다.<br>
+          <span style="color:#9CA3AF;">v0.4 · JobFit Admin Web</span>
         </div>
       </div>
-      ${jobsTabsHtml()}
-      <div class="jf-placeholder">
-        <div class="jf-placeholder-icon">📝</div>
-        <div class="jf-placeholder-title">공고 등록 폼 준비 중</div>
-        <div class="jf-placeholder-desc">
-          달력 기반 복수 날짜 선택 · 시간대별 인원/시급 설정 · 계약서/안전교육 토글 등<br>
-          기획안 v1.3 기준으로 다음 단계에서 구현됩니다.
+    `;
+    document.body.appendChild(overlay);
+  }
+
+  function startLoginTimer() {
+    loginState.timer = 180;
+    if (loginState.timerInterval) clearInterval(loginState.timerInterval);
+    loginState.timerInterval = setInterval(() => {
+      loginState.timer--;
+      if (loginState.timer <= 0) { clearInterval(loginState.timerInterval); loginState.timerInterval = null; }
+      // timer 갱신만을 위한 부분 리렌더 (간단히 전체 재렌더)
+      const overlay = document.querySelector('.login-overlay');
+      if (overlay) renderLoginOverlay();
+    }, 1000);
+  }
+
+  window.__loginRole = function(role) {
+    loginState.role = role;
+    renderLoginOverlay();
+  };
+  window.__loginKakao = function() {
+    if (loginState.kakaoDone) return;
+    // 시뮬레이션: 0.4초 뒤 인증 성공
+    setTimeout(() => {
+      loginState.kakaoDone = true;
+      alert('카카오 로그인 성공 (시뮬레이션)\n실제 앱에서는 카카오 SDK를 통해 사용자 정보를 받아옵니다.');
+      renderLoginOverlay();
+    }, 400);
+  };
+  window.__loginPhoneInput = function(val) {
+    loginState.phone = val;
+    // 재렌더 안 함 (input focus 유지)
+  };
+  window.__loginSendCode = function() {
+    if (!loginState.phone) return;
+    loginState.codeSent = true;
+    loginState.code = '';
+    startLoginTimer();
+    alert(`${loginState.phone} 로 인증번호 발송 (시뮬레이션)\n아무 6자리 숫자를 입력하세요.`);
+    renderLoginOverlay();
+  };
+  window.__loginCodeInput = function(val) {
+    loginState.code = val.replace(/\D/g, '').slice(0, 6);
+    if (loginState.code.length === 6) renderLoginOverlay(); // 제출 버튼 활성화용
+  };
+  window.__loginSubmit = function() {
+    const l = loginState;
+    const need2FA = l.role === 'master' || l.role === 'admin1';
+    if (!l.kakaoDone) { alert('카카오 로그인을 먼저 완료해주세요'); return; }
+    if (need2FA && (!l.codeSent || l.code.length !== 6)) { alert('전화번호 인증을 완료해주세요'); return; }
+
+    const roleLabel = { master: '마스터', admin1: '관리자 1등급', admin2: '관리자 2등급' }[l.role];
+    alert(`${roleLabel} 로 로그인되었습니다.\n\n(데모: 실제 권한 적용은 UI 전체 재구성이 필요해 생략)`);
+
+    // 사이드바 배지/이름 업데이트
+    const badge = document.querySelector('.jf-user-badge');
+    if (badge) {
+      badge.textContent = roleLabel;
+      badge.style.background = l.role === 'master' ? '#1B3A6B' : l.role === 'admin1' ? '#2563EB' : '#6B7684';
+    }
+
+    // 오버레이 제거, 상태 초기화
+    if (l.timerInterval) { clearInterval(l.timerInterval); l.timerInterval = null; }
+    document.querySelectorAll('.login-overlay').forEach(el => el.remove());
+    Object.assign(loginState, { kakaoDone: false, phone: '', codeSent: false, code: '', timer: 0 });
+  };
+  window.__logout = function() {
+    if (!confirm('로그아웃하시겠습니까?')) return;
+    Object.assign(loginState, { role: 'master', kakaoDone: false, phone: '', codeSent: false, code: '', timer: 0 });
+    renderLoginOverlay();
+  };
+
+  // ───────────────────────────────────────────────────────
+  // 근무지 추가 wizard
+  // ───────────────────────────────────────────────────────
+  const siteFormState = {
+    step: 1,
+    partnerKey: '',
+    siteName: '',
+    address: '',
+    lat: 37.5665, lng: 126.9780,
+    bus: false,
+    wage: 100000,
+    wageType: '일급',
+    holiday: '주 4일 만근',
+    contact: '',
+    manager1: '',
+    manager2: '',
+  };
+
+  function renderSiteWizard() {
+    const f = siteFormState;
+    const steps = [
+      { n: 1, label: '기본 정보' },
+      { n: 2, label: '주소 & GPS' },
+      { n: 3, label: '근무 조건 & 담당자' },
+      { n: 4, label: '확인 & 등록' },
+    ];
+    const stepperHtml = `
+      <div class="jf-stepper">
+        ${steps.map(s => `
+          <div class="jf-step ${f.step === s.n ? 'active' : (f.step > s.n ? 'done' : '')}">
+            <div class="jf-step-num">${f.step > s.n ? '✓' : s.n}</div>
+            <div class="jf-step-label">${s.label}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    const partnerOpts = Object.keys(worksites).map(k =>
+      `<option value="${k}" ${f.partnerKey===k?'selected':''}>${worksites[k].name}</option>`).join('');
+
+    let body = '';
+    if (f.step === 1) {
+      body = `
+        <div class="jf-panel">
+          <div class="ws-section-title">Step 1. 파트너사 & 근무지 기본 정보</div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">파트너사<span class="req">*</span></div>
+            <div>
+              <select onchange="window.__swfSet('partnerKey', this.value)" style="max-width:300px;">
+                <option value="">선택하세요</option>${partnerOpts}
+              </select>
+              <div class="jf-form-hint">새 파트너사 추가는 별도 화면에서 가능합니다.</div>
+            </div>
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">근무지명<span class="req">*</span></div>
+            <div>
+              <input type="text" placeholder="예: 곤지암 MegaHub" value="${f.siteName}" oninput="window.__swfSet('siteName', this.value)" style="max-width:300px;" />
+              <div class="jf-form-hint">알바생 앱에는 파트너사명과 함께 노출됩니다.</div>
+            </div>
+          </div>
+        </div>
+      `;
+    } else if (f.step === 2) {
+      body = `
+        <div class="jf-panel">
+          <div class="ws-section-title">Step 2. 주소 입력 & GPS 좌표</div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">도로명 주소<span class="req">*</span></div>
+            <div style="max-width:500px;">
+              <div style="display:flex; gap:6px;">
+                <input id="swf-addr-input" type="text" placeholder="주소 검색 (예: 경기 광주시 도척면)" value="${f.address}" style="flex:1;" />
+                <button class="btn-primary" onclick="window.__swfSearchAddr()">카카오맵 검색</button>
+              </div>
+              <div class="jf-form-hint">검색 후 목록에서 선택하면 좌표가 자동 입력됩니다.</div>
+              <div id="swf-addr-results" style="max-height: 200px; overflow-y: auto; margin-top: 6px; border-radius: 8px;"></div>
+            </div>
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">GPS 좌표</div>
+            <div style="font-family:'SF Mono',Monaco,monospace; font-size:12px;">
+              ${f.lat.toFixed(6)}, ${f.lng.toFixed(6)}
+              <span class="jf-form-hint" style="display:block; margin-top:4px;">정확한 영역은 등록 후 "GPS 영역 편집" 에서 다각형으로 설정합니다.</span>
+            </div>
+          </div>
+          <div id="swf-preview-map" style="width:100%; height: 280px; border-radius: 8px; border: 0.5px solid rgba(0,0,0,0.1); overflow: hidden; margin-top: 12px;"></div>
+        </div>
+      `;
+    } else if (f.step === 3) {
+      body = `
+        <div class="jf-panel">
+          <div class="ws-section-title">Step 3. 근무 조건 & 담당자</div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">기본 알바비<span class="req">*</span></div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <select onchange="window.__swfSet('wageType', this.value)">
+                <option value="일급" ${f.wageType==='일급'?'selected':''}>일급</option>
+                <option value="시급" ${f.wageType==='시급'?'selected':''}>시급</option>
+              </select>
+              <input type="number" value="${f.wage}" step="1000" onchange="window.__swfSet('wage', parseInt(this.value)||0)" style="width:140px;" />
+              <span style="font-size:13px; color:#6B7684;">원 (기본값 · 공고 등록 시 조정 가능)</span>
+            </div>
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">주휴수당 조건</div>
+            <input type="text" placeholder="예: 주 4일 만근, 주 2일 출근" value="${f.holiday}" oninput="window.__swfSet('holiday', this.value)" style="max-width:260px;" />
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">통근버스</div>
+            <label class="jf-toggle">
+              <input type="checkbox" ${f.bus?'checked':''} onchange="window.__swfSet('bus', this.checked)">
+              <span class="jf-toggle-switch"></span>
+              <span class="jf-toggle-text">운영 중${f.bus ? '' : ' (미운영)'}</span>
+            </label>
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">근무지 대표 연락처<span class="req">*</span></div>
+            <input type="tel" placeholder="010-XXXX-XXXX — 알바생에게 공개" value="${f.contact}" oninput="window.__swfSet('contact', this.value)" style="max-width:220px;" />
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">관리자 1등급 담당</div>
+            <input type="text" placeholder="예: 김관리" value="${f.manager1}" oninput="window.__swfSet('manager1', this.value)" style="max-width:220px;" />
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">관리자 2등급 담당</div>
+            <input type="text" placeholder="예: 이담당" value="${f.manager2}" oninput="window.__swfSet('manager2', this.value)" style="max-width:220px;" />
+          </div>
+        </div>
+      `;
+    } else {
+      // Step 4
+      const partnerName = f.partnerKey ? worksites[f.partnerKey].name : '-';
+      body = `
+        <div class="jf-panel">
+          <div class="ws-section-title">Step 4. 입력 내용 확인</div>
+          <div class="ws-info-row"><div class="ws-info-label">파트너사</div><div class="ws-info-val">${partnerName}</div></div>
+          <div class="ws-info-row"><div class="ws-info-label">근무지명</div><div class="ws-info-val">${f.siteName}</div></div>
+          <div class="ws-info-row"><div class="ws-info-label">주소</div><div class="ws-info-val">${f.address || '-'}</div></div>
+          <div class="ws-info-row"><div class="ws-info-label">GPS 좌표</div><div class="ws-info-val" style="font-family:'SF Mono',Monaco,monospace; font-size:12px;">${f.lat.toFixed(6)}, ${f.lng.toFixed(6)}</div></div>
+          <div class="ws-info-row"><div class="ws-info-label">기본 알바비</div><div class="ws-info-val">${f.wage.toLocaleString()}원 / ${f.wageType}</div></div>
+          <div class="ws-info-row"><div class="ws-info-label">주휴수당</div><div class="ws-info-val">${f.holiday}</div></div>
+          <div class="ws-info-row"><div class="ws-info-label">통근버스</div><div class="ws-info-val">${f.bus ? '🚌 운영' : '미운영'}</div></div>
+          <div class="ws-info-row"><div class="ws-info-label">대표 연락처</div><div class="ws-info-val">${f.contact || '-'}</div></div>
+          <div class="ws-info-row"><div class="ws-info-label">담당 관리자</div><div class="ws-info-val">1등급: ${f.manager1 || '-'} / 2등급: ${f.manager2 || '-'}</div></div>
+        </div>
+
+        <div class="ws-warn-box" style="margin-top: 14px;">
+          ℹ 등록 후 <strong>GPS 영역 편집</strong> 화면으로 이동합니다. 다각형으로 영역을 그리지 않으면 해당 근무지는 공고 등록 불가 상태로 표시됩니다.
+        </div>
+      `;
+    }
+
+    main.innerHTML = `
+      <span class="jf-back" onclick="window.__swfCancel()">← 근무지 관리로</span>
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">근무지 추가</div>
+          <div class="jf-subtitle">마스터 전용 · ${f.step}/4 단계</div>
+        </div>
+      </div>
+      ${stepperHtml}
+      ${body}
+
+      <div style="display:flex; justify-content:space-between; gap:8px; margin-top: 20px; padding-top:16px; border-top:0.5px solid rgba(0,0,0,0.08);">
+        <button onclick="window.__swfCancel()" style="color:#EF4444;">취소</button>
+        <div style="display:flex; gap:8px;">
+          ${f.step > 1 ? '<button onclick="window.__swfPrev()">← 이전</button>' : ''}
+          ${f.step < 4
+            ? '<button class="btn-primary" onclick="window.__swfNext()">다음 →</button>'
+            : '<button class="btn-primary" onclick="window.__swfSubmit()">근무지 등록</button>'}
+        </div>
+      </div>
+    `;
+
+    // Step 2 지도 로드
+    if (f.step === 2) {
+      setTimeout(() => {
+        const mapEl = document.getElementById('swf-preview-map');
+        if (!mapEl) return;
+        if (window.__kakaoLoadFailed || typeof kakao === 'undefined' || !kakao.maps) {
+          mapEl.innerHTML = renderMapError();
+          return;
+        }
+        kakao.maps.load(() => {
+          const map = new kakao.maps.Map(mapEl, { center: new kakao.maps.LatLng(f.lat, f.lng), level: 3 });
+          const marker = new kakao.maps.Marker({ position: new kakao.maps.LatLng(f.lat, f.lng), map });
+          requestAnimationFrame(() => {
+            map.relayout();
+            map.setCenter(new kakao.maps.LatLng(f.lat, f.lng));
+          });
+          new ResizeObserver(() => map.relayout()).observe(mapEl);
+          // 검색결과 클릭 시 재중심
+          window.__swfMap = map; window.__swfMarker = marker;
+        });
+      }, 100);
+    }
+  }
+
+  window.__swfSet = function(key, val) {
+    siteFormState[key] = val;
+    // 파트너사 바뀌었을 때 근무지명 자동 제안 등은 생략
+  };
+  window.__swfPrev = function() { if (siteFormState.step > 1) { siteFormState.step--; renderSiteWizard(); } };
+  window.__swfNext = function() {
+    const f = siteFormState;
+    const errs = [];
+    if (f.step === 1) {
+      if (!f.partnerKey) errs.push('파트너사를 선택해주세요');
+      if (!f.siteName.trim()) errs.push('근무지명을 입력해주세요');
+    } else if (f.step === 2) {
+      if (!f.address.trim()) errs.push('주소를 입력해주세요 (검색 후 선택 권장)');
+    } else if (f.step === 3) {
+      if (!f.contact.trim()) errs.push('대표 연락처를 입력해주세요');
+      if (f.wage <= 0) errs.push('알바비 금액을 확인해주세요');
+    }
+    if (errs.length > 0) { alert('확인 필요:\n• ' + errs.join('\n• ')); return; }
+    f.step++;
+    renderSiteWizard();
+  };
+  window.__swfCancel = function() {
+    if (!confirm('근무지 추가를 취소합니다. 입력 내용은 사라집니다.')) return;
+    Object.assign(siteFormState, { step: 1, partnerKey: '', siteName: '', address: '', lat: 37.5665, lng: 126.9780, bus: false, wage: 100000, wageType: '일급', holiday: '주 4일 만근', contact: '', manager1: '', manager2: '' });
+    renderList();
+  };
+  window.__swfSearchAddr = function() {
+    const input = document.getElementById('swf-addr-input');
+    const resultsEl = document.getElementById('swf-addr-results');
+    const keyword = input.value.trim();
+    if (!keyword) return;
+    if (typeof kakao === 'undefined' || !kakao.maps) { resultsEl.innerHTML = '<div class="map-error">카카오맵 API 로딩 실패</div>'; return; }
+
+    resultsEl.innerHTML = '<div style="padding:14px; font-size:12px; color:#6B7684; text-align:center;">검색 중...</div>';
+    kakao.maps.load(() => {
+      const ps = new kakao.maps.services.Places();
+      const geocoder = new kakao.maps.services.Geocoder();
+      let html = '', found = false;
+
+      ps.keywordSearch(keyword, (places, status) => {
+        if (status === kakao.maps.services.Status.OK && places.length > 0) {
+          found = true;
+          html += '<div style="padding:6px 10px; font-size:11px; font-weight:500; color:#6B7684; background:#F9FAFB;">장소 검색</div>';
+          places.slice(0, 4).forEach(p => {
+            html += `
+              <div class="addr-item" data-lat="${p.y}" data-lng="${p.x}" data-addr="${p.road_address_name || p.address_name}" style="padding:9px 12px; cursor:pointer; border-bottom:0.5px solid rgba(0,0,0,0.06); font-size:12px;">
+                <div style="font-weight:500;">${p.place_name}</div>
+                <div style="color:#6B7684; font-size:11px;">${p.road_address_name || p.address_name}</div>
+              </div>
+            `;
+          });
+        }
+        geocoder.addressSearch(keyword, (addrs, st2) => {
+          if (st2 === kakao.maps.services.Status.OK && addrs.length > 0) {
+            found = true;
+            html += '<div style="padding:6px 10px; font-size:11px; font-weight:500; color:#6B7684; background:#F9FAFB;">주소 검색</div>';
+            addrs.slice(0, 4).forEach(a => {
+              html += `
+                <div class="addr-item" data-lat="${a.y}" data-lng="${a.x}" data-addr="${a.address_name}" style="padding:9px 12px; cursor:pointer; border-bottom:0.5px solid rgba(0,0,0,0.06); font-size:12px;">
+                  <div>${a.address_name}</div>
+                </div>
+              `;
+            });
+          }
+          if (!found) html = '<div style="padding:14px; font-size:12px; color:#6B7684; text-align:center;">검색 결과가 없습니다.</div>';
+          resultsEl.innerHTML = html;
+          resultsEl.querySelectorAll('.addr-item').forEach(item => {
+            item.addEventListener('click', () => {
+              const lat = parseFloat(item.dataset.lat), lng = parseFloat(item.dataset.lng);
+              siteFormState.lat = lat; siteFormState.lng = lng; siteFormState.address = item.dataset.addr;
+              resultsEl.innerHTML = '';
+              renderSiteWizard();
+            });
+            item.addEventListener('mouseenter', () => item.style.background = '#F5F7FA');
+            item.addEventListener('mouseleave', () => item.style.background = '');
+          });
+        });
+      });
+    });
+  };
+  window.__swfSubmit = function() {
+    const f = siteFormState;
+    const newId = f.siteName.replace(/\s+/g, '_').toLowerCase().slice(0, 20) + '_' + Date.now().toString(36).slice(-4);
+    const newSite = {
+      id: newId, name: f.siteName, addr: f.address,
+      lat: f.lat, lng: f.lng, bus: f.bus,
+      wage: f.wage, holiday: f.holiday, gps: false,
+      vertices: 0, area: 0, contact: f.contact,
+      manager1: f.manager1 || '-', manager2: f.manager2 || '-',
+      polygon: [], activeJobs: 0,
+    };
+    worksites[f.partnerKey].sites.push(newSite);
+    worksites[f.partnerKey].count = worksites[f.partnerKey].sites.length;
+    alert(`근무지 "${f.siteName}" 등록 완료!\n\n이제 GPS 영역을 설정해야 공고 등록이 가능합니다.\n다음 화면에서 다각형으로 영역을 그려주세요.`);
+    // 폼 초기화
+    Object.assign(siteFormState, { step: 1, partnerKey: '', siteName: '', address: '', lat: 37.5665, lng: 126.9780, bus: false, wage: 100000, wageType: '일급', holiday: '주 4일 만근', contact: '', manager1: '', manager2: '' });
+    renderGpsEditor(newId);
+  };
+
+  // 공고 상세 페이지
+  function renderJobDetail(jobId) {
+    const j = findJob(jobId); if (!j) return;
+    const site = findSite(j.siteId);
+    const st = jobStatus(j);
+    const stColor = { open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
+    const pct = Math.round((j.apply / j.cap) * 100);
+    const reward = pointRewardFor(j);
+    const sum = attendanceSummary(jobId);
+    const attend = getAttendance(jobId);
+
+    // 이 공고의 신청자 (applications에서 추출)
+    const myApps = applications.filter(a => a.jobId === jobId);
+
+    main.innerHTML = `
+      <span class="jf-back" onclick="window.__jobsBackToList()">← 공고 리스트로</span>
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">
+            ${site.site.name}
+            <span class="ws-mini-tag" style="vertical-align:middle;">${site.partner}</span>
+            <span class="jobs-status jobs-status-${st}" style="margin-left:8px; font-size:13px; padding:4px 12px; vertical-align:middle;">${STATUS_LABEL[st]}</span>
+          </div>
+          <div class="jf-subtitle">${j.date} · ${j.slot} ${j.start}~${j.end} · 공고 ID ${j.id}</div>
+        </div>
+        <div class="ws-actions">
+          <button onclick="alert('공고 수정 폼은 추후 구현 (등록 폼 재사용 예정)')">수정</button>
+          <button onclick="window.__jobsDuplicate('${j.id}')">복제</button>
+          <button onclick="window.__jobsDelete('${j.id}')" class="btn-danger" ${st!=='open'&&st!=='closed'?'disabled':''}>삭제</button>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px;">
+        <!-- 좌측: 공고 정보 & 신청자 -->
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div class="jf-panel">
+            <div class="ws-section-title">공고 정보</div>
+            <div class="ws-info-row"><div class="ws-info-label">근무지</div><div class="ws-info-val">${site.site.name} <span style="color:#6B7684; font-weight:400; font-size:12px;">${site.site.addr}</span></div></div>
+            <div class="ws-info-row"><div class="ws-info-label">근무 일자</div><div class="ws-info-val">${j.date} <span style="color:#6B7684; font-weight:400;">(${'일월화수목금토'[new Date(j.date).getDay()]})</span></div></div>
+            <div class="ws-info-row"><div class="ws-info-label">시간대</div><div class="ws-info-val">${j.slot} ${j.start} ~ ${j.end}</div></div>
+            <div class="ws-info-row"><div class="ws-info-label">알바비</div><div class="ws-info-val">${j.wage.toLocaleString()}원 / ${j.wageType} <span style="color:#9CA3AF; font-weight:400; font-size:11px;">(${site.partner} 직접 지급)</span></div></div>
+            <div class="ws-info-row"><div class="ws-info-label">잡핏 포인트</div><div class="ws-info-val" style="color:#2563EB;">+${reward.toLocaleString()} P <span style="color:#9CA3AF; font-weight:400; font-size:11px;">중계 보상 · 출근 완료 시 자동 지급</span></div></div>
+            <div class="ws-info-row"><div class="ws-info-label">담당자</div><div class="ws-info-val">${j.contact || '-'}</div></div>
+            <div class="ws-info-row"><div class="ws-info-label">옵션</div><div class="ws-info-val" style="font-weight:400; font-size:12px;">
+              ${j.contract ? '<span class="apv-badge" style="background:#DBEAFE; color:#1E40AF; margin-right:4px;">계약서</span>' : ''}
+              ${j.safety ? '<span class="apv-badge" style="background:#DCFCE7; color:#166534; margin-right:4px;">안전교육</span>' : ''}
+            </div></div>
+          </div>
+
+          <div class="jf-panel">
+            <div class="ws-section-title">
+              신청자 목록
+              <span style="font-size:11px; color:#6B7684; font-weight:400;">${myApps.length}건 신청 · ${myApps.filter(a=>a.status==='approved').length}명 승인</span>
+            </div>
+            ${myApps.length === 0
+              ? '<div style="padding:20px 0; text-align:center; color:#6B7684; font-size:13px;">아직 신청자가 없습니다.</div>'
+              : myApps.map(a => {
+                  const w = findWorker(a.workerId);
+                  const stColor = { pending: '#F59E0B', approved: '#22C55E', rejected: '#EF4444' }[a.status];
+                  const stLabel = { pending: '대기', approved: '승인', rejected: '거절' }[a.status];
+                  return `
+                    <div style="display:grid; grid-template-columns: 1.2fr 1fr auto auto; gap:10px; align-items:center; padding:10px 0; border-bottom:0.5px solid rgba(0,0,0,0.06);">
+                      <div>
+                        <div style="font-weight:500; font-size:13px;">${w.name}
+                          ${w.negotiation ? '<span class="apv-badge apv-badge-neg" style="font-size:10px; padding:2px 6px;">협의대상</span>' : ''}
+                        </div>
+                        <div style="font-family:'SF Mono',Monaco,monospace; font-size:11px; color:#6B7684;">${w.phone}</div>
+                      </div>
+                      <div style="font-size:11px; color:#6B7684;">
+                        경고 ${w.warnings} · 누적 ${w.total}회${a.rejectReason ? '<br>거절 사유: ' + a.rejectReason : ''}
+                      </div>
+                      <div style="color:${stColor}; font-size:12px; font-weight:500;">● ${stLabel}</div>
+                      <div style="font-size:11px; color:#9CA3AF;">${a.appliedAt}</div>
+                    </div>
+                  `;
+                }).join('')}
+          </div>
+        </div>
+
+        <!-- 우측: 모집 현황 & 출결 -->
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div class="jf-panel">
+            <div class="ws-section-title">모집 현황</div>
+            <div style="font-size: 28px; font-weight: 500; color: #111827; text-align: center; padding: 14px 0;">
+              ${j.apply}<span style="color:#6B7684; font-size:16px;"> / ${j.cap}명</span>
+            </div>
+            <div class="jobs-progress-bar" style="height:8px;"><div class="jobs-progress-bar-fill" style="width:${pct}%;"></div></div>
+            <div class="jobs-progress-label"><span>달성률</span><span><strong style="color:#2563EB;">${pct}%</strong></span></div>
+            <div style="margin-top:14px; padding-top:12px; border-top: 0.5px solid rgba(0,0,0,0.06); font-size: 12px; color: #6B7684;">
+              ${st === 'open' ? '모집 중 · 신청 가능' : st === 'closed' ? '정원 마감 · 시작 대기' : st === 'progress' ? '근무 진행 중' : '종료됨'}
+            </div>
+          </div>
+
+          ${st === 'progress' || st === 'done' ? `
+            <div class="jf-panel">
+              <div class="ws-section-title">출결 현황</div>
+              <div style="display:flex; gap:14px; align-items:center; margin-top:6px;">
+                ${attendanceDonut(sum, 110, 13)}
+                <div class="ctrl-donut-legend" style="flex:1;">
+                  <div><span class="ctrl-donut-dot" style="background:#22C55E;"></span>출근<strong>${sum.출근}</strong></div>
+                  <div><span class="ctrl-donut-dot" style="background:#F59E0B;"></span>지각<strong>${sum.지각}</strong></div>
+                  <div><span class="ctrl-donut-dot" style="background:#EF4444;"></span>결근<strong>${sum.결근}</strong></div>
+                  <div><span class="ctrl-donut-dot" style="background:#D1D5DB;"></span>대기<strong>${sum.대기}</strong></div>
+                </div>
+              </div>
+              <button onclick="window.__navGoto('control'); setTimeout(() => window.__ctrlDetail('${j.id}'), 50);" style="width:100%; margin-top:12px; font-size:12px;">관제 시스템에서 상세 보기 →</button>
+            </div>
+          ` : ''}
+
+          <div class="jf-panel">
+            <div class="ws-section-title">공유</div>
+            <div style="font-size: 12px; color: #6B7684; margin-bottom: 8px;">알바생 앱 공고 링크</div>
+            <div style="display:flex; gap:6px;">
+              <input readonly value="jobfit://jobs/${j.id}" style="flex:1; font-family:'SF Mono',Monaco,monospace; font-size:12px;" />
+              <button onclick="window.__ptCopy('jobfit://jobs/${j.id}')" style="font-size:12px;">복사</button>
+            </div>
+          </div>
         </div>
       </div>
     `;
   }
 
-  function renderJobsTemplate() {
+  window.__jobsBackToList = function() { jobsState.tab = 'list'; renderJobs(); };
+  window.__jobsDuplicate = function(jobId) {
+    const j = findJob(jobId); if (!j) return;
+    const newId = 'j' + String(jobs.length + 1).padStart(3, '0');
+    // 내일 날짜로 복제
+    const tomorrow = new Date(TODAY); tomorrow.setDate(tomorrow.getDate() + 1);
+    const newDate = tomorrow.toISOString().slice(0, 10);
+    jobs.push({ ...j, id: newId, date: newDate, apply: 0 });
+    alert(`공고 복제 완료 (${newId}, 날짜: ${newDate})\n필요시 수정 탭에서 편집해주세요.`);
+    renderJobDetail(newId);
+  };
+  window.__jobsDelete = function(jobId) {
+    const j = findJob(jobId); if (!j) return;
+    if (!confirm('이 공고를 삭제합니다. 신청자가 있는 경우 거절 알림이 발송됩니다. 계속하시겠습니까?')) return;
+    const idx = jobs.indexOf(j); if (idx >= 0) jobs.splice(idx, 1);
+    alert('공고 삭제 완료.');
+    jobsState.tab = 'list';
+    renderJobs();
+  };
+
+  // 공고 등록 폼 상태
+  const jobFormState = {
+    partnerKey: '',
+    siteId: '',
+    title: '',
+    description: '',
+    dates: [],  // 선택된 날짜 배열 'YYYY-MM-DD'
+    slots: [    // 시간대 슬롯 (같은 날짜에 여러 개 가능)
+      { slot: '주간', start: '07:00', end: '15:00', cap: 30, wageType: '일급', wage: 110000 },
+    ],
+    contact: '',
+    useContract: true,
+    useSafety: true,
+    showHolidayPopup: true,
+    calYear: 2026,
+    calMonth: 4,
+  };
+
+  function renderJobsCreate() {
+    const f = jobFormState;
+    const siteOpts = f.partnerKey
+      ? worksites[f.partnerKey].sites.map(s => `<option value="${s.id}" ${f.siteId===s.id?'selected':''}>${s.name}</option>`).join('')
+      : '';
+    const partnerOpts = Object.keys(worksites).map(k =>
+      `<option value="${k}" ${f.partnerKey===k?'selected':''}>${worksites[k].name}</option>`).join('');
+
     main.innerHTML = `
       <div class="jf-header">
         <div>
           <div class="jf-title">공고 관리</div>
-          <div class="jf-subtitle">근로계약서 · 안전교육 템플릿 관리</div>
+          <div class="jf-subtitle">새 공고 등록 — 달력에서 날짜를 선택하고 시간대별로 등록합니다</div>
+        </div>
+        <div class="ws-actions">
+          <button onclick="window.__jfCancel()">취소</button>
+          <button class="btn-primary" onclick="window.__jfSubmit()">공고 등록</button>
         </div>
       </div>
       ${jobsTabsHtml()}
-      <div class="jf-placeholder">
-        <div class="jf-placeholder-icon">📄</div>
-        <div class="jf-placeholder-title">템플릿 관리 준비 중</div>
-        <div class="jf-placeholder-desc">
-          근로계약서 템플릿 · 현장별 안전교육 자료 업로드 및 버전 관리<br>
-          마스터 / 관리자 1등급 전용 기능입니다.
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+        <!-- 기본 정보 -->
+        <div class="jf-panel" style="grid-column: span 2;">
+          <div class="ws-section-title">기본 정보</div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">파트너사<span class="req">*</span></div>
+            <select style="max-width:260px;" onchange="window.__jfSet('partnerKey', this.value)">
+              <option value="">선택하세요</option>${partnerOpts}
+            </select>
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">근무지<span class="req">*</span></div>
+            <select style="max-width:260px;" onchange="window.__jfSet('siteId', this.value)" ${f.partnerKey?'':'disabled'}>
+              <option value="">${f.partnerKey ? '선택하세요' : '파트너사 먼저 선택'}</option>${siteOpts}
+            </select>
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">공고 제목</div>
+            <input type="text" placeholder="비워두면 근무지명 자동 사용 (예: CJ대한통운 곤지암 MegaHub)" value="${f.title}" oninput="window.__jfSet('title', this.value)" style="max-width:520px;" />
+          </div>
+          <div class="jf-form-row top">
+            <div class="jf-form-label">모집 내용 / 상세 설명</div>
+            <div>
+              <textarea rows="4" placeholder="근무 내용, 준비물, 주의사항 등을 입력하세요..." oninput="window.__jfSet('description', this.value)">${f.description}</textarea>
+              <div class="jf-form-hint">알바생 앱의 공고 상세 페이지에 그대로 노출됩니다.</div>
+            </div>
+          </div>
         </div>
+
+        <!-- 일정 선택 -->
+        <div class="jf-panel">
+          <div class="ws-section-title">
+            일정 선택<span class="req" style="color:#EF4444;">*</span>
+            <span style="font-size:11px; color:#6B7684; font-weight:400;">달력 클릭으로 복수 선택 · ${f.dates.length}일 선택됨</span>
+          </div>
+          ${renderFormCalendar()}
+          ${f.dates.length > 0 ? `
+            <div class="form-date-chips">
+              ${f.dates.sort().map(d => `
+                <span class="form-date-chip">
+                  ${d.slice(5)} <span style="color:#6B7684;">(${'일월화수목금토'[new Date(d).getDay()]})</span>
+                  <button onclick="window.__jfRemoveDate('${d}')">×</button>
+                </span>
+              `).join('')}
+              <button onclick="window.__jfClearDates()" style="font-size:11px; padding:4px 10px; height:auto;">전체 해제</button>
+            </div>
+          ` : '<div class="jf-form-hint">날짜를 선택해주세요. 공고는 선택한 각 날짜마다 동일하게 등록됩니다.</div>'}
+        </div>
+
+        <!-- 시간대 & 인원 -->
+        <div class="jf-panel">
+          <div class="ws-section-title">
+            시간대 & 인원<span class="req" style="color:#EF4444;">*</span>
+            <span style="font-size:11px; color:#6B7684; font-weight:400;">같은 근무지·날짜에 시간대 여러 개 등록 가능</span>
+          </div>
+          <div class="form-slot-row form-slot-head">
+            <div>시간대</div><div>시작</div><div>종료</div><div>모집</div><div>급여 유형</div><div>금액</div><div></div>
+          </div>
+          ${f.slots.map((s, i) => `
+            <div class="form-slot-row">
+              <select onchange="window.__jfSlot(${i}, 'slot', this.value)">
+                <option ${s.slot==='주간'?'selected':''}>주간</option>
+                <option ${s.slot==='야간'?'selected':''}>야간</option>
+                <option ${s.slot==='새벽'?'selected':''}>새벽</option>
+                <option ${s.slot==='웨딩'?'selected':''}>웨딩</option>
+              </select>
+              <input type="time" value="${s.start}" onchange="window.__jfSlot(${i}, 'start', this.value)" />
+              <input type="time" value="${s.end}" onchange="window.__jfSlot(${i}, 'end', this.value)" />
+              <input type="number" value="${s.cap}" min="1" onchange="window.__jfSlot(${i}, 'cap', parseInt(this.value)||1)" />
+              <select onchange="window.__jfSlot(${i}, 'wageType', this.value)">
+                <option value="일급" ${s.wageType==='일급'?'selected':''}>일급</option>
+                <option value="시급" ${s.wageType==='시급'?'selected':''}>시급</option>
+              </select>
+              <input type="number" value="${s.wage}" step="1000" onchange="window.__jfSlot(${i}, 'wage', parseInt(this.value)||0)" />
+              <button onclick="window.__jfRemoveSlot(${i})" ${f.slots.length<=1?'disabled':''} style="font-size:11px; padding:0 8px; height:30px; color:#EF4444;">삭제</button>
+            </div>
+          `).join('')}
+          <div style="margin-top:10px;">
+            <button onclick="window.__jfAddSlot()" style="font-size:12px;">+ 시간대 추가</button>
+          </div>
+          <div class="jf-form-hint" style="margin-top:10px;">
+            ※ 잡핏 포인트 보상(자동): 주간 2,000P · 야간 2,500P · 새벽 3,000P · 웨딩 2,500P — 알바비는 파트너사가 직접 지급
+          </div>
+        </div>
+
+        <!-- 옵션 -->
+        <div class="jf-panel" style="grid-column: span 2;">
+          <div class="ws-section-title">옵션 설정</div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">담당자 전화번호<span class="req">*</span></div>
+            <input type="tel" placeholder="010-XXXX-XXXX — 알바생에게 공개됨" value="${f.contact}" oninput="window.__jfSet('contact', this.value)" style="max-width:260px;" />
+          </div>
+          <div class="jf-form-row top" style="padding-top:14px;">
+            <div class="jf-form-label">추가 옵션</div>
+            <div style="display:flex; flex-direction:column; gap:14px;">
+              <div>
+                <label class="jf-toggle">
+                  <input type="checkbox" ${f.useContract?'checked':''} onchange="window.__jfSet('useContract', this.checked)">
+                  <span class="jf-toggle-switch"></span>
+                  <span class="jf-toggle-text"><strong>근로계약서 사용</strong></span>
+                </label>
+                <div class="jf-toggle-sub">알바생 앱에서 전자서명 후 근무 시작. 계약서 PDF는 자동 생성됨 ([날짜]_[공고명]_[알바생명].pdf)</div>
+              </div>
+              <div>
+                <label class="jf-toggle">
+                  <input type="checkbox" ${f.useSafety?'checked':''} onchange="window.__jfSet('useSafety', this.checked)">
+                  <span class="jf-toggle-switch"></span>
+                  <span class="jf-toggle-text"><strong>안전교육 자료 노출</strong></span>
+                </label>
+                <div class="jf-toggle-sub">근무지별로 다른 자료 사용 — 템플릿 관리 탭에서 업로드</div>
+              </div>
+              <div>
+                <label class="jf-toggle">
+                  <input type="checkbox" ${f.showHolidayPopup?'checked':''} onchange="window.__jfSet('showHolidayPopup', this.checked)">
+                  <span class="jf-toggle-switch"></span>
+                  <span class="jf-toggle-text"><strong>주휴수당 안내 팝업</strong></span>
+                </label>
+                <div class="jf-toggle-sub">신청 시 이번 주 N회 만근 상태에 따라 자동 안내 — CJ/롯데 4회, 컨벤션 2일</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 20px; padding-top:16px; border-top:0.5px solid rgba(0,0,0,0.08);">
+        <button onclick="window.__jfCancel()">취소</button>
+        <button onclick="alert('임시저장은 추후 구현')">임시저장</button>
+        <button class="btn-primary" onclick="window.__jfSubmit()">공고 등록</button>
       </div>
     `;
   }
+
+  function renderFormCalendar() {
+    const f = jobFormState;
+    const y = f.calYear, m = f.calMonth;
+    const first = new Date(y, m - 1, 1);
+    const firstDow = first.getDay();
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const todayDate = new Date(TODAY);
+    const cells = [];
+    for (let i = 0; i < firstDow; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+    while (cells.length % 7 !== 0) cells.push(null);
+
+    const dows = ['일','월','화','수','목','금','토'];
+    const dowHtml = dows.map((d, i) =>
+      `<div class="jobs-cal-dow" style="color:${i===0?'#EF4444':i===6?'#2563EB':'#6B7684'};">${d}</div>`).join('');
+
+    let daysHtml = '';
+    cells.forEach((d, idx) => {
+      if (d === null) { daysHtml += `<div class="jobs-cal-day empty"></div>`; return; }
+      const dateStr = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const dayDate = new Date(dateStr);
+      const isPast = dayDate < todayDate;
+      const isToday = dateStr === TODAY;
+      const isSelected = f.dates.includes(dateStr);
+      const dow = idx % 7;
+      const numClass = dow === 0 ? 'sun' : dow === 6 ? 'sat' : '';
+      const cellCls = `form-cal-day ${isSelected ? 'selected' : ''} ${isPast ? 'past' : 'has-jobs'} ${isToday ? 'today' : ''}`;
+      daysHtml += `
+        <div class="jobs-cal-day ${cellCls}" ${!isPast ? `onclick="window.__jfToggleDate('${dateStr}')"` : ''}>
+          <div class="jobs-cal-day-num ${numClass}">${d}</div>
+        </div>
+      `;
+    });
+
+    return `
+      <div class="jobs-cal-head" style="margin-top:10px;">
+        <div class="jobs-cal-month">${y}년 ${m}월</div>
+        <div class="jobs-cal-nav">
+          <button onclick="window.__jfCalMove(-1)">‹</button>
+          <button onclick="window.__jfCalMove(0)">이번 달</button>
+          <button onclick="window.__jfCalMove(1)">›</button>
+        </div>
+      </div>
+      <div class="jobs-cal-grid">${dowHtml}${daysHtml}</div>
+    `;
+  }
+
+  // 공고 폼 핸들러
+  window.__jfSet = function(key, val) {
+    jobFormState[key] = val;
+    if (key === 'partnerKey') jobFormState.siteId = '';
+    renderJobsCreate();
+  };
+  window.__jfToggleDate = function(dateStr) {
+    const idx = jobFormState.dates.indexOf(dateStr);
+    if (idx >= 0) jobFormState.dates.splice(idx, 1);
+    else jobFormState.dates.push(dateStr);
+    renderJobsCreate();
+  };
+  window.__jfRemoveDate = function(dateStr) {
+    jobFormState.dates = jobFormState.dates.filter(d => d !== dateStr);
+    renderJobsCreate();
+  };
+  window.__jfClearDates = function() {
+    if (!confirm('선택한 날짜를 모두 해제하시겠습니까?')) return;
+    jobFormState.dates = [];
+    renderJobsCreate();
+  };
+  window.__jfCalMove = function(dir) {
+    if (dir === 0) {
+      const t = new Date(TODAY);
+      jobFormState.calYear = t.getFullYear();
+      jobFormState.calMonth = t.getMonth() + 1;
+    } else {
+      jobFormState.calMonth += dir;
+      if (jobFormState.calMonth < 1) { jobFormState.calMonth = 12; jobFormState.calYear--; }
+      if (jobFormState.calMonth > 12) { jobFormState.calMonth = 1; jobFormState.calYear++; }
+    }
+    renderJobsCreate();
+  };
+  window.__jfAddSlot = function() {
+    jobFormState.slots.push({ slot: '주간', start: '07:00', end: '15:00', cap: 20, wageType: '일급', wage: 100000 });
+    renderJobsCreate();
+  };
+  window.__jfRemoveSlot = function(idx) {
+    if (jobFormState.slots.length <= 1) return;
+    jobFormState.slots.splice(idx, 1);
+    renderJobsCreate();
+  };
+  window.__jfSlot = function(idx, key, val) {
+    if (jobFormState.slots[idx]) jobFormState.slots[idx][key] = val;
+  };
+  window.__jfCancel = function() {
+    if (!confirm('작성 중인 내용이 사라집니다. 취소하시겠습니까?')) return;
+    Object.assign(jobFormState, {
+      partnerKey: '', siteId: '', title: '', description: '',
+      dates: [],
+      slots: [{ slot: '주간', start: '07:00', end: '15:00', cap: 30, wageType: '일급', wage: 110000 }],
+      contact: '', useContract: true, useSafety: true, showHolidayPopup: true,
+    });
+    jobsState.tab = 'list';
+    renderJobs();
+  };
+  window.__jfSubmit = function() {
+    const f = jobFormState;
+    // 유효성 검사
+    const errors = [];
+    if (!f.partnerKey) errors.push('파트너사를 선택해주세요');
+    if (!f.siteId) errors.push('근무지를 선택해주세요');
+    if (f.dates.length === 0) errors.push('날짜를 1개 이상 선택해주세요');
+    if (f.slots.length === 0) errors.push('시간대를 1개 이상 추가해주세요');
+    if (!f.contact.trim()) errors.push('담당자 전화번호를 입력해주세요');
+    f.slots.forEach((s, i) => {
+      if (!s.start || !s.end) errors.push(`${i+1}번째 시간대의 시작/종료 시간을 입력해주세요`);
+      if (s.cap < 1) errors.push(`${i+1}번째 시간대의 모집 인원을 확인해주세요`);
+      if (s.wage <= 0) errors.push(`${i+1}번째 시간대의 금액을 확인해주세요`);
+    });
+    if (errors.length > 0) {
+      alert('다음 항목을 확인해주세요:\n\n• ' + errors.join('\n• '));
+      return;
+    }
+    // 공고 생성: 선택한 각 날짜 × 각 시간대 = 공고 여러 개
+    const site = findSite(f.siteId);
+    let created = 0;
+    f.dates.forEach(date => {
+      f.slots.forEach(s => {
+        const newId = 'j' + String(jobs.length + created + 1).padStart(3, '0');
+        jobs.push({
+          id: newId, siteId: f.siteId,
+          date, slot: s.slot, start: s.start, end: s.end,
+          cap: s.cap, apply: 0, wage: s.wage, wageType: s.wageType,
+          contact: f.contact, contract: f.useContract, safety: f.useSafety,
+        });
+        created++;
+      });
+    });
+    alert(`공고 ${created}건 등록 완료!\n\n근무지: ${site.site.name}\n날짜 ${f.dates.length}일 × 시간대 ${f.slots.length}개\n\n담당자: ${f.contact}\n계약서: ${f.useContract?'ON':'OFF'} / 안전교육: ${f.useSafety?'ON':'OFF'} / 주휴수당 팝업: ${f.showHolidayPopup?'ON':'OFF'}`);
+    // 폼 초기화 + 리스트 탭 이동
+    Object.assign(jobFormState, {
+      partnerKey: '', siteId: '', title: '', description: '',
+      dates: [],
+      slots: [{ slot: '주간', start: '07:00', end: '15:00', cap: 30, wageType: '일급', wage: 110000 }],
+      contact: '', useContract: true, useSafety: true, showHolidayPopup: true,
+    });
+    jobsState.tab = 'list';
+    renderJobs();
+  };
+
+  const tplState = { filter: '' };  // '' / contract / safety
+
+  function renderJobsTemplate() {
+    const filtered = tplState.filter
+      ? templates.filter(t => t.type === tplState.filter)
+      : templates;
+    const contractCount = templates.filter(t => t.type === 'contract').length;
+    const safetyCount = templates.filter(t => t.type === 'safety').length;
+    const totalInUse = templates.reduce((s, t) => s + t.inUse, 0);
+
+    const TYPE_LABEL = { contract: '근로계약서', safety: '안전교육' };
+    const TYPE_STYLE = {
+      contract: 'background:#DBEAFE; color:#1E40AF;',
+      safety:   'background:#DCFCE7; color:#166534;',
+    };
+
+    main.innerHTML = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">공고 관리</div>
+          <div class="jf-subtitle">근로계약서 · 안전교육 템플릿 관리 <span style="font-size:11px; color:#9CA3AF;">(마스터 / 관리자 1등급 전용)</span></div>
+        </div>
+        <div class="ws-actions">
+          <button class="btn-primary" onclick="window.__tplUpload()">+ 템플릿 업로드</button>
+        </div>
+      </div>
+      ${jobsTabsHtml()}
+
+      <div class="jf-metric-grid">
+        <div class="jf-metric"><div class="jf-metric-label">전체 템플릿</div><div class="jf-metric-value">${templates.length}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 개</span></div><div class="jf-metric-hint">활성 템플릿</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">근로계약서</div><div class="jf-metric-value">${contractCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 개</span></div><div class="jf-metric-hint">파트너사별</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">안전교육</div><div class="jf-metric-value">${safetyCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 개</span></div><div class="jf-metric-hint">근무지별 차등 가능</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">연결된 공고</div><div class="jf-metric-value">${totalInUse}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">현재 사용 중</div></div>
+      </div>
+
+      <div class="jobs-filters">
+        <div class="jobs-view-toggle">
+          <button class="${tplState.filter===''?'active':''}" onclick="window.__tplFilter('')">전체 (${templates.length})</button>
+          <button class="${tplState.filter==='contract'?'active':''}" onclick="window.__tplFilter('contract')">근로계약서 (${contractCount})</button>
+          <button class="${tplState.filter==='safety'?'active':''}" onclick="window.__tplFilter('safety')">안전교육 (${safetyCount})</button>
+        </div>
+      </div>
+
+      ${filtered.length === 0
+        ? `<div class="jf-placeholder"><div class="jf-placeholder-icon">📄</div><div class="jf-placeholder-title">해당 유형의 템플릿이 없습니다</div><div class="jf-placeholder-desc">상단 "+ 템플릿 업로드" 버튼으로 등록하세요.</div></div>`
+        : `<div class="jobs-grid" style="grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));">
+            ${filtered.map(t => {
+              const partnerNames = t.partnerKeys.map(k => worksites[k].name).join(', ');
+              const siteNames = t.siteIds && t.siteIds.length > 0
+                ? t.siteIds.map(sid => findSite(sid)?.site.name || sid).join(', ')
+                : '전체';
+              return `
+                <div class="jobs-card" style="cursor:default;">
+                  <div class="jobs-card-head">
+                    <div style="display:flex; gap:10px; align-items:center;">
+                      <div style="width:40px; height:48px; background:#FEE2E2; color:#991B1B; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600; flex-shrink:0;">PDF</div>
+                      <div>
+                        <div class="jobs-card-title">${t.name}</div>
+                        <div class="jobs-card-sub">${t.fileName} · ${t.fileSize}</div>
+                      </div>
+                    </div>
+                    <span class="apv-badge" style="${TYPE_STYLE[t.type]}">${TYPE_LABEL[t.type]}</span>
+                  </div>
+                  <div class="jobs-card-row"><span>버전</span><strong>${t.version}</strong></div>
+                  <div class="jobs-card-row"><span>파트너사</span><strong>${partnerNames}</strong></div>
+                  <div class="jobs-card-row"><span>근무지</span><strong style="font-size:12px;">${siteNames}</strong></div>
+                  <div class="jobs-card-row"><span>사용 중 공고</span><strong style="color:${t.inUse>0?'#2563EB':'#6B7684'};">${t.inUse}건</strong></div>
+                  <div class="jobs-card-row"><span>업로드</span><strong style="font-size:11px; color:#6B7684;">${t.uploadedAt} · ${t.uploadedBy}</strong></div>
+                  <div class="jobs-card-foot">
+                    <button onclick="window.__tplPreview('${t.id}')">미리보기</button>
+                    <button onclick="window.__tplNewVersion('${t.id}')">새 버전</button>
+                    <button onclick="window.__tplDelete('${t.id}')" style="color:#EF4444;">삭제</button>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>`
+      }
+
+      <div class="ws-warn-box" style="margin-top: 14px;">
+        ℹ 새 버전 업로드 시 이전 버전은 <strong>자동 보관</strong>됩니다. 이미 등록된 공고는 기존 버전 계약서를 유지하며, 이후 등록 공고부터 새 버전이 적용됩니다.
+      </div>
+    `;
+  }
+
+  window.__tplFilter = function(val) { tplState.filter = val; renderJobsTemplate(); };
+  window.__tplUpload = function() {
+    const name = prompt('템플릿 이름을 입력하세요:'); if (!name) return;
+    const type = prompt('유형을 입력하세요 (contract 또는 safety):');
+    if (!type || !['contract','safety'].includes(type)) { alert('contract 또는 safety 여야 합니다.'); return; }
+    const partner = prompt('적용 파트너사 키 (쉼표 구분, 예: cj,lotte — 전체 적용은 cj,lotte,convention):');
+    if (!partner) return;
+    const partnerKeys = partner.split(',').map(s => s.trim()).filter(k => worksites[k]);
+    if (partnerKeys.length === 0) { alert('유효한 파트너사 키를 입력해주세요.'); return; }
+    const id = 't' + String(templates.length + 1).padStart(3, '0');
+    templates.push({
+      id, type, name,
+      partnerKeys,
+      siteIds: [],
+      version: 'v1.0',
+      uploadedAt: TODAY,
+      fileName: name.replace(/\s+/g, '_').toLowerCase() + '_v10.pdf',
+      fileSize: Math.floor(Math.random() * 2000) + 'KB',
+      inUse: 0,
+      uploadedBy: '테스트(마스터)',
+    });
+    alert(`템플릿 "${name}" 업로드 완료.\n\n(실제 앱에서는 PDF 파일 드래그 앤 드롭 업로드 UI 제공)`);
+    renderJobsTemplate();
+  };
+  window.__tplPreview = function(id) {
+    const t = findTemplate(id); if (!t) return;
+    const overlay = document.createElement('div');
+    overlay.className = 'jf-modal-overlay';
+    overlay.innerHTML = `
+      <div class="jf-modal" onclick="event.stopPropagation()">
+        <div class="jf-modal-head">
+          <div class="jf-modal-title">📄 ${t.fileName}</div>
+          <button class="jf-modal-close" onclick="this.closest('.jf-modal-overlay').remove()">×</button>
+        </div>
+        <div class="jf-modal-body">
+          <div style="padding: 24px; background: #F9FAFB; border-radius: 8px; border: 0.5px solid rgba(0,0,0,0.08); min-height: 300px;">
+            <div style="text-align:center; font-size:18px; font-weight:500; margin-bottom:18px;">${t.name}</div>
+            <div style="text-align:center; color:#9CA3AF; font-size: 12px; padding: 60px 0;">
+              📄 PDF 미리보기 영역<br><br>
+              실제 앱에서는 Supabase Storage에 저장된<br>PDF 파일이 iframe/viewer로 렌더링됩니다.<br><br>
+              <span style="font-family:'SF Mono',Monaco,monospace; color:#6B7684;">${t.fileName} (${t.fileSize})</span>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; margin-top: 14px;">
+            <button onclick="alert('다운로드는 실제 앱에서 구현')" style="flex:1;">다운로드</button>
+            <button class="btn-primary" onclick="this.closest('.jf-modal-overlay').remove()" style="flex:1;">닫기</button>
+          </div>
+        </div>
+      </div>
+    `;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  };
+  window.__tplNewVersion = function(id) {
+    const t = findTemplate(id); if (!t) return;
+    if (!confirm(`"${t.name}" 의 새 버전을 업로드합니다.\n현재 버전 ${t.version}은 자동 보관되며, 기존 공고에 계속 적용됩니다. 계속하시겠습니까?`)) return;
+    const parts = t.version.replace('v', '').split('.');
+    const newVer = 'v' + parts[0] + '.' + (parseInt(parts[1]) + 1);
+    t.version = newVer;
+    t.uploadedAt = TODAY;
+    t.uploadedBy = '테스트(마스터)';
+    alert(`"${t.name}" ${newVer} 로 업데이트 완료.\n\n이후 등록되는 공고부터 새 버전이 적용됩니다.`);
+    renderJobsTemplate();
+  };
+  window.__tplDelete = function(id) {
+    const t = findTemplate(id); if (!t) return;
+    if (t.inUse > 0) { alert(`이 템플릿을 사용 중인 공고가 ${t.inUse}건 있습니다.\n먼저 공고들을 종료하거나 다른 템플릿으로 교체해주세요.`); return; }
+    if (!confirm(`"${t.name}" 템플릿을 삭제합니다. 계속하시겠습니까?`)) return;
+    const idx = templates.indexOf(t); if (idx >= 0) templates.splice(idx, 1);
+    alert('템플릿 삭제 완료.');
+    renderJobsTemplate();
+  };
 
   // 공고 관리 전역 핸들러
   window.__jobsTab = function(id) { jobsState.tab = id; renderJobs(); };
@@ -3172,8 +4291,17 @@
     }
     renderJobsList();
   };
+  window.__jobsDetail = function(id) { renderJobDetail(id); };
   window.__jobsCalDay = function(dateStr) {
-    alert(dateStr + ' 일 공고 상세 리스트는 추후 구현\n(리스트 뷰로 전환하거나 모달로 표시 예정)');
+    // 해당 날짜 공고가 1건이면 바로 상세로, 여러 개면 리스트 뷰로 전환 후 필터
+    const dayJobs = jobs.filter(j => j.date === dateStr);
+    if (dayJobs.length === 1) {
+      renderJobDetail(dayJobs[0].id);
+    } else {
+      jobsState.view = 'list';
+      alert(`${dateStr} 일 공고 ${dayJobs.length}건 — 리스트 뷰로 전환합니다.`);
+      renderJobsList();
+    }
   };
 
   window.__wsToggle = function(key) {
@@ -3183,6 +4311,10 @@
   window.__wsDetail = function(id) { renderDetail(id); };
   window.__wsGps = function(id) { renderGpsEditor(id); };
   window.__wsBack = function() { renderList(); };
+  window.__wsAddSite = function() {
+    Object.assign(siteFormState, { step: 1, partnerKey: '', siteName: '', address: '', lat: 37.5665, lng: 126.9780, bus: false, wage: 100000, wageType: '일급', holiday: '주 4일 만근', contact: '', manager1: '', manager2: '' });
+    renderSiteWizard();
+  };
 
   const pageRouters = {
     home: renderHome,
