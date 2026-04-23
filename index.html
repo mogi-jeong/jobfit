@@ -272,6 +272,27 @@
   .login-role-btn.active { background: #1B3A6B; color: #fff; border-color: #1B3A6B; }
   .login-footer { margin-top: 24px; padding-top: 16px; border-top: 0.5px solid rgba(0,0,0,0.08); font-size: 11px; color: #9CA3AF; text-align: center; line-height: 1.7; }
 
+  /* 통계 리포트 — 차트 공용 */
+  .stat-chart-row { display: grid; grid-template-columns: 120px 1fr 80px; gap: 10px; align-items: center; padding: 6px 0; font-size: 12px; }
+  .stat-chart-label { color: #111827; font-weight: 500; }
+  .stat-chart-track { height: 20px; background: #F3F4F6; border-radius: 10px; overflow: hidden; position: relative; }
+  .stat-chart-fill { height: 100%; background: linear-gradient(90deg, #2563EB 0%, #1E40AF 100%); border-radius: 10px; transition: width 0.3s; }
+  .stat-chart-fill.green { background: linear-gradient(90deg, #22C55E 0%, #16A34A 100%); }
+  .stat-chart-fill.amber { background: linear-gradient(90deg, #F59E0B 0%, #D97706 100%); }
+  .stat-chart-value { text-align: right; font-weight: 500; color: #111827; }
+  .stat-rank-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 8px; transition: background 0.1s; font-size: 13px; }
+  .stat-rank-row:hover { background: #F5F7FA; }
+  .stat-rank-num { width: 24px; height: 24px; border-radius: 50%; background: #F3F4F6; color: #6B7684; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+  .stat-rank-num.top1 { background: #FEF3C7; color: #92400E; }
+  .stat-rank-num.top2 { background: #E5E7EB; color: #374151; }
+  .stat-rank-num.top3 { background: #FED7AA; color: #9A3412; }
+  .stat-trend-row { display: flex; align-items: flex-end; gap: 4px; height: 160px; padding: 0 4px; border-bottom: 0.5px solid rgba(0,0,0,0.08); }
+  .stat-trend-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .stat-trend-bar { width: 100%; background: #2563EB; border-radius: 3px 3px 0 0; transition: all 0.2s; min-height: 2px; }
+  .stat-trend-bar:hover { background: #1E40AF; }
+  .stat-trend-date { font-size: 10px; color: #6B7684; margin-top: 4px; }
+  .stat-trend-val { font-size: 10px; color: #2563EB; font-weight: 500; }
+
   /* 스텝 인디케이터 (wizard) */
   .jf-stepper { display: flex; gap: 0; margin-bottom: 24px; background: #F5F7FA; border-radius: 12px; padding: 12px 16px; }
   .jf-step { flex: 1; display: flex; align-items: center; gap: 10px; position: relative; }
@@ -338,6 +359,7 @@
     <div class="jf-nav-item" data-page="negotiation"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M6 8l1.5 1.5L11 6"/></svg>협의대상</div>
     <div class="jf-nav-item" data-page="points"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v6M6 7h4M6 9h4"/></svg>포인트</div>
     <div class="jf-nav-item" data-page="inquiry"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v9H5l-3 3V3z"/></svg>문의</div>
+    <div class="jf-nav-item" data-page="stats"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 14V2M2 14h12M5 11V7M8 11V4M11 11V9"/></svg>통계 리포트</div>
     <div class="jf-nav-item" data-page="accounts"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="2.5"/><path d="M3 13c0-2.5 2-4 5-4s5 1.5 5 4"/><circle cx="12" cy="4" r="1.5" fill="currentColor"/></svg>관리자 계정</div>
     <div class="jf-user">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
@@ -4658,6 +4680,251 @@
   };
 
   // ───────────────────────────────────────────────────────
+  // 통계 리포트 페이지
+  // ───────────────────────────────────────────────────────
+  const statsState = {
+    period: 'month',  // week / month / quarter / all
+  };
+
+  function statsDateRange() {
+    const today = new Date(TODAY);
+    let start = new Date(TODAY);
+    if (statsState.period === 'week')    start.setDate(today.getDate() - 6);
+    if (statsState.period === 'month')   start.setDate(today.getDate() - 29);
+    if (statsState.period === 'quarter') start.setDate(today.getDate() - 89);
+    if (statsState.period === 'all')     start = new Date('2020-01-01');
+    return { startStr: start.toISOString().slice(0,10), endStr: TODAY };
+  }
+
+  function renderStats() {
+    const { startStr, endStr } = statsDateRange();
+    const periodJobs = jobs.filter(j => j.date >= startStr && j.date <= endStr);
+
+    // ─── 핵심 KPI ───
+    const totalJobs = periodJobs.length;
+    let totalWorks = 0, totalOk = 0, totalLate = 0, totalNo = 0;
+    periodJobs.forEach(j => {
+      const sum = attendanceSummary(j.id);
+      totalOk += sum.출근; totalLate += sum.지각; totalNo += sum.결근;
+    });
+    totalWorks = totalOk + totalLate + totalNo;
+    const avgRate = totalWorks > 0 ? Math.round((totalOk + totalLate) / totalWorks * 100) : 0;
+    // 총 포인트 지급 — 기간 내 'done' 상태 공고의 (출근+지각) × reward 합
+    let totalPoints = 0;
+    periodJobs.filter(j => jobStatus(j) === 'done').forEach(j => {
+      const sum = attendanceSummary(j.id);
+      totalPoints += (sum.출근 + sum.지각) * pointRewardFor(j);
+    });
+    // 총 알바비 (파트너사 직접 지급 · 참고용)
+    let totalWage = 0;
+    periodJobs.filter(j => jobStatus(j) === 'done').forEach(j => {
+      const sum = attendanceSummary(j.id);
+      totalWage += (sum.출근 + sum.지각) * j.wage;
+    });
+
+    // ─── 파트너사별 집계 ───
+    const partnerStats = {};
+    Object.keys(worksites).forEach(k => {
+      partnerStats[k] = { name: worksites[k].name, jobs: 0, works: 0, ok: 0, late: 0, no: 0, points: 0 };
+    });
+    periodJobs.forEach(j => {
+      const site = findSite(j.siteId); if (!site) return;
+      const p = partnerStats[site.partnerKey];
+      p.jobs++;
+      const sum = attendanceSummary(j.id);
+      p.ok += sum.출근; p.late += sum.지각; p.no += sum.결근;
+      if (jobStatus(j) === 'done') p.points += (sum.출근 + sum.지각) * pointRewardFor(j);
+    });
+    Object.values(partnerStats).forEach(p => { p.works = p.ok + p.late + p.no; p.rate = p.works > 0 ? Math.round((p.ok + p.late) / p.works * 100) : 0; });
+    const maxPartnerJobs = Math.max(1, ...Object.values(partnerStats).map(p => p.jobs));
+
+    // ─── 근무지 출근율 랭킹 TOP 5 (기간 내 works >= 3인 것만) ───
+    const siteStats = [];
+    Object.values(worksites).forEach(p => p.sites.forEach(s => {
+      let sok = 0, slate = 0, sno = 0, sjobs = 0;
+      periodJobs.filter(j => j.siteId === s.id).forEach(j => {
+        const sum = attendanceSummary(j.id);
+        sok += sum.출근; slate += sum.지각; sno += sum.결근; sjobs++;
+      });
+      const works = sok + slate + sno;
+      if (works >= 3) siteStats.push({ id: s.id, name: s.name, partner: p.name, rate: Math.round((sok + slate) / works * 100), jobs: sjobs, works });
+    }));
+    const topSites = siteStats.sort((a, b) => b.rate - a.rate).slice(0, 5);
+    const bottomSites = siteStats.sort((a, b) => a.rate - b.rate).slice(0, 3);
+
+    // ─── 시간대별 분포 ───
+    const slotDist = { 주간: 0, 야간: 0, 새벽: 0, 웨딩: 0 };
+    periodJobs.forEach(j => { if (slotDist[j.slot] !== undefined) slotDist[j.slot]++; });
+    const slotSegs = [
+      { value: slotDist.주간, color: '#2563EB' },
+      { value: slotDist.야간, color: '#1B3A6B' },
+      { value: slotDist.새벽, color: '#F59E0B' },
+      { value: slotDist.웨딩, color: '#EF4444' },
+    ];
+    const slotTotal = Object.values(slotDist).reduce((s, n) => s + n, 0);
+
+    // ─── 주간 트렌드 (최근 7일, week 모드가 아니어도 고정 7일) ───
+    const trendDays = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(TODAY); d.setDate(d.getDate() - i);
+      const ds = d.toISOString().slice(0, 10);
+      const dayJobs = jobs.filter(j => j.date === ds);
+      const dayWorks = dayJobs.reduce((s, j) => {
+        const su = attendanceSummary(j.id);
+        return s + su.출근 + su.지각 + su.결근;
+      }, 0);
+      trendDays.push({
+        date: ds.slice(5), jobs: dayJobs.length, works: dayWorks,
+        dow: '일월화수목금토'[d.getDay()],
+      });
+    }
+    const maxTrend = Math.max(1, ...trendDays.map(d => d.works));
+
+    main.innerHTML = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">통계 리포트</div>
+          <div class="jf-subtitle">기간: ${startStr} ~ ${endStr} · 마스터 · 관리자 1등급 전용</div>
+        </div>
+        <div class="ws-actions">
+          <button onclick="showExcelModal('jobs')">엑셀 다운로드</button>
+        </div>
+      </div>
+
+      <div class="jobs-filters">
+        <div class="jobs-view-toggle">
+          <button class="${statsState.period==='week'?'active':''}"    onclick="window.__statsPeriod('week')">이번 주</button>
+          <button class="${statsState.period==='month'?'active':''}"   onclick="window.__statsPeriod('month')">최근 30일</button>
+          <button class="${statsState.period==='quarter'?'active':''}" onclick="window.__statsPeriod('quarter')">최근 90일</button>
+          <button class="${statsState.period==='all'?'active':''}"     onclick="window.__statsPeriod('all')">전체</button>
+        </div>
+      </div>
+
+      <!-- KPI 4개 -->
+      <div class="jf-metric-grid">
+        <div class="jf-metric"><div class="jf-metric-label">총 공고</div><div class="jf-metric-value">${totalJobs}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">기간 내 등록</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">총 근무</div><div class="jf-metric-value">${totalWorks}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명·건</span></div><div class="jf-metric-hint">출석 + 결근 합계</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">평균 출근율</div><div class="jf-metric-value" style="color:${avgRate>=90?'#22C55E':avgRate>=75?'#F59E0B':'#EF4444'};">${avgRate}%</div><div class="jf-metric-hint">🟢 ${totalOk} · 🟡 ${totalLate} · 🔴 ${totalNo}</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">총 포인트 지급</div><div class="jf-metric-value" style="color:#2563EB;">${totalPoints.toLocaleString()}<span style="font-size:13px; color:#6B7684; font-weight:400;"> P</span></div><div class="jf-metric-hint">알바비 (${(totalWage/10000).toFixed(0)}만원, 파트너사 직접 지급)</div></div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; margin-bottom: 14px;">
+        <!-- 파트너사별 공고 수 -->
+        <div class="jf-panel">
+          <div class="ws-section-title">파트너사별 공고 수 <span style="font-size:11px; color:#6B7684; font-weight:400;">기간 내 등록 공고</span></div>
+          ${Object.values(partnerStats).map(p => `
+            <div class="stat-chart-row">
+              <div class="stat-chart-label">${p.name}</div>
+              <div class="stat-chart-track"><div class="stat-chart-fill" style="width:${(p.jobs/maxPartnerJobs*100).toFixed(1)}%;"></div></div>
+              <div class="stat-chart-value">${p.jobs}건</div>
+            </div>
+          `).join('')}
+        </div>
+
+        <!-- 시간대 분포 도넛 -->
+        <div class="jf-panel">
+          <div class="ws-section-title">시간대별 공고 분포</div>
+          <div style="display:flex; gap:18px; align-items:center; justify-content:center; margin-top:8px;">
+            <div class="ctrl-donut-wrap" style="width:140px; height:140px;">
+              ${donutSvg(slotSegs, 140, 16)}
+              <div class="ctrl-donut-center">
+                <div class="ctrl-donut-pct">${slotTotal}</div>
+                <div class="ctrl-donut-label">건</div>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:6px; font-size:12px;">
+              <div><span class="ctrl-donut-dot" style="background:#2563EB;"></span> 주간 <strong>${slotDist.주간}</strong></div>
+              <div><span class="ctrl-donut-dot" style="background:#1B3A6B;"></span> 야간 <strong>${slotDist.야간}</strong></div>
+              <div><span class="ctrl-donut-dot" style="background:#F59E0B;"></span> 새벽 <strong>${slotDist.새벽}</strong></div>
+              <div><span class="ctrl-donut-dot" style="background:#EF4444;"></span> 웨딩 <strong>${slotDist.웨딩}</strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 파트너사별 출근율 -->
+      <div class="jf-panel" style="margin-bottom: 14px;">
+        <div class="ws-section-title">파트너사별 출근율 & 포인트 지급</div>
+        ${Object.values(partnerStats).map(p => `
+          <div class="stat-chart-row">
+            <div class="stat-chart-label">${p.name}</div>
+            <div class="stat-chart-track">
+              <div class="stat-chart-fill ${p.rate>=90?'green':p.rate>=75?'':'amber'}" style="width:${p.rate}%;"></div>
+            </div>
+            <div class="stat-chart-value">${p.rate}% <span style="color:#9CA3AF; font-weight:400; font-size:11px;">(${p.works}명)</span></div>
+          </div>
+        `).join('')}
+        <div style="margin-top:14px; padding-top:12px; border-top:0.5px solid rgba(0,0,0,0.06); display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; font-size:12px;">
+          ${Object.values(partnerStats).map(p => `
+            <div style="padding:10px 12px; background:#F9FAFB; border-radius:8px;">
+              <div style="color:#6B7684; font-size:11px;">${p.name} 포인트 지급</div>
+              <div style="color:#2563EB; font-weight:500; font-size:15px; margin-top:3px;">${p.points.toLocaleString()} P</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+        <!-- 출근율 TOP 5 -->
+        <div class="jf-panel">
+          <div class="ws-section-title">출근율 TOP 5 근무지 <span style="font-size:11px; color:#6B7684; font-weight:400;">근무 3명+ 기준</span></div>
+          ${topSites.length === 0
+            ? '<div style="padding:14px 0; text-align:center; color:#6B7684; font-size:12px;">데이터 부족 (기간 내 출석 3명 이상 근무지 없음)</div>'
+            : topSites.map((s, i) => `
+                <div class="stat-rank-row">
+                  <div class="stat-rank-num ${i===0?'top1':i===1?'top2':i===2?'top3':''}">${i+1}</div>
+                  <div>
+                    <div style="font-weight:500;">${s.name}</div>
+                    <div style="font-size:11px; color:#6B7684;">${s.partner} · ${s.works}명 근무</div>
+                  </div>
+                  <div style="font-weight:500; color:#22C55E;">${s.rate}%</div>
+                </div>
+              `).join('')}
+        </div>
+
+        <!-- 관리 필요 근무지 BOTTOM 3 -->
+        <div class="jf-panel">
+          <div class="ws-section-title">관리 필요 근무지 <span style="font-size:11px; color:#6B7684; font-weight:400;">출근율 낮은 순</span></div>
+          ${bottomSites.length === 0
+            ? '<div style="padding:14px 0; text-align:center; color:#6B7684; font-size:12px;">데이터 부족</div>'
+            : bottomSites.map(s => `
+                <div class="stat-rank-row" style="border-left: 3px solid #EF4444;">
+                  <div style="width:24px;"></div>
+                  <div>
+                    <div style="font-weight:500;">${s.name}</div>
+                    <div style="font-size:11px; color:#6B7684;">${s.partner} · ${s.works}명 근무</div>
+                  </div>
+                  <div style="font-weight:500; color:${s.rate<70?'#EF4444':'#F59E0B'};">${s.rate}%</div>
+                </div>
+              `).join('')}
+          ${bottomSites.length > 0 ? '<div style="font-size:11px; color:#6B7684; margin-top:10px; padding-top:10px; border-top:0.5px solid rgba(0,0,0,0.06);">💡 협의대상 확인 · 공지사항 발송 · 담당자 리뷰 권장</div>' : ''}
+        </div>
+      </div>
+
+      <!-- 최근 7일 트렌드 -->
+      <div class="jf-panel">
+        <div class="ws-section-title">최근 7일 근무 추이 <span style="font-size:11px; color:#6B7684; font-weight:400;">일자별 근무(출결 합계) 수</span></div>
+        <div class="stat-trend-row">
+          ${trendDays.map(d => `
+            <div class="stat-trend-col">
+              <div class="stat-trend-val">${d.works}</div>
+              <div class="stat-trend-bar" style="height: ${(d.works / maxTrend) * 130}px; ${d.works===maxTrend ? 'background:#1E40AF;' : ''}"></div>
+              <div class="stat-trend-date">${d.date}<br><span style="color:${d.dow==='일'?'#EF4444':d.dow==='토'?'#2563EB':'#9CA3AF'};">(${d.dow})</span></div>
+            </div>
+          `).join('')}
+        </div>
+        <div style="margin-top:14px; display:flex; gap:20px; font-size:12px; color:#6B7684;">
+          <span>📊 일 평균 근무 <strong style="color:#111827;">${Math.round(trendDays.reduce((s,d)=>s+d.works,0) / 7)}</strong>건</span>
+          <span>📈 최대 <strong style="color:#111827;">${maxTrend}</strong>건</span>
+          <span>📅 공고 수 합계 <strong style="color:#111827;">${trendDays.reduce((s,d)=>s+d.jobs,0)}</strong>건</span>
+        </div>
+      </div>
+    `;
+  }
+
+  window.__statsPeriod = function(p) { statsState.period = p; renderStats(); };
+
+  // ───────────────────────────────────────────────────────
   // 처리 이력 전체 보기 (신청/협의대상/포인트 통합)
   // ───────────────────────────────────────────────────────
   const historyState = {
@@ -5305,6 +5572,7 @@
     control: renderControl,
     accounts: renderAdmins,
     inquiry: renderInquiries,
+    stats: renderStats,
   };
 
   navItems.forEach(item => {
@@ -5322,7 +5590,7 @@
   });
 
   function pageNameFor(page) {
-    const names = { home: '홈', jobs: '공고 관리', approval: '신청 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정' };
+    const names = { home: '홈', jobs: '공고 관리', approval: '신청 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정', stats: '통계 리포트' };
     return names[page] || '';
   }
 
