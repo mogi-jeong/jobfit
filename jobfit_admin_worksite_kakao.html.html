@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280, initial-scale=1.0">
+<title>잡핏 관리자 웹 — 근무지 관리 (프로토타입 v0.3 · 카카오맵)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif; background: #F5F7FA; color: #1F2937; font-size: 14px; line-height: 1.5; }
+  button { font-family: inherit; font-size: 13px; padding: 0 14px; height: 36px; background: transparent; border: 0.5px solid rgba(0,0,0,0.15); border-radius: 8px; cursor: pointer; color: #1F2937; transition: background 0.1s; }
+  button:hover:not(:disabled) { background: rgba(0,0,0,0.04); }
+  button:active:not(:disabled) { transform: scale(0.98); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  input, select { font-family: inherit; height: 36px; padding: 0 12px; border: 0.5px solid rgba(0,0,0,0.15); border-radius: 8px; background: #fff; font-size: 13px; }
+  input:focus, select:focus { outline: none; box-shadow: 0 0 0 2px rgba(37,99,235,0.2); }
+
+  /* 레이아웃 */
+  .jf-layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; background: #fff; }
+  .jf-sidebar { background: #1B3A6B; padding: 16px 0; display: flex; flex-direction: column; }
+  .jf-brand { padding: 0 16px 16px; border-bottom: 0.5px solid rgba(255,255,255,0.12); margin-bottom: 8px; }
+  .jf-brand-name { color: #fff; font-size: 18px; font-weight: 500; letter-spacing: -0.3px; }
+  .jf-brand-sub { color: #BFDBFE; font-size: 11px; margin-top: 2px; }
+  .jf-nav-item { padding: 10px 16px; color: #BFDBFE; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 10px; border-left: 3px solid transparent; transition: all 0.1s; }
+  .jf-nav-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
+  .jf-nav-item.active { background: rgba(255,255,255,0.1); color: #fff; border-left-color: #2563EB; }
+  .jf-nav-icon { width: 16px; height: 16px; flex-shrink: 0; }
+  .jf-user { margin-top: auto; padding: 12px 16px; border-top: 0.5px solid rgba(255,255,255,0.12); font-size: 12px; color: #BFDBFE; }
+  .jf-user-name { color: #fff; font-weight: 500; }
+  .jf-user-badge { display: inline-block; margin-left: 4px; padding: 1px 6px; background: #2563EB; color: #fff; border-radius: 3px; font-size: 10px; }
+  .jf-main { padding: 28px 32px; overflow-y: auto; }
+  .jf-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .jf-title { font-size: 22px; font-weight: 500; color: #111827; }
+  .jf-subtitle { font-size: 13px; color: #6B7684; margin-top: 2px; }
+
+  /* 메트릭 */
+  .jf-metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .jf-metric { background: #F5F7FA; padding: 14px 16px; border-radius: 8px; }
+  .jf-metric-label { font-size: 12px; color: #6B7684; margin-bottom: 4px; }
+  .jf-metric-value { font-size: 24px; font-weight: 500; color: #111827; }
+  .jf-metric-hint { font-size: 11px; margin-top: 4px; color: #6B7684; }
+
+  /* 패널 */
+  .jf-panel { background: #fff; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 12px; padding: 18px; }
+  .jf-back { color: #2563EB; font-size: 13px; cursor: pointer; margin-bottom: 12px; display: inline-block; }
+  .jf-back:hover { text-decoration: underline; }
+  .ws-actions { display: flex; gap: 8px; }
+
+  /* 파트너사 아코디언 */
+  .ws-partner { margin-bottom: 12px; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; background: #fff; }
+  .ws-partner-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: #F5F7FA; cursor: pointer; user-select: none; }
+  .ws-partner-title { display: flex; align-items: center; gap: 10px; font-weight: 500; font-size: 14px; }
+  .ws-partner-count { font-size: 11px; color: #6B7684; font-weight: 400; }
+  .ws-partner-body { padding: 4px 10px 10px; display: none; }
+  .ws-partner.open .ws-partner-body { display: block; }
+  .ws-partner.open .ws-chevron { transform: rotate(90deg); }
+  .ws-chevron { transition: transform 0.15s; font-size: 12px; color: #6B7684; display: inline-block; }
+
+  /* 근무지 행 */
+  .ws-site-row { display: grid; grid-template-columns: 1.4fr 0.8fr 1fr 0.6fr 0.8fr auto; gap: 10px; padding: 12px 10px; align-items: center; border-bottom: 0.5px solid rgba(0,0,0,0.08); font-size: 13px; cursor: pointer; border-radius: 6px; transition: background 0.1s; }
+  .ws-site-row:hover { background: #F9FAFB; }
+  .ws-site-row:last-child { border-bottom: none; }
+  .ws-site-name { font-weight: 500; }
+  .ws-site-sub { font-size: 11px; color: #6B7684; margin-top: 2px; }
+  .ws-col-muted { font-size: 12px; color: #6B7684; }
+  .ws-gps-ok { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #166534; background: #DCFCE7; padding: 3px 8px; border-radius: 4px; font-weight: 500; }
+  .ws-gps-no { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #991B1B; background: #FEE2E2; padding: 3px 8px; border-radius: 4px; font-weight: 500; }
+  .ws-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .ws-action-btns { display: flex; gap: 4px; }
+  .ws-action-btns button { padding: 5px 10px; height: auto; font-size: 11px; }
+
+  /* 상세 페이지 */
+  .ws-detail-grid { display: grid; grid-template-columns: 1fr 380px; gap: 16px; }
+  .ws-info-row { display: grid; grid-template-columns: 120px 1fr; padding: 8px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); font-size: 13px; }
+  .ws-info-row:last-child { border-bottom: none; }
+  .ws-info-label { color: #6B7684; }
+  .ws-info-val { font-weight: 500; }
+  .ws-section-title { font-size: 14px; font-weight: 500; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+  .ws-gps-toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .ws-gps-toolbar button { padding: 0 14px; height: 36px; font-size: 12px; }
+  .ws-stat-row { display: flex; gap: 16px; font-size: 12px; color: #6B7684; padding: 8px 0; }
+  .ws-stat-row strong { color: #111827; font-weight: 500; margin-right: 4px; }
+  .ws-mini-tag { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: #DBEAFE; color: #1E40AF; font-weight: 500; display: inline-block; }
+  .ws-warn-box { background: #FEF3C7; color: #92400E; font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; border-left: 3px solid #F59E0B; }
+
+  /* 기본 버튼 강조 */
+  .btn-primary { background: #2563EB !important; color: #fff !important; border-color: #2563EB !important; }
+  .btn-primary:hover:not(:disabled) { background: #1E40AF !important; }
+  .btn-danger { color: #EF4444; }
+
+  #gps-sim-badge.inside { background: #DCFCE7 !important; color: #166534; }
+  #gps-sim-badge.outside { background: #FEE2E2 !important; color: #991B1B; }
+
+  .footer-info { padding: 20px 32px; border-top: 0.5px solid rgba(0,0,0,0.08); font-size: 11px; color: #6B7684; background: #FAFBFC; }
+  .footer-info code { background: #F1F3F5; padding: 1px 6px; border-radius: 3px; font-family: 'SF Mono', Monaco, monospace; font-size: 11px; }
+
+  /* 카카오맵 로딩 실패 시 */
+  .map-error { display: flex; align-items: center; justify-content: center; height: 100%; background: #FEF3C7; color: #92400E; font-size: 13px; text-align: center; padding: 20px; border-radius: 8px; }
+</style>
+</head>
+<body>
+
+<div class="jf-layout">
+  <aside class="jf-sidebar">
+    <div class="jf-brand">
+      <div class="jf-brand-name">잡핏 JobFit</div>
+      <div class="jf-brand-sub">관리자 웹 · 프로토타입 v0.3</div>
+    </div>
+    <div class="jf-nav-item" data-page="home"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7l6-5 6 5v7a1 1 0 01-1 1H3a1 1 0 01-1-1V7z"/></svg>홈</div>
+    <div class="jf-nav-item" data-page="jobs"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="11" rx="1"/><path d="M5 1v3M11 1v3M2 7h12"/></svg>공고 관리</div>
+    <div class="jf-nav-item" data-page="approval"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8l3 3 7-7"/></svg>신청 승인 <span style="margin-left:auto; background:#EF4444; color:#fff; font-size:10px; padding:1px 6px; border-radius:8px;">7</span></div>
+    <div class="jf-nav-item" data-page="workers"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/></svg>근무자 관리</div>
+    <div class="jf-nav-item" data-page="control"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg>관제 시스템</div>
+    <div class="jf-nav-item active" data-page="worksite"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1l6 3v5c0 3.5-3 6-6 6s-6-2.5-6-6V4l6-3z"/></svg>근무지 관리</div>
+    <div class="jf-nav-item" data-page="negotiation"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M6 8l1.5 1.5L11 6"/></svg>협의대상</div>
+    <div class="jf-nav-item" data-page="points"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v6M6 7h4M6 9h4"/></svg>포인트</div>
+    <div class="jf-nav-item" data-page="inquiry"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v9H5l-3 3V3z"/></svg>문의</div>
+    <div class="jf-nav-item" data-page="accounts"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="2.5"/><path d="M3 13c0-2.5 2-4 5-4s5 1.5 5 4"/><circle cx="12" cy="4" r="1.5" fill="currentColor"/></svg>관리자 계정</div>
+    <div class="jf-user">
+      <div><span class="jf-user-name">테스트</span><span class="jf-user-badge">마스터</span></div>
+    </div>
+  </aside>
+
+  <main class="jf-main" id="jf-main-content"></main>
+</div>
+
+<div class="footer-info">
+  <strong style="color: #111827;">잡핏 관리자 웹 · 근무지 관리 페이지 프로토타입 v0.3.1</strong> · 
+  지도: <code>Kakao Maps JavaScript API</code> (services · drawing 라이브러리) · 
+  주소·장소 검색: <code>kakao.maps.services.Places + Geocoder</code> · 
+  GPS 영역 판정: <code>Ray Casting (Point-in-Polygon)</code> · 
+  실제 앱에서는 <code>kakao_map_plugin</code>과 동일 로직 사용
+</div>
+
+<script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=37dbcee3a8a1a54998b9172ea8afb7a8&libraries=services,drawing"></script>
+<script>
+(function(){
+  const main = document.getElementById('jf-main-content');
+  const navItems = document.querySelectorAll('.jf-nav-item');
+
+  const worksites = {
+    cj: {
+      name: 'CJ대한통운', count: 6,
+      sites: [
+        { id: 'gonjiam',  name: '곤지암 MegaHub', addr: '경기 광주시 도척면 진우리 산10', lat: 37.3575, lng: 127.2600, bus: true, wage: 110000, holiday: '주 4일 만근', gps: true,  vertices: 6, area: 52400, contact: '010-1234-5678', manager1: '김관리', manager2: '이담당', polygon: [[37.3570,127.2590],[37.3582,127.2592],[37.3585,127.2610],[37.3578,127.2614],[37.3565,127.2605],[37.3568,127.2595]], activeJobs: 2 },
+        { id: 'yongin',   name: '용인 Hub',       addr: '경기 용인시 처인구 양지면', lat: 37.2636, lng: 127.0286, bus: true, wage: 105000, holiday: '주 4일 만근', gps: true,  vertices: 5, area: 38100, contact: '010-2345-6789', manager1: '김관리', manager2: '박담당', polygon: [[37.2630,127.0278],[37.2642,127.0280],[37.2644,127.0294],[37.2634,127.0296],[37.2628,127.0286]], activeJobs: 1 },
+        { id: 'gunpo_a',  name: '군포 Hub_A',     addr: '경기 군포시 부곡동', lat: 37.3547, lng: 126.9386, bus: true, wage: 100000, holiday: '주 4일 만근', gps: true,  vertices: 4, area: 22800, contact: '010-3456-7890', manager1: '최관리', manager2: '김담당', polygon: [[37.3542,126.9380],[37.3552,126.9380],[37.3552,126.9392],[37.3542,126.9392]], activeJobs: 1 },
+        { id: 'gunpo_b',  name: '군포 Hub_B',     addr: '경기 군포시 금정동', lat: 37.3617, lng: 126.9430, bus: true, wage: 100000, holiday: '주 4일 만근', gps: false, vertices: 0, area: 0, contact: '010-4567-8901', manager1: '최관리', manager2: '이담당', polygon: [], activeJobs: 0 },
+        { id: 'icheon',   name: '이천 MpHub',     addr: '경기 이천시 부발읍', lat: 37.2896, lng: 127.4682, bus: true, wage: 105000, holiday: '주 4일 만근', gps: true,  vertices: 5, area: 45200, contact: '010-5678-9012', manager1: '김관리', manager2: '정담당', polygon: [[37.2890,127.4675],[37.2902,127.4676],[37.2905,127.4688],[37.2894,127.4692],[37.2888,127.4684]], activeJobs: 1 },
+        { id: 'anseong',  name: '안성 MpHub',     addr: '경기 안성시 공도읍', lat: 37.0072, lng: 127.1875, bus: true, wage: 105000, holiday: '주 4일 만근', gps: true,  vertices: 6, area: 48900, contact: '010-6789-0123', manager1: '최관리', manager2: '정담당', polygon: [[37.0066,127.1868],[37.0076,127.1865],[37.0080,127.1876],[37.0078,127.1884],[37.0068,127.1882],[37.0064,127.1875]], activeJobs: 2 },
+      ]
+    },
+    lotte: {
+      name: '롯데택배', count: 3,
+      sites: [
+        { id: 'jincheon', name: '진천 MegaHub', addr: '충북 진천군 이월면', lat: 36.9078, lng: 127.4322, bus: true, wage: 115000, holiday: '주 4일 만근', gps: true,  vertices: 6, area: 61200, contact: '010-7890-1234', manager1: '박관리', manager2: '김담당', polygon: [[36.9072,127.4314],[36.9084,127.4313],[36.9087,127.4324],[36.9083,127.4332],[36.9073,127.4330],[36.9070,127.4321]], activeJobs: 1 },
+        { id: 'namyangju',name: '남양주 Hub',   addr: '경기 남양주시 화도읍', lat: 37.6364, lng: 127.2074, bus: true, wage: 110000, holiday: '주 4일 만근', gps: false, vertices: 0, area: 0, contact: '010-8901-2345', manager1: '박관리', manager2: '이담당', polygon: [], activeJobs: 0 },
+        { id: 'gunpo_l',  name: '군포 Hub',     addr: '경기 군포시 당정동', lat: 37.3489, lng: 126.9428, bus: true, wage: 105000, holiday: '주 4일 만근', gps: true,  vertices: 4, area: 24600, contact: '010-9012-3456', manager1: '박관리', manager2: '박담당', polygon: [[37.3484,126.9420],[37.3494,126.9422],[37.3494,126.9434],[37.3484,126.9434]], activeJobs: 1 },
+      ]
+    },
+    convention: {
+      name: '컨벤션', count: 2,
+      sites: [
+        { id: 'ltower', name: 'L타워 웨딩홀', addr: '서울 강남구 테헤란로', lat: 37.5010, lng: 127.0396, bus: false, wage: 120000, holiday: '주 2일 출근', gps: true,  vertices: 5, area: 4200, contact: '010-0123-4567', manager1: '김관리', manager2: '한담당', polygon: [[37.5008,127.0393],[37.5013,127.0393],[37.5013,127.0400],[37.5008,127.0400],[37.5006,127.0397]], activeJobs: 1 },
+        { id: 'whills', name: 'W힐스 웨딩홀', addr: '서울 서초구 서초대로', lat: 37.4903, lng: 127.0167, bus: false, wage: 125000, holiday: '주 2일 출근', gps: true,  vertices: 4, area: 3800, contact: '010-1234-0987', manager1: '김관리', manager2: '한담당', polygon: [[37.4901,127.0164],[37.4906,127.0165],[37.4906,127.0171],[37.4900,127.0170]], activeJobs: 1 },
+      ]
+    }
+  };
+
+  function findSite(siteId) {
+    for (const key in worksites) {
+      const s = worksites[key].sites.find(s => s.id === siteId);
+      if (s) return { site: s, partner: worksites[key].name, partnerKey: key };
+    }
+    return null;
+  }
+
+  // 카카오맵의 getArea() 함수는 지구 곡률을 반영한 면적을 반환함
+  // fallback용 수동 계산 (Spherical Excess Formula)
+  function computeArea(latlngs) {
+    if (latlngs.length < 3) return 0;
+    let area = 0;
+    const R = 6378137;
+    for (let i = 0, len = latlngs.length; i < len; i++) {
+      const p1 = latlngs[i];
+      const p2 = latlngs[(i + 1) % len];
+      const lat1 = p1.lat !== undefined ? (typeof p1.lat === 'function' ? p1.lat() : p1.lat) : p1[0];
+      const lng1 = p1.lng !== undefined ? (typeof p1.lng === 'function' ? p1.lng() : p1.lng) : (p1.La !== undefined ? p1.La : p1[1]);
+      const lat2 = p2.lat !== undefined ? (typeof p2.lat === 'function' ? p2.lat() : p2.lat) : p2[0];
+      const lng2 = p2.lng !== undefined ? (typeof p2.lng === 'function' ? p2.lng() : p2.lng) : (p2.La !== undefined ? p2.La : p2[1]);
+      area += (lng2 - lng1) * Math.PI / 180 *
+              (2 + Math.sin(lat1 * Math.PI / 180) + Math.sin(lat2 * Math.PI / 180));
+    }
+    return Math.abs(area * R * R / 2);
+  }
+
+  function pointInPolygon(lat, lng, vs) {
+    let inside = false;
+    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+      const xi = vs[i][1], yi = vs[i][0];
+      const xj = vs[j][1], yj = vs[j][0];
+      const intersect = ((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  function renderList() {
+    const total = Object.values(worksites).reduce((sum, p) => sum + p.sites.length, 0);
+    const noGps = Object.values(worksites).flatMap(p => p.sites).filter(s => !s.gps).length;
+    const active = Object.values(worksites).flatMap(p => p.sites).filter(s => s.activeJobs > 0).length;
+
+    let html = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">근무지 관리</div>
+          <div class="jf-subtitle">마스터 전용 · 파트너사 · 근무지 계층 관리</div>
+        </div>
+        <div class="ws-actions">
+          <button onclick="alert('엑셀 업/다운로드는 추후 단계에서 구현')">엑셀</button>
+          <button onclick="alert('파트너사 추가 폼은 추후 단계에서 구현')">+ 파트너사 추가</button>
+          <button class="btn-primary" onclick="alert('근무지 추가 단계별 폼은 추후 단계에서 구현')">+ 근무지 추가</button>
+        </div>
+      </div>
+
+      <div class="jf-metric-grid">
+        <div class="jf-metric"><div class="jf-metric-label">전체 근무지</div><div class="jf-metric-value">${total}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 곳</span></div><div class="jf-metric-hint">3개 파트너사</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">GPS 영역 미설정</div><div class="jf-metric-value" style="color:${noGps>0?'#EF4444':'#16A34A'};">${noGps}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 곳</span></div><div class="jf-metric-hint" style="color:${noGps>0?'#EF4444':'#16A34A'};">${noGps>0?'공고 등록 불가 상태':'모두 설정 완료'}</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">오늘 진행 중</div><div class="jf-metric-value">${active}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 곳</span></div><div class="jf-metric-hint">공고 활성화된 근무지</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">통근버스 운영</div><div class="jf-metric-value">${Object.values(worksites).flatMap(p=>p.sites).filter(s=>s.bus).length}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 곳</span></div><div class="jf-metric-hint">택배 허브 전체</div></div>
+      </div>
+    `;
+
+    if (noGps > 0) {
+      html += `<div class="ws-warn-box">⚠ GPS 영역이 설정되지 않은 근무지 ${noGps}곳이 있습니다. 해당 근무지는 공고 등록 및 알바생 출근 체크가 불가능하니 먼저 영역을 설정해주세요.</div>`;
+    }
+
+    Object.keys(worksites).forEach((key, idx) => {
+      const p = worksites[key];
+      const openClass = idx === 0 ? 'open' : '';
+      html += `
+        <div class="ws-partner ${openClass}" data-partner="${key}">
+          <div class="ws-partner-head" onclick="window.__wsToggle('${key}')">
+            <div class="ws-partner-title">
+              <span class="ws-chevron">▶</span>
+              <span>${p.name}</span>
+              <span class="ws-partner-count">${p.sites.length}곳</span>
+            </div>
+            <div class="ws-actions">
+              <button onclick="event.stopPropagation(); alert('${p.name} 파트너사 설정은 추후 구현')" style="font-size:11px; padding:5px 10px; height:auto;">파트너사 설정</button>
+            </div>
+          </div>
+          <div class="ws-partner-body">
+      `;
+      p.sites.forEach(s => {
+        const busLabel = s.bus ? '🚌 운영' : '─';
+        const gpsLabel = s.gps 
+          ? `<span class="ws-gps-ok"><span class="ws-dot" style="background:#22C55E;"></span>설정 완료</span>`
+          : `<span class="ws-gps-no"><span class="ws-dot" style="background:#EF4444;"></span>미설정</span>`;
+        html += `
+          <div class="ws-site-row" onclick="window.__wsDetail('${s.id}')">
+            <div>
+              <div class="ws-site-name">${s.name}</div>
+              <div class="ws-site-sub">${s.addr}</div>
+            </div>
+            <div>${gpsLabel}</div>
+            <div class="ws-col-muted">${s.contact}</div>
+            <div class="ws-col-muted">${busLabel}</div>
+            <div class="ws-col-muted">${s.activeJobs > 0 ? '진행 중 ' + s.activeJobs + '건' : '-'}</div>
+            <div class="ws-action-btns" onclick="event.stopPropagation()">
+              <button onclick="window.__wsGps('${s.id}')">GPS 편집</button>
+              <button onclick="window.__wsDetail('${s.id}')">상세 →</button>
+            </div>
+          </div>
+        `;
+      });
+      html += `</div></div>`;
+    });
+
+    main.innerHTML = html;
+  }
+
+  function renderDetail(siteId) {
+    const found = findSite(siteId);
+    if (!found) return;
+    const s = found.site;
+
+    main.innerHTML = `
+      <span class="jf-back" onclick="window.__wsBack()">← 근무지 목록으로</span>
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">${s.name} <span class="ws-mini-tag" style="vertical-align: middle;">${found.partner}</span></div>
+          <div class="jf-subtitle">${s.addr}</div>
+        </div>
+        <div class="ws-actions">
+          <button onclick="window.__wsGps('${s.id}')">GPS 영역 편집</button>
+          <button onclick="alert('정보 수정 폼은 추후 구현')">정보 수정</button>
+          <button onclick="alert('${s.name}을 삭제하려면 먼저 진행 중인 공고를 모두 종료해야 합니다.')" class="btn-danger">삭제</button>
+        </div>
+      </div>
+
+      <div class="ws-detail-grid">
+        <div>
+          <div class="jf-panel" style="margin-bottom: 12px;">
+            <div class="ws-section-title">기본 정보</div>
+            <div class="ws-info-row"><div class="ws-info-label">파트너사</div><div class="ws-info-val">${found.partner}</div></div>
+            <div class="ws-info-row"><div class="ws-info-label">근무지명</div><div class="ws-info-val">${s.name}</div></div>
+            <div class="ws-info-row"><div class="ws-info-label">주소</div><div class="ws-info-val">${s.addr}</div></div>
+            <div class="ws-info-row"><div class="ws-info-label">GPS 좌표</div><div class="ws-info-val" style="font-family: 'SF Mono', Monaco, monospace; font-size: 12px;">${s.lat}, ${s.lng}</div></div>
+          </div>
+
+          <div class="jf-panel" style="margin-bottom: 12px;">
+            <div class="ws-section-title">담당자 연락처 <span class="ws-mini-tag">알바생 공개</span></div>
+            <div class="ws-info-row"><div class="ws-info-label">근무지 대표</div><div class="ws-info-val">${s.contact}</div></div>
+            <div class="ws-info-row"><div class="ws-info-label">관리자 1등급</div><div class="ws-info-val">${s.manager1}</div></div>
+            <div class="ws-info-row"><div class="ws-info-label">관리자 2등급</div><div class="ws-info-val">${s.manager2}</div></div>
+          </div>
+
+          <div class="jf-panel" style="margin-bottom: 12px;">
+            <div class="ws-section-title">근무 조건</div>
+            <div class="ws-info-row"><div class="ws-info-label">기본 일급</div><div class="ws-info-val">${s.wage.toLocaleString()}원</div></div>
+            <div class="ws-info-row"><div class="ws-info-label">주휴수당</div><div class="ws-info-val">${s.holiday} 시 지급</div></div>
+            <div class="ws-info-row"><div class="ws-info-label">통근버스</div><div class="ws-info-val">${s.bus ? '운영 중' : '없음'}</div></div>
+            <div class="ws-info-row"><div class="ws-info-label">주 근무일 제한</div><div class="ws-info-val">${found.partnerKey==='convention'?'제한 없음':'파트너사 기준 주 4일'}</div></div>
+          </div>
+
+          <div class="jf-panel">
+            <div class="ws-section-title">이력 & 통계</div>
+            <div class="ws-stat-row">
+              <div><strong>${s.activeJobs}</strong>건 진행 중</div>
+              <div><strong>${Math.round(Math.random()*30+20)}</strong>건 이번 달</div>
+              <div>평균 출근율 <strong>${Math.round(Math.random()*10+85)}%</strong></div>
+              <div>No-show <strong>${Math.round(Math.random()*5)}</strong>명</div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="jf-panel" style="margin-bottom: 12px;">
+            <div class="ws-section-title">GPS 영역 ${s.gps ? '<span class="ws-gps-ok"><span class="ws-dot" style="background:#22C55E;"></span>설정됨</span>' : '<span class="ws-gps-no"><span class="ws-dot" style="background:#EF4444;"></span>미설정</span>'}</div>
+            <div id="ws-detail-map" style="width: 100%; height: 260px; border-radius: 8px; border: 0.5px solid rgba(0,0,0,0.1); margin-bottom: 10px; overflow: hidden;"></div>
+            ${s.gps ? `<div class="ws-stat-row" style="padding: 4px 0;"><div>꼭짓점 <strong>${s.vertices}개</strong></div><div>면적 <strong>${s.area.toLocaleString()} ㎡</strong></div></div>` : '<div style="font-size: 12px; color: #6B7684; padding: 4px 0;">영역이 설정되지 않아 공고 등록이 불가합니다.</div>'}
+            <button onclick="window.__wsGps('${s.id}')" class="btn-primary" style="width: 100%; margin-top: 10px; height: 38px; font-size: 13px;">${s.gps ? '영역 편집' : '영역 설정하기'}</button>
+          </div>
+
+          <div class="jf-panel">
+            <div class="ws-section-title">연결된 템플릿</div>
+            <div style="font-size: 12px; color: #6B7684; padding: 6px 0;">
+              근로계약서<br/><span style="color: #111827; font-weight: 500; font-size: 13px;">${found.partnerKey === 'convention' ? '웨딩홀 기본 계약서' : '택배 허브 표준 계약서'}</span>
+            </div>
+            <div style="font-size: 12px; color: #6B7684; padding: 6px 0;">
+              안전교육<br/><span style="color: #111827; font-weight: 500; font-size: 13px;">${found.partnerKey === 'convention' ? '웨딩홀 안전수칙' : '물류센터 안전교육'}</span>
+            </div>
+            <button onclick="alert('템플릿 관리 페이지는 공고 관리 페이지에 구현될 예정')" style="width: 100%; margin-top: 10px; font-size: 12px; height: 34px;">템플릿 관리</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    setTimeout(() => {
+      const mapEl = document.getElementById('ws-detail-map');
+      if (!mapEl) return;
+      if (typeof kakao === 'undefined' || !kakao.maps) {
+        mapEl.innerHTML = '<div class="map-error">카카오맵 API 로딩 실패<br>도메인 설정을 확인해주세요</div>';
+        return;
+      }
+      kakao.maps.load(() => {
+        const map = new kakao.maps.Map(mapEl, {
+          center: new kakao.maps.LatLng(s.lat, s.lng),
+          level: 3
+        });
+        if (s.gps && s.polygon.length > 0) {
+          const path = s.polygon.map(p => new kakao.maps.LatLng(p[0], p[1]));
+          new kakao.maps.Polygon({
+            map: map,
+            path: path,
+            strokeWeight: 2,
+            strokeColor: '#1B3A6B',
+            strokeOpacity: 1,
+            fillColor: '#2563EB',
+            fillOpacity: 0.2
+          });
+          const bounds = new kakao.maps.LatLngBounds();
+          path.forEach(p => bounds.extend(p));
+          map.setBounds(bounds);
+        } else {
+          new kakao.maps.Marker({
+            position: new kakao.maps.LatLng(s.lat, s.lng),
+            map: map
+          });
+        }
+      });
+    }, 100);
+  }
+
+  function renderGpsEditor(siteId) {
+    const found = findSite(siteId);
+    if (!found) return;
+    const s = found.site;
+
+    main.innerHTML = `
+      <span class="jf-back" onclick="window.__wsDetail('${s.id}')">← ${s.name} 상세로</span>
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">GPS 영역 설정 <span class="ws-mini-tag" style="vertical-align: middle;">${s.name}</span></div>
+          <div class="jf-subtitle">지도를 클릭해 꼭짓점을 찍어 영역을 그립니다. 알바생은 이 영역 안에서만 출근 버튼을 누를 수 있습니다.</div>
+        </div>
+      </div>
+
+      <div class="ws-gps-toolbar">
+        <button id="gps-finish" disabled>영역 완성</button>
+        <button id="gps-clear">초기화</button>
+        <button id="gps-simulate" disabled>출근 시뮬레이션</button>
+        <button id="gps-save" disabled class="btn-primary">저장</button>
+        <span id="gps-sim-badge" style="margin-left: auto; align-self: center; font-size: 12px; padding: 4px 10px; border-radius: 6px; background: #F3F4F6; color: #6B7684;">준비 중</span>
+      </div>
+
+      <div style="position: relative;">
+        <div id="gps-map" style="width: 100%; height: 480px; border-radius: 8px; border: 0.5px solid rgba(0,0,0,0.1); overflow: hidden;"></div>
+
+        <div id="addr-search-box" style="position: absolute; top: 10px; right: 10px; width: 300px; background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.15); z-index: 10; overflow: hidden;">
+          <div id="addr-header" style="padding: 8px 12px; background: #1B3A6B; color: #fff; font-size: 12px; font-weight: 500; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
+            <span>🔍 주소·장소 검색</span>
+            <span id="addr-toggle" style="font-size: 16px; line-height: 1;">−</span>
+          </div>
+          <div id="addr-body">
+            <div style="padding: 10px; border-bottom: 0.5px solid rgba(0,0,0,0.08);">
+              <div style="display: flex; gap: 6px;">
+                <input id="addr-input" type="text" placeholder="주소 또는 건물명 검색" style="flex: 1; height: 36px; font-size: 13px;" />
+                <button id="addr-btn" style="padding: 0 14px; height: 36px; font-size: 12px;" class="btn-primary">검색</button>
+              </div>
+              <div style="font-size: 11px; color: #6B7684; margin-top: 6px;">예: 경기 광주시 도척면, 테헤란로 152, CJ대한통운 곤지암</div>
+            </div>
+            <div id="addr-results" style="max-height: 300px; overflow-y: auto; display: none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px;">
+        <div class="jf-metric"><div class="jf-metric-label">꼭짓점</div><div class="jf-metric-value" id="gps-vcount">${s.gps ? s.vertices : 0}</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">면적 (㎡)</div><div class="jf-metric-value" id="gps-area">${s.gps ? s.area.toLocaleString() : '—'}</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">현재 모드</div><div class="jf-metric-value" id="gps-mode" style="font-size: 15px;">${s.gps ? '잠금' : '편집'}</div></div>
+      </div>
+    `;
+
+    setTimeout(() => {
+      const mapEl = document.getElementById('gps-map');
+      if (typeof kakao === 'undefined' || !kakao.maps) {
+        mapEl.innerHTML = '<div class="map-error">카카오맵 API 로딩 실패<br>도메인 설정을 확인해주세요<br>(현재 접속 도메인이 카카오 JS SDK 등록 도메인에 포함되어야 합니다)</div>';
+        return;
+      }
+
+      kakao.maps.load(() => {
+        const map = new kakao.maps.Map(mapEl, {
+          center: new kakao.maps.LatLng(s.lat, s.lng),
+          level: 2
+        });
+
+        let vertices = s.polygon.map(p => [p[0], p[1]]);
+        let markers = [];
+        let polyline = null;
+        let polygon = null;
+        let worker = null;
+        let mode = vertices.length >= 3 ? 'locked' : 'edit';
+
+        const btnFinish = document.getElementById('gps-finish');
+        const btnClear = document.getElementById('gps-clear');
+        const btnSim = document.getElementById('gps-simulate');
+        const btnSave = document.getElementById('gps-save');
+        const modeEl = document.getElementById('gps-mode');
+        const badge = document.getElementById('gps-sim-badge');
+
+        function redraw() {
+          markers.forEach(m => m.setMap(null));
+          markers = [];
+          if (polyline) { polyline.setMap(null); polyline = null; }
+          if (polygon) { polygon.setMap(null); polygon = null; }
+
+          const path = vertices.map(v => new kakao.maps.LatLng(v[0], v[1]));
+
+          if (mode === 'edit') {
+            vertices.forEach(v => {
+              const m = new kakao.maps.CustomOverlay({
+                position: new kakao.maps.LatLng(v[0], v[1]),
+                content: '<div style="width:12px; height:12px; background:#2563EB; border:2px solid #1B3A6B; border-radius:50%; margin:-6px 0 0 -6px;"></div>',
+                yAnchor: 0,
+                xAnchor: 0
+              });
+              m.setMap(map);
+              markers.push(m);
+            });
+            if (vertices.length >= 2) {
+              polyline = new kakao.maps.Polyline({
+                map: map,
+                path: path,
+                strokeWeight: 2,
+                strokeColor: '#2563EB',
+                strokeOpacity: 0.8,
+                strokeStyle: 'shortdash'
+              });
+            }
+            modeEl.textContent = '편집';
+          } else if (mode === 'locked' || mode === 'simulate') {
+            polygon = new kakao.maps.Polygon({
+              map: map,
+              path: path,
+              strokeWeight: 2,
+              strokeColor: '#1B3A6B',
+              strokeOpacity: 1,
+              fillColor: '#2563EB',
+              fillOpacity: 0.2
+            });
+            modeEl.textContent = mode === 'simulate' ? '시뮬레이션' : '잠금';
+          }
+
+          btnFinish.disabled = !(mode === 'edit' && vertices.length >= 3);
+          btnSim.disabled = mode === 'edit';
+          btnSave.disabled = mode === 'edit';
+          document.getElementById('gps-vcount').textContent = vertices.length;
+          document.getElementById('gps-area').textContent = vertices.length >= 3 ? Math.round(computeArea(vertices)).toLocaleString() : '—';
+        }
+
+        kakao.maps.event.addListener(map, 'click', (e) => {
+          const lat = e.latLng.getLat();
+          const lng = e.latLng.getLng();
+          if (mode === 'edit') {
+            vertices.push([lat, lng]);
+            redraw();
+          } else if (mode === 'simulate') {
+            if (worker) worker.setMap(null);
+            const inside = pointInPolygon(lat, lng, vertices);
+            const color = inside ? '#22C55E' : '#EF4444';
+            worker = new kakao.maps.CustomOverlay({
+              position: e.latLng,
+              content: '<div style="width:20px; height:20px; background:'+color+'; border:3px solid #fff; border-radius:50%; margin:-10px 0 0 -10px; box-shadow: 0 2px 8px rgba(0,0,0,0.3);"></div>',
+              yAnchor: 0,
+              xAnchor: 0
+            });
+            worker.setMap(map);
+            badge.textContent = inside ? '✓ 출근 가능 (영역 안)' : '✕ 출근 불가 (영역 밖)';
+            badge.className = inside ? 'inside' : 'outside';
+          }
+        });
+
+        btnFinish.addEventListener('click', () => {
+          mode = 'locked';
+          redraw();
+          if (polygon) {
+            const bounds = new kakao.maps.LatLngBounds();
+            vertices.forEach(v => bounds.extend(new kakao.maps.LatLng(v[0], v[1])));
+            map.setBounds(bounds);
+          }
+        });
+        btnClear.addEventListener('click', () => {
+          vertices = [];
+          mode = 'edit';
+          if (worker) { worker.setMap(null); worker = null; }
+          badge.textContent = '준비 중';
+          badge.className = '';
+          badge.style.background = '#F3F4F6';
+          badge.style.color = '#6B7684';
+          redraw();
+        });
+        btnSim.addEventListener('click', () => {
+          mode = 'simulate';
+          btnSim.textContent = '시뮬레이션 중';
+          badge.textContent = '지도 클릭으로 알바생 위치 테스트';
+          badge.style.background = '#DBEAFE';
+          badge.style.color = '#1E40AF';
+          redraw();
+        });
+        btnSave.addEventListener('click', () => {
+          s.polygon = vertices.map(v => [v[0], v[1]]);
+          s.vertices = vertices.length;
+          s.area = Math.round(computeArea(vertices));
+          s.gps = true;
+          alert(s.name + ' GPS 영역이 저장되었습니다.\n꼭짓점 ' + s.vertices + '개 / 면적 ' + s.area.toLocaleString() + '㎡\n\n실제 앱에서는 Supabase의 worksites 테이블 polygon 컬럼(JSONB)에 저장됩니다.');
+          renderDetail(s.id);
+        });
+
+        // 주소 검색 기능
+        const addrInput = document.getElementById('addr-input');
+        const addrBtn = document.getElementById('addr-btn');
+        const addrResults = document.getElementById('addr-results');
+        const ps = new kakao.maps.services.Places();
+        const geocoder = new kakao.maps.services.Geocoder();
+
+        function searchAddress() {
+          const keyword = addrInput.value.trim();
+          if (!keyword) return;
+
+          addrResults.innerHTML = '<div style="padding: 14px; font-size: 12px; color: #6B7684; text-align: center;">검색 중...</div>';
+          addrResults.style.display = 'block';
+
+          ps.keywordSearch(keyword, (places, placesStatus) => {
+            let resultsHtml = '';
+            let hasResults = false;
+
+            if (placesStatus === kakao.maps.services.Status.OK && places.length > 0) {
+              hasResults = true;
+              resultsHtml += '<div style="padding: 8px 12px; font-size: 11px; font-weight: 500; color: #6B7684; background: #F9FAFB;">장소 검색 결과</div>';
+              places.slice(0, 5).forEach(p => {
+                resultsHtml += `
+                  <div class="addr-item" data-lat="${p.y}" data-lng="${p.x}" style="padding: 10px 12px; cursor: pointer; border-bottom: 0.5px solid rgba(0,0,0,0.06); font-size: 12px;">
+                    <div style="font-weight: 500; color: #111827; margin-bottom: 2px;">${p.place_name}</div>
+                    <div style="color: #6B7684; font-size: 11px;">${p.road_address_name || p.address_name}</div>
+                    ${p.category_group_name ? '<div style="color: #2563EB; font-size: 10px; margin-top: 2px;">' + p.category_group_name + '</div>' : ''}
+                  </div>
+                `;
+              });
+            }
+
+            geocoder.addressSearch(keyword, (addresses, addrStatus) => {
+              if (addrStatus === kakao.maps.services.Status.OK && addresses.length > 0) {
+                hasResults = true;
+                resultsHtml += '<div style="padding: 8px 12px; font-size: 11px; font-weight: 500; color: #6B7684; background: #F9FAFB;">주소 검색 결과</div>';
+                addresses.slice(0, 5).forEach(a => {
+                  resultsHtml += `
+                    <div class="addr-item" data-lat="${a.y}" data-lng="${a.x}" style="padding: 10px 12px; cursor: pointer; border-bottom: 0.5px solid rgba(0,0,0,0.06); font-size: 12px;">
+                      <div style="font-weight: 500; color: #111827; margin-bottom: 2px;">${a.address_name}</div>
+                      ${a.road_address ? '<div style="color: #6B7684; font-size: 11px;">[도로명] ' + a.road_address.address_name + '</div>' : ''}
+                    </div>
+                  `;
+                });
+              }
+
+              if (!hasResults) {
+                resultsHtml = '<div style="padding: 14px; font-size: 12px; color: #6B7684; text-align: center;">검색 결과가 없습니다.</div>';
+              }
+
+              addrResults.innerHTML = resultsHtml;
+
+              document.querySelectorAll('.addr-item').forEach(item => {
+                item.addEventListener('click', () => {
+                  const lat = parseFloat(item.getAttribute('data-lat'));
+                  const lng = parseFloat(item.getAttribute('data-lng'));
+                  map.setCenter(new kakao.maps.LatLng(lat, lng));
+                  map.setLevel(2);
+                  addrResults.style.display = 'none';
+                  addrInput.value = '';
+                });
+                item.addEventListener('mouseenter', () => item.style.background = '#F5F7FA');
+                item.addEventListener('mouseleave', () => item.style.background = '');
+              });
+            });
+          });
+        }
+
+        addrBtn.addEventListener('click', searchAddress);
+        addrInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); searchAddress(); }
+        });
+        document.addEventListener('click', (e) => {
+          const box = document.getElementById('addr-search-box');
+          if (box && !box.contains(e.target)) {
+            addrResults.style.display = 'none';
+          }
+        });
+
+        // 주소 검색 박스 접기/펼치기
+        const addrHeader = document.getElementById('addr-header');
+        const addrBody = document.getElementById('addr-body');
+        const addrToggle = document.getElementById('addr-toggle');
+        let addrCollapsed = false;
+        addrHeader.addEventListener('click', () => {
+          addrCollapsed = !addrCollapsed;
+          addrBody.style.display = addrCollapsed ? 'none' : 'block';
+          addrToggle.textContent = addrCollapsed ? '+' : '−';
+        });
+
+        redraw();
+      });
+    }, 100);
+  }
+
+  window.__wsToggle = function(key) {
+    const el = document.querySelector('.ws-partner[data-partner="' + key + '"]');
+    if (el) el.classList.toggle('open');
+  };
+  window.__wsDetail = function(id) { renderDetail(id); };
+  window.__wsGps = function(id) { renderGpsEditor(id); };
+  window.__wsBack = function() { renderList(); };
+
+  navItems.forEach(item => {
+    item.addEventListener('click', () => {
+      const page = item.getAttribute('data-page');
+      if (page !== 'worksite') {
+        alert(pageNameFor(page) + ' 페이지는 아직 구현되지 않았습니다. 근무지 관리 페이지를 먼저 확인해주세요.');
+        return;
+      }
+      navItems.forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+      renderList();
+    });
+  });
+
+  function pageNameFor(page) {
+    const names = { home: '홈', jobs: '공고 관리', approval: '신청 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정' };
+    return names[page] || '';
+  }
+
+  renderList();
+})();
+</script>
+</body>
+</html>
