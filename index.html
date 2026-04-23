@@ -731,8 +731,8 @@
         </div>
         <div class="ws-actions">
           <button onclick="window.__wsGps('${s.id}')">GPS 영역 편집</button>
-          <button onclick="alert('정보 수정 폼은 추후 구현')">정보 수정</button>
-          <button onclick="alert('${s.name}을 삭제하려면 먼저 진행 중인 공고를 모두 종료해야 합니다.')" class="btn-danger">삭제</button>
+          <button onclick="window.__wsEditInfo('${s.id}')">정보 수정</button>
+          <button onclick="window.__wsDelete('${s.id}')" class="btn-danger">삭제</button>
         </div>
       </div>
 
@@ -788,7 +788,7 @@
             <div style="font-size: 12px; color: #6B7684; padding: 6px 0;">
               안전교육<br/><span style="color: #111827; font-weight: 500; font-size: 13px;">${found.partnerKey === 'convention' ? '웨딩홀 안전수칙' : '물류센터 안전교육'}</span>
             </div>
-            <button onclick="alert('템플릿 관리 페이지는 공고 관리 페이지에 구현될 예정')" style="width: 100%; margin-top: 10px; font-size: 12px; height: 34px;">템플릿 관리</button>
+            <button onclick="window.__navGoto('jobs'); setTimeout(() => window.__jobsTab('template'), 50);" style="width: 100%; margin-top: 10px; font-size: 12px; height: 34px;">템플릿 관리 →</button>
           </div>
         </div>
       </div>
@@ -2514,7 +2514,7 @@
         </div>
         <div class="ws-actions">
           <button onclick="window.__negAdd()">+ 수동 등록</button>
-          <button onclick="alert('협의대상 이력 전체 조회는 추후 구현')">등록/해제 이력</button>
+          <button onclick="renderHistory('negotiation','negotiation')">등록/해제 이력</button>
         </div>
       </div>
 
@@ -2943,7 +2943,7 @@
           <div class="jf-subtitle">대기 중인 알바생 신청을 검토하고 승인/거절합니다</div>
         </div>
         <div class="ws-actions">
-          <button onclick="alert('처리 이력 전체 보기는 추후 구현')">처리 이력</button>
+          <button onclick="renderHistory('approval','approval')">처리 이력</button>
         </div>
       </div>
 
@@ -3199,7 +3199,7 @@
               <div class="jobs-progress-bar"><div class="jobs-progress-bar-fill" style="width:${pct}%;"></div></div>
               <div class="jobs-progress-label"><span>모집 ${j.apply} / ${j.cap}명</span><span>${pct}%</span></div>
               <div class="jobs-card-foot" onclick="event.stopPropagation()">
-                <button onclick="alert('신청자 목록은 추후 구현')">신청자</button>
+                <button onclick="window.__jobsDetail('${j.id}')">신청자</button>
                 <button onclick="window.__jobEdit('${j.id}')">수정</button>
               </div>
             </div>
@@ -4165,7 +4165,8 @@
 
       <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 20px; padding-top:16px; border-top:0.5px solid rgba(0,0,0,0.08);">
         <button onclick="window.__jfCancel()">취소</button>
-        <button onclick="alert('임시저장은 추후 구현')">임시저장</button>
+        <button onclick="window.__jfDraftSave()">임시저장</button>
+        <button onclick="window.__jfDraftLoad()">임시본 불러오기</button>
         <button class="btn-primary" onclick="window.__jfSubmit()">공고 등록</button>
       </div>
     `;
@@ -4262,6 +4263,26 @@
   };
   window.__jfSlot = function(idx, key, val) {
     if (jobFormState.slots[idx]) jobFormState.slots[idx][key] = val;
+  };
+  window.__jfDraftSave = function() {
+    try {
+      localStorage.setItem('jobfit_job_draft', JSON.stringify(jobFormState));
+      alert('임시저장 완료.\n이 브라우저에서 "임시본 불러오기"로 복원 가능합니다.');
+    } catch(e) {
+      alert('저장 실패: ' + e.message);
+    }
+  };
+  window.__jfDraftLoad = function() {
+    try {
+      const raw = localStorage.getItem('jobfit_job_draft');
+      if (!raw) { alert('저장된 임시본이 없습니다.'); return; }
+      const d = JSON.parse(raw);
+      Object.assign(jobFormState, d);
+      alert('임시본을 불러왔습니다.');
+      renderJobsCreate();
+    } catch(e) {
+      alert('불러오기 실패: ' + e.message);
+    }
   };
   window.__jfCancel = function() {
     if (!confirm('작성 중인 내용이 사라집니다. 취소하시겠습니까?')) return;
@@ -4524,6 +4545,296 @@
   window.__wsBack = function() { renderList(); };
   window.__partnerAdd = function() { renderPartnerForm('add'); };
   window.__partnerEdit = function(key) { renderPartnerForm('edit', key); };
+
+  // 근무지 정보 수정 모달
+  const siteEditState = { siteId: null };
+  window.__wsEditInfo = function(siteId) {
+    const found = findSite(siteId); if (!found) return;
+    siteEditState.siteId = siteId;
+    renderSiteEditModal();
+  };
+  // 근무지 필드 세팅 (string/number/boolean 구분)
+  window.__wsSetField = function(siteId, field, val, kind) {
+    const found = findSite(siteId); if (!found) return;
+    if (kind === 'number') found.site[field] = parseInt(val) || 0;
+    else if (kind === 'bool') found.site[field] = val;
+    else found.site[field] = val;
+  };
+  window.__wsToggleBus = function(siteId, checked) {
+    const found = findSite(siteId); if (!found) return;
+    found.site.bus = checked;
+    renderSiteEditModal();
+  };
+  function renderSiteEditModal() {
+    document.querySelectorAll('.jf-modal-overlay.site-edit').forEach(el => el.remove());
+    const found = findSite(siteEditState.siteId); if (!found) return;
+    const s = found.site;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'jf-modal-overlay site-edit';
+    overlay.innerHTML = `
+      <div class="jf-modal" style="max-width: 560px;" onclick="event.stopPropagation()">
+        <div class="jf-modal-head">
+          <div class="jf-modal-title">근무지 정보 수정 <span style="font-size:12px; color:#6B7684; font-weight:400; margin-left:6px;">${found.partner}</span></div>
+          <button class="jf-modal-close" onclick="this.closest('.jf-modal-overlay').remove()">×</button>
+        </div>
+        <div class="jf-modal-body">
+          <div class="jf-form-row">
+            <div class="jf-form-label">근무지명<span class="req">*</span></div>
+            <input type="text" value="${s.name}" oninput="window.__wsSetField('${s.id}','name',this.value)" style="max-width:260px;" />
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">주소<span class="req">*</span></div>
+            <input type="text" value="${s.addr}" oninput="window.__wsSetField('${s.id}','addr',this.value)" style="max-width:360px;" />
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">GPS 좌표</div>
+            <div style="font-family:'SF Mono',Monaco,monospace; font-size:12px; color:#6B7684;">${s.lat.toFixed(6)}, ${s.lng.toFixed(6)}
+              <span class="jf-form-hint" style="display:block; margin-top:4px;">영역 수정은 "GPS 영역 편집"에서 진행</span>
+            </div>
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">기본 알바비<span class="req">*</span></div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input type="number" value="${s.wage}" step="1000" onchange="window.__wsSetField('${s.id}','wage',this.value,'number')" style="width:140px;" />
+              <span style="font-size:13px; color:#6B7684;">원 (공고 등록 시 조정 가능)</span>
+            </div>
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">주휴수당 조건</div>
+            <input type="text" value="${s.holiday}" onchange="window.__wsSetField('${s.id}','holiday',this.value)" style="max-width:260px;" />
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">통근버스</div>
+            <label class="jf-toggle">
+              <input type="checkbox" ${s.bus?'checked':''} onchange="window.__wsToggleBus('${s.id}', this.checked)">
+              <span class="jf-toggle-switch"></span>
+              <span class="jf-toggle-text">운영 중${s.bus ? '' : ' (미운영)'}</span>
+            </label>
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">대표 연락처<span class="req">*</span></div>
+            <input type="tel" value="${s.contact}" onchange="window.__wsSetField('${s.id}','contact',this.value)" style="max-width:220px;" />
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">관리자 1등급 담당</div>
+            <input type="text" value="${s.manager1 || ''}" onchange="window.__wsSetField('${s.id}','manager1',this.value)" style="max-width:220px;" />
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">관리자 2등급 담당</div>
+            <input type="text" value="${s.manager2 || ''}" onchange="window.__wsSetField('${s.id}','manager2',this.value)" style="max-width:220px;" />
+          </div>
+          <div style="display:flex; gap:8px; margin-top: 20px; padding-top:14px; border-top:0.5px solid rgba(0,0,0,0.08);">
+            <button onclick="this.closest('.jf-modal-overlay').remove()">취소</button>
+            <div style="flex:1;"></div>
+            <button class="btn-primary" onclick="window.__wsEditSave()">저장</button>
+          </div>
+        </div>
+      </div>
+    `;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  }
+  window.__wsEditSave = function() {
+    alert('근무지 정보 저장 완료.');
+    document.querySelectorAll('.jf-modal-overlay.site-edit').forEach(el => el.remove());
+    renderDetail(siteEditState.siteId);
+  };
+  window.__wsDelete = function(siteId) {
+    const found = findSite(siteId); if (!found) return;
+    const s = found.site;
+    const activeJobsCount = jobs.filter(j => j.siteId === siteId && ['open','closed','progress'].includes(jobStatus(j))).length;
+    if (activeJobsCount > 0) {
+      alert(`"${s.name}"을 삭제할 수 없습니다.\n진행 중 또는 모집 중인 공고가 ${activeJobsCount}건 있습니다.\n\n먼저 해당 공고들을 종료하거나 삭제해주세요.`);
+      return;
+    }
+    if (!confirm(`"${s.name}" 근무지를 삭제합니다.\n\n• 과거 공고/근무 이력은 유지됩니다\n• GPS 영역 데이터는 삭제됩니다\n• 이 작업은 되돌릴 수 없습니다\n\n계속하시겠습니까?`)) return;
+    // worksites에서 제거
+    const partnerKey = found.partnerKey;
+    worksites[partnerKey].sites = worksites[partnerKey].sites.filter(x => x.id !== siteId);
+    worksites[partnerKey].count = worksites[partnerKey].sites.length;
+    alert('삭제 완료.');
+    renderList();
+  };
+
+  // ───────────────────────────────────────────────────────
+  // 처리 이력 전체 보기 (신청/협의대상/포인트 통합)
+  // ───────────────────────────────────────────────────────
+  const historyState = {
+    cat: 'all',          // all / approval / negotiation / point
+    search: '',
+    dateRange: 'month',  // today / week / month / all
+    referrer: 'home',
+  };
+
+  function collectActivities() {
+    const acts = [];
+    // 신청 처리 이력
+    applications.forEach(a => {
+      if (!a.processedAt) return;
+      const w = findWorker(a.workerId);
+      const j = findJob(a.jobId);
+      if (!w || !j) return;
+      const site = findSite(j.siteId);
+      acts.push({
+        at: a.processedAt,
+        cat: 'approval',
+        icon: a.status === 'approved' ? '✓' : '✕',
+        color: a.status === 'approved' ? '#22C55E' : '#EF4444',
+        title: `${w.name} 님 신청 ${a.status === 'approved' ? '승인' : '거절'}`,
+        sub: `${site.site.name} · ${j.date} ${j.slot} ${j.start}~${j.end}${a.rejectReason ? ' · 거절 사유: ' + a.rejectReason : ''}`,
+        by: a.processedBy,
+        ref: { type: 'worker', id: w.id, name: w.name, phone: w.phone },
+      });
+    });
+    // 협의대상 등록 이력
+    negotiations.forEach(n => {
+      const reasonLabel = { auto: '경고 3회 자동', manual: '수동 등록', rematch: '재가입 매칭' }[n.reason];
+      acts.push({
+        at: n.registeredAt,
+        cat: 'negotiation',
+        icon: '⚠',
+        color: '#EF4444',
+        title: `${n.name} 협의대상 등록`,
+        sub: `${reasonLabel} · ${n.sub}`,
+        by: n.registeredBy,
+        ref: n.workerId ? { type: 'worker', id: n.workerId, name: n.name, phone: n.phone } : null,
+      });
+    });
+    // 포인트 출금/차감 이력
+    pointTxs.forEach(t => {
+      const w = findWorker(t.workerId);
+      if (!w) return;
+      if (t.type === 'withdraw' && t.processedAt) {
+        acts.push({
+          at: t.processedAt,
+          cat: 'point',
+          icon: t.status === 'done' ? '💰' : '⚠',
+          color: t.status === 'done' ? '#2563EB' : '#EF4444',
+          title: `${w.name} 님 출금 ${t.status === 'done' ? '완료' : '실패'}`,
+          sub: `${t.amount.toLocaleString()}P · ${t.bank} ${t.account}${t.failReason ? ' · 사유: ' + t.failReason : ''}`,
+          by: t.processedBy,
+          ref: { type: 'worker', id: w.id, name: w.name, phone: w.phone },
+        });
+      }
+      if (t.type === 'deduct') {
+        acts.push({
+          at: t.requestedAt,
+          cat: 'point',
+          icon: '⊖',
+          color: '#F59E0B',
+          title: `${w.name} 님 포인트 차감`,
+          sub: `${Math.abs(t.amount).toLocaleString()}P · ${t.reason}`,
+          by: t.processedBy,
+          ref: { type: 'worker', id: w.id, name: w.name, phone: w.phone },
+        });
+      }
+    });
+    // 최신순 정렬
+    return acts.sort((a, b) => b.at.localeCompare(a.at));
+  }
+
+  function renderHistory(initialCat, referrer) {
+    if (initialCat) historyState.cat = initialCat;
+    if (referrer) historyState.referrer = referrer;
+
+    const q = historyState.search.trim().toLowerCase();
+    const todayStr = TODAY;
+    const weekAgo = new Date(TODAY); weekAgo.setDate(weekAgo.getDate() - 6);
+    const weekAgoStr = weekAgo.toISOString().slice(0, 10);
+    const monthAgo = new Date(TODAY); monthAgo.setDate(monthAgo.getDate() - 29);
+    const monthAgoStr = monthAgo.toISOString().slice(0, 10);
+
+    let list = collectActivities();
+    list = list.filter(a => {
+      if (historyState.cat !== 'all' && historyState.cat !== a.cat) return false;
+      if (historyState.dateRange === 'today' && !a.at.startsWith(todayStr)) return false;
+      if (historyState.dateRange === 'week' && a.at.slice(0, 10) < weekAgoStr) return false;
+      if (historyState.dateRange === 'month' && a.at.slice(0, 10) < monthAgoStr) return false;
+      if (q && !(a.title.toLowerCase().includes(q) || a.sub.toLowerCase().includes(q) || (a.ref?.name || '').toLowerCase().includes(q))) return false;
+      return true;
+    });
+
+    const totalCount = collectActivities().length;
+    const byCat = {
+      approval: collectActivities().filter(a => a.cat === 'approval').length,
+      negotiation: collectActivities().filter(a => a.cat === 'negotiation').length,
+      point: collectActivities().filter(a => a.cat === 'point').length,
+    };
+
+    // 날짜별 그룹핑
+    const groups = {};
+    list.forEach(a => {
+      const date = a.at.slice(0, 10);
+      if (!groups[date]) groups[date] = [];
+      groups[date].push(a);
+    });
+    const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+
+    main.innerHTML = `
+      <span class="jf-back" onclick="window.__navGoto('${historyState.referrer}')">← 이전으로</span>
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">처리 이력</div>
+          <div class="jf-subtitle">신청 승인 · 협의대상 · 포인트 처리 통합 타임라인 · 총 ${totalCount}건</div>
+        </div>
+      </div>
+
+      <div class="jobs-filters">
+        <div class="jf-search"><input type="text" placeholder="이름 · 사유 · 근무지 검색" value="${historyState.search}" oninput="window.__histSearch(this.value)" /></div>
+        <div class="jobs-view-toggle">
+          <button class="${historyState.cat==='all'?'active':''}" onclick="window.__histCat('all')">전체 (${totalCount})</button>
+          <button class="${historyState.cat==='approval'?'active':''}" onclick="window.__histCat('approval')">신청 (${byCat.approval})</button>
+          <button class="${historyState.cat==='negotiation'?'active':''}" onclick="window.__histCat('negotiation')">협의대상 (${byCat.negotiation})</button>
+          <button class="${historyState.cat==='point'?'active':''}" onclick="window.__histCat('point')">포인트 (${byCat.point})</button>
+        </div>
+        <div class="jobs-view-toggle">
+          <button class="${historyState.dateRange==='today'?'active':''}" onclick="window.__histRange('today')">오늘</button>
+          <button class="${historyState.dateRange==='week'?'active':''}" onclick="window.__histRange('week')">최근 7일</button>
+          <button class="${historyState.dateRange==='month'?'active':''}" onclick="window.__histRange('month')">최근 30일</button>
+          <button class="${historyState.dateRange==='all'?'active':''}" onclick="window.__histRange('all')">전체</button>
+        </div>
+        <div style="margin-left:auto; font-size:12px; color:#6B7684; align-self:center;">${list.length}건 표시</div>
+      </div>
+
+      ${list.length === 0
+        ? `<div class="jf-placeholder"><div class="jf-placeholder-icon">📜</div><div class="jf-placeholder-title">조건에 맞는 이력이 없습니다</div><div class="jf-placeholder-desc">필터를 변경해보세요.</div></div>`
+        : sortedDates.map(date => `
+            <div class="jf-panel" style="margin-bottom: 10px;">
+              <div style="font-size: 12px; font-weight: 500; color: #6B7684; padding-bottom: 10px; border-bottom: 0.5px solid rgba(0,0,0,0.08); margin-bottom: 10px;">
+                ${date} <span style="color:#9CA3AF; font-weight:400;">(${'일월화수목금토'[new Date(date).getDay()]}) · ${groups[date].length}건</span>
+              </div>
+              <div class="tl" style="padding-left: 18px;">
+                ${groups[date].map(a => `
+                  <div class="tl-item" style="cursor:${a.ref ? 'pointer' : 'default'};" ${a.ref ? `onclick="window.__histGoRef('${a.ref.type}','${a.ref.id}')"` : ''}>
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+                      <div style="flex:1;">
+                        <div class="tl-title" style="display:flex; align-items:center; gap:6px;">
+                          <span style="color:${a.color}; font-weight:600;">${a.icon}</span>
+                          ${a.title}
+                        </div>
+                        <div class="tl-sub">${a.sub}</div>
+                        <div class="tl-date" style="margin-top:4px;">${a.at} · 처리: ${a.by}${a.ref ? ' · <span style="color:#2563EB;">상세 →</span>' : ''}</div>
+                      </div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')
+      }
+    `;
+  }
+
+  window.__histSearch = function(val) { historyState.search = val; renderHistory(); };
+  window.__histCat = function(cat) { historyState.cat = cat; renderHistory(); };
+  window.__histRange = function(r) { historyState.dateRange = r; renderHistory(); };
+  window.__histGoRef = function(type, id) {
+    if (type === 'worker') {
+      window.__navGoto('workers');
+      setTimeout(() => window.__wrkDetail(id), 50);
+    }
+  };
 
   // ───────────────────────────────────────────────────────
   // 엑셀 업/다운로드 모달 (공용)
