@@ -253,12 +253,12 @@
       <div class="jf-brand-name">잡핏 JobFit</div>
       <div class="jf-brand-sub">관리자 웹 · 프로토타입 v0.3</div>
     </div>
-    <div class="jf-nav-item" data-page="home"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7l6-5 6 5v7a1 1 0 01-1 1H3a1 1 0 01-1-1V7z"/></svg>홈</div>
+    <div class="jf-nav-item active" data-page="home"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7l6-5 6 5v7a1 1 0 01-1 1H3a1 1 0 01-1-1V7z"/></svg>홈</div>
     <div class="jf-nav-item" data-page="jobs"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="11" rx="1"/><path d="M5 1v3M11 1v3M2 7h12"/></svg>공고 관리</div>
     <div class="jf-nav-item" data-page="approval"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8l3 3 7-7"/></svg>신청 승인 <span data-role="badge" style="margin-left:auto; background:#EF4444; color:#fff; font-size:10px; padding:1px 6px; border-radius:8px;">7</span></div>
     <div class="jf-nav-item" data-page="workers"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/></svg>근무자 관리</div>
     <div class="jf-nav-item" data-page="control"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg>관제 시스템</div>
-    <div class="jf-nav-item active" data-page="worksite"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1l6 3v5c0 3.5-3 6-6 6s-6-2.5-6-6V4l6-3z"/></svg>근무지 관리</div>
+    <div class="jf-nav-item" data-page="worksite"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1l6 3v5c0 3.5-3 6-6 6s-6-2.5-6-6V4l6-3z"/></svg>근무지 관리</div>
     <div class="jf-nav-item" data-page="negotiation"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M6 8l1.5 1.5L11 6"/></svg>협의대상</div>
     <div class="jf-nav-item" data-page="points"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v6M6 7h4M6 9h4"/></svg>포인트</div>
     <div class="jf-nav-item" data-page="inquiry"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v9H5l-3 3V3z"/></svg>문의</div>
@@ -966,6 +966,210 @@
       });
     }, 100);
   }
+
+  // ───────────────────────────────────────────────────────
+  // 홈 대시보드
+  // ───────────────────────────────────────────────────────
+  function renderHome() {
+    // 집계
+    const todayStr = TODAY;
+    const weekAgo = new Date(TODAY); weekAgo.setDate(weekAgo.getDate() - 6);
+    const weekAgoStr = weekAgo.toISOString().slice(0, 10);
+
+    const todayJobs = jobs.filter(j => j.date === todayStr);
+    const todayProgress = todayJobs.filter(j => jobStatus(j) === 'progress').length;
+    const openJobs = jobs.filter(j => jobStatus(j) === 'open').length;
+    const weekJobs = jobs.filter(j => j.date >= weekAgoStr && j.date <= todayStr).length;
+    const pending = applications.filter(a => a.status === 'pending');
+    const pendingUrgent = pending.filter(a => a.reason === 'neg' || a.reason === 'warn3').length;
+    const pendingAll = pending.length;
+    const negCount = negotiations.length;
+    const warnHoldCount = workers.filter(w => w.warnings >= 1 && !w.negotiation).length;
+    const pointPending = pointTxs.filter(t => t.type === 'withdraw' && t.status === 'pending');
+    const pointPendingAmt = pointPending.reduce((s, t) => s + t.amount, 0);
+    const pointFailed = pointTxs.filter(t => t.status === 'failed').length;
+    const noGpsSites = Object.values(worksites).flatMap(p => p.sites).filter(s => !s.gps);
+
+    // 오늘 출결 집계
+    let todayOk = 0, todayLate = 0, todayNo = 0, todayWait = 0;
+    todayJobs.forEach(j => {
+      const s = attendanceSummary(j.id);
+      todayOk += s.출근; todayLate += s.지각; todayNo += s.결근; todayWait += s.대기;
+    });
+    const todayTotal = todayOk + todayLate + todayNo;
+    const todayRate = todayTotal > 0 ? Math.round((todayOk + todayLate) / todayTotal * 100) + '%' : '-';
+
+    // 최근 활동 로그 (처리된 신청 + 포인트 + 협의대상 등록 mix)
+    const activities = [];
+    applications.forEach(a => {
+      if (a.processedAt) {
+        const w = findWorker(a.workerId); const j = findJob(a.jobId); const s = findSite(j.siteId);
+        activities.push({
+          at: a.processedAt,
+          icon: a.status === 'approved' ? '✓' : '✕',
+          color: a.status === 'approved' ? '#22C55E' : '#EF4444',
+          text: `${w.name} 님 신청 ${a.status === 'approved' ? '승인' : '거절'} — ${s.site.name} ${j.date} ${j.slot}`,
+          by: a.processedBy,
+        });
+      }
+    });
+    pointTxs.forEach(t => {
+      if (t.processedAt) {
+        const w = findWorker(t.workerId);
+        if (t.type === 'withdraw') {
+          activities.push({
+            at: t.processedAt,
+            icon: t.status === 'done' ? '💰' : '⚠',
+            color: t.status === 'done' ? '#2563EB' : '#EF4444',
+            text: `${w.name} 님 출금 ${t.status === 'done' ? '완료' : '실패'} — ${t.amount.toLocaleString()}P`,
+            by: t.processedBy,
+          });
+        } else if (t.type === 'deduct') {
+          activities.push({
+            at: t.requestedAt,
+            icon: '⊖',
+            color: '#F59E0B',
+            text: `${w.name} 님 포인트 차감 — ${Math.abs(t.amount).toLocaleString()}P (${t.reason})`,
+            by: t.processedBy,
+          });
+        }
+      }
+    });
+    negotiations.forEach(n => {
+      activities.push({
+        at: n.registeredAt,
+        icon: '⚠',
+        color: '#EF4444',
+        text: `${n.name} 협의대상 등록 — ${n.sub}`,
+        by: n.registeredBy,
+      });
+    });
+    activities.sort((a, b) => b.at.localeCompare(a.at));
+    const recent = activities.slice(0, 10);
+
+    // 알림 박스
+    const alerts = [];
+    if (noGpsSites.length > 0) alerts.push({ type: 'warn', text: `GPS 영역 미설정 근무지 ${noGpsSites.length}곳 — 해당 근무지는 공고 등록 불가`, goto: 'worksite' });
+    if (pendingUrgent > 0) alerts.push({ type: 'danger', text: `협의대상/경고3회 신청 ${pendingUrgent}건 대기 중 — 직접 검토 필요`, goto: 'approval' });
+    if (pointFailed > 0) alerts.push({ type: 'danger', text: `출금 실패 ${pointFailed}건 — 재처리 필요`, goto: 'points' });
+
+    let html = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">안녕하세요, 테스트 마스터님 👋</div>
+          <div class="jf-subtitle">${TODAY} · 오늘도 좋은 하루 보내세요</div>
+        </div>
+        <div class="ws-actions">
+          <button class="btn-primary" onclick="window.__navGoto('jobs')">+ 새 공고 등록</button>
+          <button onclick="window.__navGoto('approval')">신청 승인 (${pendingAll})</button>
+        </div>
+      </div>
+
+      ${alerts.length > 0 ? alerts.map(a =>
+        `<div class="ws-warn-box" style="${a.type==='danger'?'background:#FEE2E2; color:#991B1B; border-left-color:#EF4444;':''} cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="window.__navGoto('${a.goto}')">
+          <span>${a.type === 'danger' ? '⚠' : 'ℹ'} ${a.text}</span>
+          <span style="font-size:12px; opacity:0.7;">바로가기 →</span>
+        </div>`
+      ).join('') : ''}
+
+      <div class="jf-metric-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 12px;">
+        <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('control')">
+          <div class="jf-metric-label">오늘 진행 중</div>
+          <div class="jf-metric-value" style="color:#22C55E;">${todayProgress}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div>
+          <div class="jf-metric-hint">관제 시스템 →</div>
+        </div>
+        <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('approval')">
+          <div class="jf-metric-label">승인 대기</div>
+          <div class="jf-metric-value" style="color:${pendingAll>0?'#EF4444':'#111827'};">${pendingAll}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div>
+          <div class="jf-metric-hint">${pendingUrgent>0 ? '🚨 협의대상/경고 '+pendingUrgent+'건 포함' : '신청 승인 →'}</div>
+        </div>
+        <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('jobs')">
+          <div class="jf-metric-label">모집 중 공고</div>
+          <div class="jf-metric-value" style="color:#2563EB;">${openJobs}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div>
+          <div class="jf-metric-hint">이번 주 총 ${weekJobs}건</div>
+        </div>
+        <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('points')">
+          <div class="jf-metric-label">출금 대기</div>
+          <div class="jf-metric-value" style="color:${pointPending.length>0?'#F59E0B':'#111827'};">${pointPending.length}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div>
+          <div class="jf-metric-hint">${pointPendingAmt.toLocaleString()}P · 반자동 처리</div>
+        </div>
+      </div>
+
+      <div class="jf-metric-grid" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('control')">
+          <div class="jf-metric-label">오늘 출근율</div>
+          <div class="jf-metric-value">${todayRate}</div>
+          <div class="jf-metric-hint">🟢 ${todayOk} · 🟡 ${todayLate} · 🔴 ${todayNo}</div>
+        </div>
+        <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('workers')">
+          <div class="jf-metric-label">전체 근무자</div>
+          <div class="jf-metric-value">${workers.length}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div>
+          <div class="jf-metric-hint">경고 보유 ${warnHoldCount}명</div>
+        </div>
+        <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('negotiation')">
+          <div class="jf-metric-label">협의대상</div>
+          <div class="jf-metric-value" style="color:${negCount>0?'#EF4444':'#16A34A'};">${negCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div>
+          <div class="jf-metric-hint">해제는 마스터 전용</div>
+        </div>
+        <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('worksite')">
+          <div class="jf-metric-label">근무지</div>
+          <div class="jf-metric-value">${Object.values(worksites).reduce((s,p)=>s+p.sites.length,0)}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 곳</span></div>
+          <div class="jf-metric-hint">${noGpsSites.length>0 ? 'GPS 미설정 '+noGpsSites.length+'곳' : '전체 GPS 설정 완료'}</div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 12px; margin-top: 20px;">
+        <div class="jf-panel">
+          <div class="ws-section-title">오늘 진행 중인 공고
+            <span style="font-size:11px; color:#6B7684; font-weight:400;">시작 임박순 · ${todayJobs.length}건</span>
+          </div>
+          ${todayJobs.length === 0
+            ? '<div style="padding:20px 0; text-align:center; color:#6B7684; font-size:13px;">오늘 예정된 공고가 없습니다.</div>'
+            : todayJobs.sort((a,b) => (a.start||'').localeCompare(b.start||'')).map(j => {
+                const site = findSite(j.siteId); const st = jobStatus(j); const sum = attendanceSummary(j.id);
+                const stColor = { open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
+                return `
+                  <div onclick="window.__navGoto('control'); setTimeout(() => window.__ctrlDetail('${j.id}'), 50);" style="padding: 10px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                    <div>
+                      <div style="font-weight:500; font-size:13px;">${site.site.name} <span style="color:#6B7684; font-weight:400; font-size:12px;">${site.partner}</span></div>
+                      <div style="font-size:12px; color:#6B7684; margin-top:2px;">${j.slot} ${j.start}~${j.end} · 모집 ${j.apply}/${j.cap}</div>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                      <span style="font-size:11px; color:#166534;">🟢${sum.출근}</span>
+                      <span style="font-size:11px; color:#92400E;">🟡${sum.지각}</span>
+                      <span style="font-size:11px; color:#991B1B;">🔴${sum.결근}</span>
+                      <span class="jobs-status" style="background:${stColor}22; color:${stColor};">${STATUS_LABEL[st]}</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+        </div>
+
+        <div class="jf-panel">
+          <div class="ws-section-title">최근 활동 <span style="font-size:11px; color:#6B7684; font-weight:400;">최근 ${recent.length}건</span></div>
+          ${recent.length === 0
+            ? '<div style="padding:20px 0; text-align:center; color:#6B7684; font-size:13px;">최근 활동이 없습니다.</div>'
+            : recent.map(a => `
+              <div style="display:flex; gap:10px; padding: 8px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); font-size:12px;">
+                <span style="color:${a.color}; font-weight:500; width:16px; text-align:center; flex-shrink:0;">${a.icon}</span>
+                <div style="flex:1;">
+                  <div style="color:#111827;">${a.text}</div>
+                  <div style="color:#6B7684; font-size:11px; margin-top:2px;">${a.at} · ${a.by}</div>
+                </div>
+              </div>
+            `).join('')}
+        </div>
+      </div>
+    `;
+
+    main.innerHTML = html;
+  }
+
+  // 네비 항목 프로그램적으로 전환
+  window.__navGoto = function(page) {
+    const item = document.querySelector('.jf-nav-item[data-page="' + page + '"]');
+    if (item) item.click();
+  };
 
   // ───────────────────────────────────────────────────────
   // 관제 시스템
@@ -2375,6 +2579,7 @@
   window.__wsBack = function() { renderList(); };
 
   const pageRouters = {
+    home: renderHome,
     worksite: renderList,
     jobs: () => { jobsState.tab = 'list'; renderJobs(); },
     approval: renderApproval,
@@ -2404,7 +2609,7 @@
   }
 
   updateApprovalBadge();
-  renderList();
+  renderHome();
 })();
 </script>
 </body>
