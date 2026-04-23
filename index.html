@@ -272,6 +272,48 @@
   .login-role-btn.active { background: #1B3A6B; color: #fff; border-color: #1B3A6B; }
   .login-footer { margin-top: 24px; padding-top: 16px; border-top: 0.5px solid rgba(0,0,0,0.08); font-size: 11px; color: #9CA3AF; text-align: center; line-height: 1.7; }
 
+  /* 대기열 시스템 */
+  .wl-group { background: #fff; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
+  .wl-group-head { padding: 14px 18px; background: #F5F7FA; border-bottom: 0.5px solid rgba(0,0,0,0.08); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .wl-group-title { font-weight: 500; font-size: 14px; }
+  .wl-group-sub { font-size: 11px; color: #6B7684; margin-top: 2px; }
+  .wl-group-body { padding: 4px 0; }
+  .wl-row { display: grid; grid-template-columns: 40px 1.2fr 1fr 1fr 120px auto; gap: 12px; align-items: center; padding: 12px 18px; border-bottom: 0.5px solid rgba(0,0,0,0.06); font-size: 13px; }
+  .wl-row:last-child { border-bottom: none; }
+  .wl-row.pending { background: #FFFBEB; }
+  .wl-row.accepted { opacity: 0.6; }
+  .wl-row.declined, .wl-row.auto_rejected { opacity: 0.55; }
+
+  .wl-order { width: 28px; height: 28px; border-radius: 50%; background: #F3F4F6; color: #6B7684; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+  .wl-order.order1 { background: #FEF3C7; color: #92400E; }
+  .wl-order.pending { background: #DBEAFE; color: #1E40AF; }
+
+  .wl-status { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: 500; white-space: nowrap; display: inline-block; }
+  .wl-st-waiting      { background: #F3F4F6; color: #374151; }
+  .wl-st-pending      { background: #FEF3C7; color: #92400E; }
+  .wl-st-accepted     { background: #DCFCE7; color: #166534; }
+  .wl-st-auto_rejected { background: #FEE2E2; color: #991B1B; }
+  .wl-st-declined     { background: #FEE2E2; color: #991B1B; }
+
+  /* 타이머 원형 */
+  .wl-timer-wrap { position: relative; width: 56px; height: 56px; flex-shrink: 0; }
+  .wl-timer-wrap svg { transform: rotate(-90deg); }
+  .wl-ring-bg { fill: none; stroke: #E5E7EB; stroke-width: 4; }
+  .wl-ring-fill { fill: none; stroke: #2563EB; stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 0.5s linear, stroke 0.2s; }
+  .wl-ring-fill.urgent { stroke: #EF4444; }
+  .wl-timer-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: #2563EB; font-family: 'SF Mono', Monaco, monospace; line-height: 1; }
+  .wl-timer-text.urgent { color: #EF4444; }
+  .wl-timer-text.expired { color: #9CA3AF; font-size: 9px; }
+
+  /* REOPENED 뱃지 */
+  .wl-reopened { background: #FEE2E2; color: #991B1B; font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: 500; display: inline-flex; align-items: center; gap: 4px; }
+  .wl-reopened::before { content: '🔄'; font-size: 10px; }
+
+  /* 대기열 뱃지 (공고 카드) */
+  .wl-badge { background: #FEF3C7; color: #92400E; font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 500; }
+  .wl-badge-pending { background: #DBEAFE; color: #1E40AF; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
   /* 통계 리포트 — 차트 공용 */
   .stat-chart-row { display: grid; grid-template-columns: 120px 1fr 80px; gap: 10px; align-items: center; padding: 6px 0; font-size: 12px; }
   .stat-chart-label { color: #111827; font-weight: 500; }
@@ -588,6 +630,31 @@
     { id: 'q006', category: 'bug',     title: '계약서 서명 화면에서 튕겨요',         body: 'iPhone 15 Pro에서 계약서 서명할 때 앱이 자주 종료됩니다. 이번 근무 서명 못했어요.',           workerId: 'w003', createdAt: '2026-04-21 22:15', status: 'answered', answer: '개발팀에 전달했습니다. 다음 업데이트 (v1.0.3)에서 수정 예정입니다. 임시로 웹 버전 이용 부탁드립니다.', answeredBy: '테스트(마스터)', answeredAt: '2026-04-22 09:00' },
   ];
   function findInquiry(id) { return inquiries.find(q => q.id === id); }
+
+  // 대기열 — FULL 공고에 대기 신청 · 모집인원의 2배까지
+  // status: waiting(대기 중) / pending_accept(자리 제안됨, 타이머 실행) / accepted(수락 완료) / auto_rejected(시간 초과) / declined(본인 거절)
+  // _initialRemainingSec — 페이지 최초 로드 시 pending_accept 상태의 남은 시간(초) · 초기화 후 offerDeadline으로 변환됨
+  const waitlist = [
+    // j014 곤지암 새벽 (cap 15, apply 15) — FULL, 대기 4명
+    { id: 'wl001', jobId: 'j014', workerId: 'w020', order: 1, status: 'waiting', joinedAt: '2026-04-23 16:00' },
+    { id: 'wl002', jobId: 'j014', workerId: 'w030', order: 2, status: 'waiting', joinedAt: '2026-04-23 17:30' },
+    { id: 'wl003', jobId: 'j014', workerId: 'w045', order: 3, status: 'waiting', joinedAt: '2026-04-23 18:45' },
+    { id: 'wl004', jobId: 'j014', workerId: 'w031', order: 4, status: 'waiting', joinedAt: '2026-04-23 19:10' },
+
+    // j015 안성 주간 (cap 20, apply 20) — FULL, 6명 대기 · 1번은 현재 수락 대기 중 (40분 타이머 — 페이지 로드 시 시작)
+    { id: 'wl005', jobId: 'j015', workerId: 'w017', order: 1, status: 'pending_accept', joinedAt: '2026-04-22 10:00', _initialRemainingSec: 40 * 60 },
+    { id: 'wl006', jobId: 'j015', workerId: 'w022', order: 2, status: 'waiting', joinedAt: '2026-04-22 11:00' },
+    { id: 'wl007', jobId: 'j015', workerId: 'w025', order: 3, status: 'waiting', joinedAt: '2026-04-22 12:30' },
+    { id: 'wl008', jobId: 'j015', workerId: 'w036', order: 4, status: 'waiting', joinedAt: '2026-04-22 14:00' },
+    { id: 'wl009', jobId: 'j015', workerId: 'w042', order: 5, status: 'waiting', joinedAt: '2026-04-23 08:00' },
+    { id: 'wl010', jobId: 'j015', workerId: 'w049', order: 6, status: 'waiting', joinedAt: '2026-04-23 09:30' },
+
+    // j016 군포_A 주간 (cap 18, apply 18) — FULL, 1번 본인 거절, 2번 시간초과, 3번 대기 중
+    { id: 'wl011', jobId: 'j016', workerId: 'w033', order: 1, status: 'declined',      joinedAt: '2026-04-22 13:00', offeredAt: '2026-04-23 08:00', respondedAt: '2026-04-23 08:15' },
+    { id: 'wl012', jobId: 'j016', workerId: 'w041', order: 2, status: 'auto_rejected', joinedAt: '2026-04-22 14:00', offeredAt: '2026-04-23 08:15', offerDeadline: '2026-04-23 10:15', respondedAt: '2026-04-23 10:15' },
+    { id: 'wl013', jobId: 'j016', workerId: 'w048', order: 3, status: 'waiting',       joinedAt: '2026-04-22 15:30' },
+  ];
+  function findWl(id) { return waitlist.find(w => w.id === id); }
 
   // 템플릿 (근로계약서 · 안전교육 자료)
   // type: contract(근로계약서) / safety(안전교육)
@@ -1700,6 +1767,9 @@
     const pointPendingAmt = pointPending.reduce((s, t) => s + t.amount, 0);
     const pointFailed = pointTxs.filter(t => t.status === 'failed').length;
     const noGpsSites = Object.values(worksites).flatMap(p => p.sites).filter(s => !s.gps);
+    const wlWaiting = waitlist.filter(w => w.status === 'waiting').length;
+    const wlPendingCount = waitlist.filter(w => w.status === 'pending_accept').length;
+    const reopenedJobs = jobs.filter(j => j.reopened).length;
 
     // 오늘 출결 집계
     let todayOk = 0, todayLate = 0, todayNo = 0, todayWait = 0;
@@ -1763,6 +1833,8 @@
     if (noGpsSites.length > 0) alerts.push({ type: 'warn', text: `GPS 영역 미설정 근무지 ${noGpsSites.length}곳 — 해당 근무지는 공고 등록 불가`, goto: 'worksite' });
     if (pendingUrgent > 0) alerts.push({ type: 'danger', text: `협의대상/경고3회 신청 ${pendingUrgent}건 대기 중 — 직접 검토 필요`, goto: 'approval' });
     if (pointFailed > 0) alerts.push({ type: 'danger', text: `출금 실패 ${pointFailed}건 — 재처리 필요`, goto: 'points' });
+    if (wlPendingCount > 0) alerts.push({ type: 'warn', text: `대기열 수락 대기 중 ${wlPendingCount}명 — 타이머 진행 중`, goto: 'jobs-waitlist' });
+    if (reopenedJobs > 0) alerts.push({ type: 'warn', text: `REOPENED 공고 ${reopenedJobs}건 — 대기열 소진 후 재모집 상태`, goto: 'jobs-waitlist' });
 
     let html = `
       <div class="jf-header">
@@ -1823,10 +1895,28 @@
           <div class="jf-metric-value" style="color:${negCount>0?'#EF4444':'#16A34A'};">${negCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div>
           <div class="jf-metric-hint">해제는 마스터 전용</div>
         </div>
+        <div class="jf-metric" style="cursor:pointer; ${wlPendingCount>0?'border-left: 3px solid #F59E0B;':''}" onclick="window.__navGoto('jobs-waitlist')">
+          <div class="jf-metric-label">대기열</div>
+          <div class="jf-metric-value" style="color:${wlPendingCount>0?'#F59E0B':'#111827'};">
+            ${wlWaiting + wlPendingCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span>
+          </div>
+          <div class="jf-metric-hint">
+            ${wlPendingCount > 0 ? `⏱ 수락 대기 <strong style="color:#F59E0B;">${wlPendingCount}명</strong> · 대기 ${wlWaiting}명` : `대기 중 ${wlWaiting}명${reopenedJobs > 0 ? ' · REOPENED ' + reopenedJobs : ''}`}
+          </div>
+        </div>
+      </div>
+
+      <div class="jf-metric-grid" style="grid-template-columns: 1fr 3fr; gap: 12px; margin-top: 12px;">
         <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('worksite')">
           <div class="jf-metric-label">근무지</div>
           <div class="jf-metric-value">${Object.values(worksites).reduce((s,p)=>s+p.sites.length,0)}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 곳</span></div>
           <div class="jf-metric-hint">${noGpsSites.length>0 ? 'GPS 미설정 '+noGpsSites.length+'곳' : '전체 GPS 설정 완료'}</div>
+        </div>
+        <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('stats')">
+          <div class="jf-metric-label">통계 리포트 바로가기</div>
+          <div class="jf-metric-hint" style="margin-top:8px;">
+            파트너사별 출근율 · 근무지 랭킹 · 주간 트렌드 · 시간대별 분포 등 경영 지표 한눈에 →
+          </div>
         </div>
       </div>
 
@@ -1879,6 +1969,13 @@
 
   // 네비 항목 프로그램적으로 전환
   window.__navGoto = function(page) {
+    // 특수 라우트 처리
+    if (page === 'jobs-waitlist') {
+      jobsState.tab = 'waitlist';
+      const item = document.querySelector('.jf-nav-item[data-page="jobs"]');
+      if (item) item.click();
+      return;
+    }
     const item = document.querySelector('.jf-nav-item[data-page="' + page + '"]');
     if (item) item.click();
   };
@@ -3093,9 +3190,11 @@
   };
 
   function jobsTabsHtml() {
+    const pendingWl = waitlist.filter(w => w.status === 'pending_accept').length;
     const tabs = [
       { id: 'list',     label: '공고 리스트' },
       { id: 'create',   label: '공고 등록' },
+      { id: 'waitlist', label: '대기열' + (pendingWl > 0 ? ` (${pendingWl})` : '') },
       { id: 'template', label: '템플릿 관리' },
     ];
     return `<div class="jf-tabs">${tabs.map(t =>
@@ -3106,6 +3205,7 @@
   function renderJobs() {
     if (jobsState.tab === 'list')     renderJobsList();
     if (jobsState.tab === 'create')   renderJobsCreate();
+    if (jobsState.tab === 'waitlist') renderJobsWaitlist();
     if (jobsState.tab === 'template') renderJobsTemplate();
   }
 
@@ -3206,6 +3306,8 @@
           const site = findSite(j.siteId);
           const st = jobStatus(j);
           const pct = Math.round((j.apply / j.cap) * 100);
+          const wlCount = currentWaitCount(j.id);
+          const wlPending = waitlist.filter(w => w.jobId === j.id && w.status === 'pending_accept').length;
           html += `
             <div class="jobs-card" onclick="window.__jobsDetail('${j.id}')">
               <div class="jobs-card-head">
@@ -3213,13 +3315,17 @@
                   <div class="jobs-card-title">${site.site.name}</div>
                   <div class="jobs-card-sub">${site.partner} · ${j.slot} ${j.start}~${j.end}</div>
                 </div>
-                <span class="jobs-status jobs-status-${st}">${STATUS_LABEL[st]}</span>
+                <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+                  <span class="jobs-status jobs-status-${st}">${STATUS_LABEL[st]}</span>
+                  ${j.reopened ? '<span class="wl-reopened" style="font-size:10px; padding:2px 6px;">REOPENED</span>' : ''}
+                  ${wlPending > 0 ? `<span class="wl-badge wl-badge-pending">수락 대기 ${wlPending}</span>` : (wlCount > 0 ? `<span class="wl-badge">대기 ${wlCount}</span>` : '')}
+                </div>
               </div>
               <div class="jobs-card-row"><span>날짜</span><strong>${j.date}</strong></div>
               <div class="jobs-card-row"><span>${j.wageType}</span><strong>${j.wage.toLocaleString()}원</strong></div>
               <div class="jobs-card-row"><span>담당자</span><strong>${j.contact}</strong></div>
               <div class="jobs-progress-bar"><div class="jobs-progress-bar-fill" style="width:${pct}%;"></div></div>
-              <div class="jobs-progress-label"><span>모집 ${j.apply} / ${j.cap}명</span><span>${pct}%</span></div>
+              <div class="jobs-progress-label"><span>모집 ${j.apply} / ${j.cap}명${wlCount > 0 ? ` · 대기 ${wlCount}/${maxWaitCap(j)}` : ''}</span><span>${pct}%</span></div>
               <div class="jobs-card-foot" onclick="event.stopPropagation()">
                 <button onclick="window.__jobsDetail('${j.id}')">신청자</button>
                 <button onclick="window.__jobEdit('${j.id}')">수정</button>
@@ -3780,6 +3886,7 @@
             ${site.site.name}
             <span class="ws-mini-tag" style="vertical-align:middle;">${site.partner}</span>
             <span class="jobs-status jobs-status-${st}" style="margin-left:8px; font-size:13px; padding:4px 12px; vertical-align:middle;">${STATUS_LABEL[st]}</span>
+            ${j.reopened ? '<span class="wl-reopened" style="margin-left:6px; vertical-align:middle;">REOPENED</span>' : ''}
           </div>
           <div class="jf-subtitle">${j.date} · ${j.slot} ${j.start}~${j.end} · 공고 ID ${j.id}</div>
         </div>
@@ -3877,6 +3984,8 @@
           </div>
         </div>
       </div>
+
+      ${renderJobWaitlistSection(j.id)}
     `;
   }
 
@@ -4677,6 +4786,394 @@
     worksites[partnerKey].count = worksites[partnerKey].sites.length;
     alert('삭제 완료.');
     renderList();
+  };
+
+  // ───────────────────────────────────────────────────────
+  // 대기열 시스템
+  // ───────────────────────────────────────────────────────
+  let _waitlistTimersInitialized = false;
+  let _waitlistTickerStarted = false;
+
+  function initWaitlistTimers() {
+    if (_waitlistTimersInitialized) return;
+    _waitlistTimersInitialized = true;
+    const now = Date.now();
+    waitlist.forEach(w => {
+      if (w.status === 'pending_accept' && w._initialRemainingSec) {
+        w.offeredAt = now;
+        w.offerDeadline = now + w._initialRemainingSec * 1000;
+        delete w._initialRemainingSec;
+      }
+    });
+  }
+
+  function formatRemaining(ms) {
+    if (ms <= 0) return '00:00';
+    const totalSec = Math.ceil(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+
+  // 수락 제한시간 산정 — 24h+ 남음 → 2시간 / 24h 이내 → 30분
+  function getOfferDurationMs(job) {
+    const workStart = new Date(job.date + 'T' + job.start + ':00').getTime();
+    const hoursUntilWork = (workStart - Date.now()) / 3600000;
+    return hoursUntilWork > 24 ? 2 * 3600000 : 30 * 60000;
+  }
+
+  function maxWaitCap(job) { return job ? job.cap * 2 : 0; }
+  function currentWaitCount(jobId) { return waitlist.filter(w => w.jobId === jobId && ['waiting','pending_accept'].includes(w.status)).length; }
+  function nextWaitOrder(jobId) {
+    const max = waitlist.filter(w => w.jobId === jobId).reduce((m, w) => Math.max(m, w.order || 0), 0);
+    return max + 1;
+  }
+
+  // 다음 대기자에게 자리 제안 · 없으면 공고 REOPENED
+  function offerNextSeat(jobId) {
+    const j = findJob(jobId); if (!j) return null;
+    const candidates = waitlist
+      .filter(w => w.jobId === jobId && w.status === 'waiting')
+      .sort((a, b) => a.order - b.order);
+    if (candidates.length === 0) {
+      j.reopened = true; // 다시 일반 모집
+      return null;
+    }
+    const w = candidates[0];
+    w.status = 'pending_accept';
+    w.offeredAt = Date.now();
+    w.offerDeadline = Date.now() + getOfferDurationMs(j);
+    return w;
+  }
+
+  function handleAcceptOffer(wlId) {
+    const w = findWl(wlId); if (!w || w.status !== 'pending_accept') return;
+    const j = findJob(w.jobId); if (!j) return;
+    w.status = 'accepted';
+    w.respondedAt = formatNow();
+    j.apply = Math.min(j.cap, j.apply + 1);
+    j.reopened = false;
+    const worker = findWorker(w.workerId);
+    alert(`${worker?.name || ''} 님이 자리 수락 → 확정 완료 (시뮬레이션)\n\n공고 모집 상태: ${j.apply}/${j.cap}`);
+  }
+
+  // byUser=true면 알바생이 직접 거절, false면 시간초과 자동거절
+  function handleRejectOffer(wlId, byUser) {
+    const w = findWl(wlId); if (!w || w.status !== 'pending_accept') return;
+    w.status = byUser ? 'declined' : 'auto_rejected';
+    w.respondedAt = formatNow();
+    // 다음 대기자에게 자동 제안
+    offerNextSeat(w.jobId);
+  }
+
+  // 시뮬레이션: 확정자 1명 취소 → 대기열 가동
+  function simulateCancellation(jobId) {
+    const j = findJob(jobId); if (!j) return;
+    if (j.apply <= 0) { alert('취소할 확정자가 없습니다.'); return; }
+    j.apply = j.apply - 1;
+    // 대기자가 있으면 자동 제안
+    const w = offerNextSeat(jobId);
+    if (w) {
+      const worker = findWorker(w.workerId);
+      alert(`[시뮬레이션] 확정자 1명 취소\n→ 대기 1번 ${worker?.name} 님에게 자리 제안 (타이머 시작)`);
+    } else {
+      alert('[시뮬레이션] 확정자 1명 취소\n→ 대기자 없음 → 일반 모집 재개 (REOPENED)');
+    }
+  }
+
+  function formatNow() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + ' ' +
+           String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  }
+
+  // 전역 1초 타이머 — 만료 체크 + 타이머 UI 업데이트
+  function startWaitlistTicker() {
+    if (_waitlistTickerStarted) return;
+    _waitlistTickerStarted = true;
+    setInterval(() => {
+      const now = Date.now();
+      let anyExpired = false;
+
+      // 만료 체크
+      waitlist.forEach(w => {
+        if (w.status === 'pending_accept' && w.offerDeadline && now >= w.offerDeadline) {
+          handleRejectOffer(w.id, false);
+          anyExpired = true;
+        }
+      });
+
+      // 타이머 텍스트 업데이트 (경량)
+      document.querySelectorAll('[data-wl-timer]').forEach(el => {
+        const id = el.getAttribute('data-wl-timer');
+        const w = findWl(id);
+        if (!w || !w.offerDeadline || w.status !== 'pending_accept') return;
+        const remaining = Math.max(0, w.offerDeadline - now);
+        el.textContent = formatRemaining(remaining);
+        if (remaining < 10 * 60000) el.classList.add('urgent');
+        else el.classList.remove('urgent');
+      });
+
+      // 원형 프로그레스 업데이트
+      document.querySelectorAll('[data-wl-ring]').forEach(el => {
+        const id = el.getAttribute('data-wl-ring');
+        const w = findWl(id);
+        if (!w || !w.offerDeadline || !w.offeredAt || w.status !== 'pending_accept') return;
+        const total = w.offerDeadline - w.offeredAt;
+        const remaining = Math.max(0, w.offerDeadline - now);
+        const progress = total > 0 ? remaining / total : 0;
+        const circ = parseFloat(el.getAttribute('data-circ') || '0');
+        el.setAttribute('stroke-dashoffset', (1 - progress) * circ);
+        if (remaining < 10 * 60000) el.classList.add('urgent');
+        else el.classList.remove('urgent');
+      });
+
+      // 상태 변경이 있었으면 해당 페이지 재렌더
+      if (anyExpired) {
+        if (document.querySelector('.wl-page-marker')) renderJobsWaitlist();
+        const detailMarker = document.querySelector('.wl-detail-marker');
+        if (detailMarker) {
+          const jid = detailMarker.getAttribute('data-job-id');
+          if (jid) renderJobDetail(jid);
+        }
+        // 홈 대시보드 재렌더는 생략 (사용자가 이동하면 자동 갱신)
+      }
+    }, 1000);
+  }
+
+  // 원형 타이머 SVG 생성
+  function renderTimerRing(wlId, size) {
+    size = size || 56;
+    const r = (size - 8) / 2;
+    const circ = 2 * Math.PI * r;
+    const w = findWl(wlId);
+    const remaining = w && w.offerDeadline ? Math.max(0, w.offerDeadline - Date.now()) : 0;
+    const total = w && w.offerDeadline && w.offeredAt ? w.offerDeadline - w.offeredAt : 1;
+    const progress = remaining / total;
+    const urgent = remaining < 10 * 60000;
+    return `
+      <div class="wl-timer-wrap" style="width:${size}px; height:${size}px;">
+        <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+          <circle class="wl-ring-bg" cx="${size/2}" cy="${size/2}" r="${r}"/>
+          <circle class="wl-ring-fill ${urgent?'urgent':''}" cx="${size/2}" cy="${size/2}" r="${r}"
+            stroke-dasharray="${circ.toFixed(2)}" stroke-dashoffset="${((1-progress)*circ).toFixed(2)}"
+            data-wl-ring="${wlId}" data-circ="${circ.toFixed(2)}"/>
+        </svg>
+        <div class="wl-timer-text ${urgent?'urgent':''}" data-wl-timer="${wlId}">${formatRemaining(remaining)}</div>
+      </div>
+    `;
+  }
+
+  // 공고 관리 대기열 탭 렌더
+  function renderJobsWaitlist() {
+    // 대기자가 있는 공고 그룹핑
+    const jobIds = [...new Set(waitlist.map(w => w.jobId))];
+    const grouped = jobIds.map(jid => {
+      const j = findJob(jid);
+      if (!j) return null;
+      const entries = waitlist.filter(w => w.jobId === jid).sort((a, b) => a.order - b.order);
+      return { job: j, entries };
+    }).filter(Boolean).sort((a, b) => a.job.date.localeCompare(b.job.date));
+
+    // 메트릭
+    const totalWaiting = waitlist.filter(w => w.status === 'waiting').length;
+    const totalPending = waitlist.filter(w => w.status === 'pending_accept').length;
+    const reopenedCount = jobs.filter(j => j.reopened).length;
+    const fullJobs = jobs.filter(j => ['closed','progress'].includes(jobStatus(j)) && j.apply >= j.cap).length;
+
+    let html = `
+      <span class="wl-page-marker" style="display:none;"></span>
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">공고 관리</div>
+          <div class="jf-subtitle">대기열 관리 · 실시간 자동 처리</div>
+        </div>
+      </div>
+      ${jobsTabsHtml()}
+
+      <div class="jf-metric-grid">
+        <div class="jf-metric"><div class="jf-metric-label">대기 중</div><div class="jf-metric-value">${totalWaiting}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div><div class="jf-metric-hint">순번만 받은 상태</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">수락 대기 중</div><div class="jf-metric-value" style="color:${totalPending>0?'#F59E0B':'#111827'};">${totalPending}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div><div class="jf-metric-hint">타이머 실행 중</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">REOPENED</div><div class="jf-metric-value" style="color:${reopenedCount>0?'#EF4444':'#16A34A'};">${reopenedCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">대기열 소진 후 재모집</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">FULL 공고</div><div class="jf-metric-value">${fullJobs}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">모집 완료 상태</div></div>
+      </div>
+
+      <div class="ws-warn-box" style="background:#F0F9FF; color:#1E40AF; border-left-color:#2563EB;">
+        ℹ 자리 제안 수락 제한시간: 근무 <strong>24h 전</strong> 신청은 <strong>2시간</strong>, <strong>24h 이내</strong>는 <strong>30분</strong>. 시간 초과 시 자동 거절 → 다음 대기자에게 이관.
+      </div>
+    `;
+
+    if (grouped.length === 0) {
+      html += `<div class="jf-placeholder"><div class="jf-placeholder-icon">🪑</div><div class="jf-placeholder-title">대기열이 비어있습니다</div><div class="jf-placeholder-desc">FULL 공고에 알바생이 대기 신청하면 여기에 표시됩니다.</div></div>`;
+    } else {
+      grouped.forEach(({ job, entries }) => {
+        const site = findSite(job.siteId);
+        const activeCount = entries.filter(e => ['waiting','pending_accept'].includes(e.status)).length;
+        const capBadge = job.apply >= job.cap ? `<span class="wl-badge">FULL ${job.apply}/${job.cap}</span>` : `<span class="wl-badge" style="background:#DBEAFE; color:#1E40AF;">모집 중 ${job.apply}/${job.cap}</span>`;
+        const reopenedBadge = job.reopened ? '<span class="wl-reopened">REOPENED</span>' : '';
+
+        html += `
+          <div class="wl-group">
+            <div class="wl-group-head">
+              <div style="flex:1;">
+                <div class="wl-group-title">
+                  ${site.site.name}
+                  ${capBadge}
+                  ${reopenedBadge}
+                </div>
+                <div class="wl-group-sub">${site.partner} · ${job.date} · ${job.slot} ${job.start}~${job.end} · 대기 한도 ${currentWaitCount(job.id)}/${maxWaitCap(job)}명</div>
+              </div>
+              <div style="display:flex; gap:6px;">
+                <button onclick="window.__wlSimCancel('${job.id}')" style="font-size:11px; padding:5px 10px; height:auto;" title="확정자 1명 취소 시뮬레이션">▶ 시뮬: 취소 1명</button>
+                <button onclick="window.__jobsDetail('${job.id}')" style="font-size:11px; padding:5px 10px; height:auto;">공고 상세 →</button>
+              </div>
+            </div>
+            <div class="wl-group-body">
+              ${entries.map(e => renderWaitlistRow(e)).join('')}
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    main.innerHTML = html;
+  }
+
+  function renderWaitlistRow(entry) {
+    const w = findWorker(entry.workerId);
+    if (!w) return '';
+    const STATUS_LBL = {
+      waiting: '대기 중',
+      pending_accept: '수락 대기 중',
+      accepted: '수락 완료',
+      auto_rejected: '시간 초과 · 자동 거절',
+      declined: '거절',
+    };
+    const orderCls = entry.order === 1 ? 'order1' : (entry.status === 'pending_accept' ? 'pending' : '');
+
+    let centerCell = '';
+    if (entry.status === 'pending_accept' && entry.offerDeadline) {
+      centerCell = `
+        <div style="display:flex; gap:10px; align-items:center;">
+          ${renderTimerRing(entry.id, 48)}
+          <div style="font-size:11px; color:#6B7684;">
+            <div>제안 ${entry.offeredAt ? new Date(entry.offeredAt).toTimeString().slice(0,5) : '-'}</div>
+            <div>기한 <strong style="color:#F59E0B;">${formatRemaining(Math.max(0, entry.offerDeadline - Date.now()))}</strong> 남음</div>
+          </div>
+        </div>
+      `;
+    } else if (entry.status === 'accepted') {
+      centerCell = `<span style="font-size:11px; color:#16A34A;">✓ ${entry.respondedAt}</span>`;
+    } else if (['declined','auto_rejected'].includes(entry.status)) {
+      centerCell = `<span style="font-size:11px; color:#6B7684;">${entry.respondedAt || '-'}</span>`;
+    } else {
+      centerCell = `<span style="font-size:11px; color:#6B7684;">대기 중</span>`;
+    }
+
+    let actionCell = '';
+    if (entry.status === 'pending_accept') {
+      actionCell = `
+        <div style="display:flex; gap:4px;">
+          <button class="btn-approve" onclick="window.__wlAccept('${entry.id}')" style="font-size:11px; height:30px; padding:0 12px;">수락</button>
+          <button class="btn-reject" onclick="window.__wlDecline('${entry.id}')" style="font-size:11px; height:30px; padding:0 12px;">거절</button>
+        </div>
+      `;
+    } else if (entry.status === 'waiting') {
+      actionCell = `<button onclick="window.__wlOfferNow('${entry.id}')" style="font-size:11px; height:30px; padding:0 10px;" title="이 대기자에게 바로 자리 제안">제안</button>`;
+    } else {
+      actionCell = `<span style="font-size:11px; color:#9CA3AF;">-</span>`;
+    }
+
+    return `
+      <div class="wl-row ${entry.status}">
+        <div class="wl-order ${orderCls}">${entry.order}</div>
+        <div>
+          <div style="font-weight:500;">${w.name}
+            ${w.negotiation ? '<span class="apv-badge apv-badge-neg" style="font-size:10px; padding:2px 6px; margin-left:4px;">협의대상</span>' : ''}
+          </div>
+          <div style="font-family:'SF Mono',Monaco,monospace; font-size:11px; color:#6B7684;">${w.phone}</div>
+        </div>
+        <div style="font-size:12px; color:#6B7684;">
+          <div>대기 등록</div>
+          <div style="color:#111827;">${entry.joinedAt}</div>
+        </div>
+        <div>${centerCell}</div>
+        <div><span class="wl-status wl-st-${entry.status}">${STATUS_LBL[entry.status]}</span></div>
+        <div>${actionCell}</div>
+      </div>
+    `;
+  }
+
+  // 공고 상세에 붙는 대기열 섹션
+  function renderJobWaitlistSection(jobId) {
+    const j = findJob(jobId); if (!j) return '';
+    const entries = waitlist.filter(w => w.jobId === jobId).sort((a, b) => a.order - b.order);
+    const active = entries.filter(e => ['waiting','pending_accept'].includes(e.status)).length;
+    const pending = entries.filter(e => e.status === 'pending_accept').length;
+
+    return `
+      <span class="wl-detail-marker" style="display:none;" data-job-id="${jobId}"></span>
+      <div class="jf-panel" style="margin-top: 14px;">
+        <div class="ws-section-title" style="display:flex; align-items:center; gap:10px;">
+          <span>대기열</span>
+          ${entries.length === 0
+            ? '<span style="font-size:11px; color:#6B7684; font-weight:400;">대기자 없음</span>'
+            : `<span style="font-size:11px; color:#6B7684; font-weight:400;">총 ${entries.length}명 · 활성 ${active}명 · 한도 ${currentWaitCount(j.id)}/${maxWaitCap(j)}</span>`}
+          ${pending > 0 ? `<span class="wl-badge wl-badge-pending">수락 대기 중 ${pending}</span>` : ''}
+          ${j.reopened ? '<span class="wl-reopened">REOPENED</span>' : ''}
+          <div style="margin-left:auto; display:flex; gap:6px;">
+            <button onclick="window.__wlSimCancel('${j.id}')" style="font-size:11px; padding:4px 10px; height:auto;" title="확정자 1명이 취소한 것처럼 시뮬레이션">▶ 취소 시뮬</button>
+          </div>
+        </div>
+        ${entries.length === 0
+          ? '<div style="padding:20px 0; text-align:center; color:#6B7684; font-size:12px;">이 공고는 아직 대기자가 없습니다.<br><span style="font-size:11px;">FULL 상태에서 알바생이 대기 신청하면 여기에 표시됩니다.</span></div>'
+          : '<div style="margin: 0 -18px;">' + entries.map(e => renderWaitlistRow(e)).join('') + '</div>'}
+      </div>
+    `;
+  }
+
+  window.__wlAccept = function(wlId) {
+    handleAcceptOffer(wlId);
+    // 현재 페이지 재렌더
+    if (document.querySelector('.wl-page-marker')) renderJobsWaitlist();
+    const dm = document.querySelector('.wl-detail-marker');
+    if (dm) renderJobDetail(dm.getAttribute('data-job-id'));
+  };
+  window.__wlDecline = function(wlId) {
+    const w = findWl(wlId); if (!w) return;
+    if (!confirm('이 알바생이 자리를 거절한 것으로 처리합니다. (시뮬레이션)\n→ 다음 대기자에게 자동 이관됩니다.')) return;
+    handleRejectOffer(wlId, true);
+    if (document.querySelector('.wl-page-marker')) renderJobsWaitlist();
+    const dm = document.querySelector('.wl-detail-marker');
+    if (dm) renderJobDetail(dm.getAttribute('data-job-id'));
+  };
+  window.__wlOfferNow = function(wlId) {
+    const w = findWl(wlId); if (!w) return;
+    // 현재 pending_accept 인 사람이 있으면 경고
+    const existing = waitlist.find(x => x.jobId === w.jobId && x.status === 'pending_accept');
+    if (existing) { alert('이미 수락 대기 중인 대기자가 있습니다. 먼저 그 건을 처리해주세요.'); return; }
+    if (w.status !== 'waiting') { alert('대기 중 상태인 알바생에게만 제안 가능합니다.'); return; }
+    const j = findJob(w.jobId); if (!j) return;
+    // 바로 자리 제안 (시뮬레이션 — 실제는 공석 생겼을 때만)
+    if (j.apply >= j.cap) {
+      if (!confirm('현재 공고가 FULL 상태입니다. 관리자 임의로 대기자에게 자리를 제안합니다. 계속하시겠습니까?')) return;
+      j.apply = Math.max(0, j.apply - 1); // 임의로 자리 하나 비움
+    }
+    w.status = 'pending_accept';
+    w.offeredAt = Date.now();
+    w.offerDeadline = Date.now() + getOfferDurationMs(j);
+    if (document.querySelector('.wl-page-marker')) renderJobsWaitlist();
+    const dm = document.querySelector('.wl-detail-marker');
+    if (dm) renderJobDetail(dm.getAttribute('data-job-id'));
+  };
+  window.__wlSimCancel = function(jobId) {
+    if (!confirm('[시뮬레이션] 이 공고의 확정자 1명이 취소한 상황을 재현합니다.\n→ apply 수가 1 줄어들고, 대기자가 있으면 1번에게 자동 자리 제안됩니다.')) return;
+    simulateCancellation(jobId);
+    if (document.querySelector('.wl-page-marker')) renderJobsWaitlist();
+    const dm = document.querySelector('.wl-detail-marker');
+    if (dm) renderJobDetail(dm.getAttribute('data-job-id'));
   };
 
   // ───────────────────────────────────────────────────────
@@ -5594,6 +6091,8 @@
     return names[page] || '';
   }
 
+  initWaitlistTimers();
+  startWaitlistTicker();
   updateApprovalBadge();
   renderHome();
 })();
