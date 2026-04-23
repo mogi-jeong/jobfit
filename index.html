@@ -418,6 +418,20 @@
   ];
   function findTx(id) { return pointTxs.find(t => t.id === id); }
 
+  // 관리자 계정 — role: master / admin1 / admin2
+  const admins = [
+    { id: 'adm_master', name: '김진호',   phone: '010-0000-0001', role: 'master', sites: [],                           active: true,  lastLogin: '2026-04-23 08:42', joinedAt: '2025-04-01', createdBy: '시스템' },
+    { id: 'adm_001',    name: '김관리',   phone: '010-0000-0101', role: 'admin1', sites: [],                           active: true,  lastLogin: '2026-04-23 10:15', joinedAt: '2025-05-10', createdBy: '김진호(마스터)' },
+    { id: 'adm_002',    name: '박관리',   phone: '010-0000-0102', role: 'admin1', sites: [],                           active: true,  lastLogin: '2026-04-22 19:30', joinedAt: '2025-07-22', createdBy: '김진호(마스터)' },
+    { id: 'adm_003',    name: '최관리',   phone: '010-0000-0103', role: 'admin1', sites: [],                           active: false, lastLogin: '2026-02-10 14:00', joinedAt: '2025-06-05', createdBy: '김진호(마스터)' },
+    { id: 'adm_004',    name: '이담당',   phone: '010-0000-0201', role: 'admin2', sites: ['gonjiam','gunpo_b'],        active: true,  lastLogin: '2026-04-23 07:30', joinedAt: '2025-09-01', createdBy: '김관리(1등급)' },
+    { id: 'adm_005',    name: '박담당',   phone: '010-0000-0202', role: 'admin2', sites: ['yongin','gunpo_l'],         active: true,  lastLogin: '2026-04-23 09:05', joinedAt: '2025-10-12', createdBy: '김관리(1등급)' },
+    { id: 'adm_006',    name: '김담당',   phone: '010-0000-0203', role: 'admin2', sites: ['gunpo_a','jincheon'],       active: true,  lastLogin: '2026-04-22 22:10', joinedAt: '2025-11-20', createdBy: '박관리(1등급)' },
+    { id: 'adm_007',    name: '정담당',   phone: '010-0000-0204', role: 'admin2', sites: ['icheon','anseong'],         active: true,  lastLogin: '2026-04-23 06:45', joinedAt: '2026-01-05', createdBy: '김관리(1등급)' },
+    { id: 'adm_008',    name: '한담당',   phone: '010-0000-0205', role: 'admin2', sites: ['ltower','whills'],          active: true,  lastLogin: '2026-04-22 18:20', joinedAt: '2025-08-15', createdBy: '김관리(1등급)' },
+  ];
+  function findAdmin(id) { return admins.find(a => a.id === id); }
+
   // 공고 상태 판정: open(모집중) · closed(마감·시작전) · progress(진행중) · done(종료)
   function jobStatus(j) {
     if (j.date < TODAY) return 'done';
@@ -966,6 +980,247 @@
       });
     }, 100);
   }
+
+  // ───────────────────────────────────────────────────────
+  // 관리자 계정
+  // ───────────────────────────────────────────────────────
+  const adminState = {
+    search: '',
+    role: '',     // '' / master / admin1 / admin2
+    active: '',   // '' / yes / no
+  };
+  const ROLE_LABEL = { master: '마스터', admin1: '관리자 1등급', admin2: '관리자 2등급' };
+  const ROLE_STYLE = {
+    master:  'background:#1B3A6B; color:#fff;',
+    admin1:  'background:#DBEAFE; color:#1E40AF;',
+    admin2:  'background:#F3F4F6; color:#374151;',
+  };
+
+  function renderAdmins() {
+    const q = adminState.search.trim().toLowerCase();
+    let list = admins.filter(a => {
+      if (q && !(a.name.toLowerCase().includes(q) || a.phone.includes(q))) return false;
+      if (adminState.role && adminState.role !== a.role) return false;
+      if (adminState.active === 'yes' && !a.active) return false;
+      if (adminState.active === 'no'  && a.active) return false;
+      return true;
+    });
+    const ROLE_ORDER = { master: 0, admin1: 1, admin2: 2 };
+    list = list.sort((a, b) => (ROLE_ORDER[a.role] - ROLE_ORDER[b.role]) || a.name.localeCompare(b.name, 'ko'));
+
+    const masterCount = admins.filter(a => a.role === 'master').length;
+    const a1Count = admins.filter(a => a.role === 'admin1' && a.active).length;
+    const a2Count = admins.filter(a => a.role === 'admin2' && a.active).length;
+    const inactiveCount = admins.filter(a => !a.active).length;
+
+    let html = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">관리자 계정</div>
+          <div class="jf-subtitle">마스터 · 1등급 · 2등급 3단계 권한 관리</div>
+        </div>
+        <div class="ws-actions">
+          <button class="btn-primary" onclick="window.__admAdd()">+ 관리자 추가</button>
+        </div>
+      </div>
+
+      <div class="jf-metric-grid">
+        <div class="jf-metric"><div class="jf-metric-label">마스터</div><div class="jf-metric-value">${masterCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div><div class="jf-metric-hint">사장님 전용</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">관리자 1등급</div><div class="jf-metric-value">${a1Count}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div><div class="jf-metric-hint">전 근무지 · 부재 대비</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">관리자 2등급</div><div class="jf-metric-value">${a2Count}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div><div class="jf-metric-hint">근무지 단위 담당</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">비활성</div><div class="jf-metric-value" style="color:${inactiveCount>0?'#6B7684':'#111827'};">${inactiveCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div><div class="jf-metric-hint">로그인 차단됨</div></div>
+      </div>
+
+      <div class="jobs-filters">
+        <div class="jf-search"><input type="text" placeholder="이름 · 전화번호 검색" value="${adminState.search}" oninput="window.__admSearch(this.value)" /></div>
+        <select onchange="window.__admFilter('role', this.value)">
+          <option value="">전체 등급</option>
+          <option value="master" ${adminState.role==='master'?'selected':''}>마스터</option>
+          <option value="admin1" ${adminState.role==='admin1'?'selected':''}>관리자 1등급</option>
+          <option value="admin2" ${adminState.role==='admin2'?'selected':''}>관리자 2등급</option>
+        </select>
+        <select onchange="window.__admFilter('active', this.value)">
+          <option value="">활성/비활성</option>
+          <option value="yes" ${adminState.active==='yes'?'selected':''}>활성만</option>
+          <option value="no"  ${adminState.active==='no'?'selected':''}>비활성만</option>
+        </select>
+        ${(adminState.search || adminState.role || adminState.active) ? `<button onclick="window.__admClearFilter()" style="font-size:12px;">필터 초기화</button>` : ''}
+        <div style="margin-left:auto; font-size:12px; color:#6B7684; align-self:center;">${list.length}명 표시</div>
+      </div>
+    `;
+
+    if (list.length === 0) {
+      html += `<div class="jf-placeholder"><div class="jf-placeholder-icon">👥</div><div class="jf-placeholder-title">조건에 맞는 관리자가 없습니다</div></div>`;
+    } else {
+      const gridCols = '1.4fr 1.1fr 1fr 1.8fr 1fr 0.8fr';
+      html += `
+        <div class="jf-table">
+          <div class="jf-table-head" style="grid-template-columns:${gridCols};">
+            <div>이름</div>
+            <div>전화번호</div>
+            <div>등급</div>
+            <div>담당 근무지</div>
+            <div>최근 로그인</div>
+            <div style="text-align:right;">액션</div>
+          </div>
+      `;
+      list.forEach(a => {
+        const siteNames = a.role === 'admin2'
+          ? (a.sites.length === 0
+              ? '<span style="color:#F59E0B;">⚠ 미배정</span>'
+              : a.sites.map(sid => findSite(sid)?.site.name || sid).join(', '))
+          : '<span style="color:#6B7684;">전 근무지</span>';
+        html += `
+          <div class="jf-table-row" style="grid-template-columns:${gridCols};" onclick="window.__admDetail('${a.id}')">
+            <div class="worker-name">
+              ${a.name}
+              ${!a.active ? '<span class="apv-badge" style="background:#F3F4F6; color:#6B7684; font-size:10px; padding:2px 6px;">비활성</span>' : ''}
+            </div>
+            <div style="font-family:'SF Mono',Monaco,monospace; font-size:12px; color:#6B7684;">${a.phone}</div>
+            <div><span class="apv-badge" style="${ROLE_STYLE[a.role]}">${ROLE_LABEL[a.role]}</span></div>
+            <div style="font-size:12px;">${siteNames}</div>
+            <div style="font-size:12px; color:#6B7684;">${a.lastLogin}</div>
+            <div style="text-align:right;"><span style="color:#2563EB; font-size:12px;">상세 →</span></div>
+          </div>
+        `;
+      });
+      html += '</div>';
+    }
+
+    main.innerHTML = html;
+  }
+
+  function renderAdminDetail(adminId) {
+    const a = findAdmin(adminId); if (!a) return;
+    const allSites = Object.values(worksites).flatMap(p => p.sites.map(s => ({ ...s, partnerKey: Object.keys(worksites).find(k => worksites[k].sites.includes(s)) })));
+    const isAdmin2 = a.role === 'admin2';
+    const canManage = a.role !== 'master'; // 마스터 본인은 권한 편집 불가 (UI상)
+
+    const siteCheckboxes = isAdmin2
+      ? Object.keys(worksites).map(pk => {
+          const partner = worksites[pk];
+          return `
+            <div style="padding: 8px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06);">
+              <div style="font-size: 12px; font-weight: 500; color: #111827; margin-bottom: 6px;">${partner.name}</div>
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                ${partner.sites.map(s => `
+                  <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;">
+                    <input type="checkbox" value="${s.id}" ${a.sites.includes(s.id)?'checked':''} onchange="window.__admToggleSite('${a.id}','${s.id}', this.checked)">
+                    ${s.name}
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }).join('')
+      : '';
+
+    main.innerHTML = `
+      <span class="jf-back" onclick="window.__admBack()">← 관리자 목록으로</span>
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">${a.name} <span class="apv-badge" style="${ROLE_STYLE[a.role]} vertical-align:middle; margin-left:8px;">${ROLE_LABEL[a.role]}</span></div>
+          <div class="jf-subtitle">${a.phone} · 가입 ${a.joinedAt} (생성자: ${a.createdBy})</div>
+        </div>
+        <div class="ws-actions">
+          ${canManage ? `<button onclick="window.__admToggleActive('${a.id}')">${a.active ? '비활성화' : '활성화'}</button>` : ''}
+          ${canManage ? `<button class="btn-danger" onclick="window.__admDelete('${a.id}')">계정 삭제</button>` : '<span style="font-size:12px; color:#6B7684;">마스터 계정은 편집 불가</span>'}
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="jf-panel">
+          <div class="ws-section-title">권한 범위</div>
+          ${a.role === 'master' ? `
+            <div style="font-size: 13px; line-height: 1.8;">
+              ✓ 전체 관리 권한<br>
+              ✓ 관리자 계정 관리 (생성 · 삭제 · 등급 변경)<br>
+              ✓ 근무지 등록 / GPS 영역 설정<br>
+              ✓ 협의대상 해제 <strong style="color:#2563EB;">(마스터 전용)</strong><br>
+              ✓ 계약서 / 안전교육 템플릿 등록<br>
+              ✓ 포인트 출금 승인 / 회수
+            </div>
+          ` : a.role === 'admin1' ? `
+            <div style="font-size: 13px; line-height: 1.8;">
+              ✓ 전 근무지 접근 (사장님 부재 대비)<br>
+              ✓ 관리자 2등급 계정 관리 (생성 · 담당 배정)<br>
+              ✓ 공고 등록 / 수정<br>
+              ✓ 신청 승인 / 경고 부여 / 해제<br>
+              ✓ 계약서 / 안전교육 템플릿 등록<br>
+              ✗ 협의대상 해제 (마스터 전용)
+            </div>
+          ` : `
+            <div style="font-size: 13px; line-height: 1.8;">
+              ✓ 담당 근무지만 접근 (복수 파트너사 교차 가능)<br>
+              ✓ 공고 등록 / 수정 (담당 근무지)<br>
+              ✓ 신청 승인 (담당 근무지)<br>
+              ✓ 경고 부여 · 해제 (담당 근무지)<br>
+              ✓ 관제 시스템 (전 근무지 열람 — 등급 무관)<br>
+              ✗ 협의대상 해제 (마스터 전용)<br>
+              ✗ 근무지 등록 / 템플릿 등록
+            </div>
+          `}
+        </div>
+
+        <div class="jf-panel">
+          <div class="ws-section-title">담당 근무지
+            ${isAdmin2 ? `<span style="font-size:11px; color:#6B7684; font-weight:400;">체크박스로 배정 (자동 저장)</span>` : ''}
+          </div>
+          ${isAdmin2
+            ? (siteCheckboxes || '<div style="padding:20px 0; text-align:center; color:#6B7684;">근무지가 등록되지 않았습니다.</div>')
+            : '<div style="padding:14px; background:#F5F7FA; border-radius:8px; font-size:13px;"><strong>전 근무지 접근</strong><br><span style="color:#6B7684; font-size:12px;">1등급 이상은 모든 근무지에 자동 권한 부여</span></div>'
+          }
+        </div>
+
+        <div class="jf-panel" style="grid-column: span 2;">
+          <div class="ws-section-title">로그인 이력 <span style="font-size:11px; color:#6B7684; font-weight:400;">최근 5건 (mock)</span></div>
+          <div class="tl">
+            <div class="tl-item ok"><div class="tl-date">${a.lastLogin}</div><div class="tl-title">로그인 성공</div><div class="tl-sub">카카오 로그인 + 전화번호 인증 (2FA) · Web</div></div>
+            <div class="tl-item ok"><div class="tl-date">2026-04-22 14:20</div><div class="tl-title">로그인 성공</div><div class="tl-sub">카카오 로그인 · Web</div></div>
+            <div class="tl-item ok"><div class="tl-date">2026-04-21 09:15</div><div class="tl-title">로그인 성공</div><div class="tl-sub">카카오 로그인 · Mobile App</div></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  window.__admSearch = function(val) { adminState.search = val; renderAdmins(); };
+  window.__admFilter = function(key, val) { adminState[key] = val; renderAdmins(); };
+  window.__admClearFilter = function() { adminState.search = ''; adminState.role = ''; adminState.active = ''; renderAdmins(); };
+  window.__admDetail = function(id) { renderAdminDetail(id); };
+  window.__admBack = function() { renderAdmins(); };
+  window.__admAdd = function() {
+    const name = prompt('새 관리자 이름을 입력하세요:'); if (!name) return;
+    const phone = prompt('전화번호 (010-xxxx-xxxx):'); if (!phone) return;
+    const role = prompt('등급을 입력하세요 (admin1 / admin2):');
+    if (!role || !['admin1', 'admin2'].includes(role)) { alert('등급은 admin1 또는 admin2여야 합니다.'); return; }
+    const id = 'adm_' + String(admins.length + 1).padStart(3, '0');
+    admins.push({
+      id, name, phone, role, sites: [], active: true,
+      lastLogin: '-', joinedAt: TODAY, createdBy: '테스트(마스터)',
+    });
+    alert(`${name} (${ROLE_LABEL[role]}) 관리자 추가 완료.${role === 'admin2' ? '\n담당 근무지를 배정해주세요.' : ''}`);
+    renderAdmins();
+  };
+  window.__admToggleActive = function(id) {
+    const a = findAdmin(id); if (!a) return;
+    if (!confirm(`${a.name} 님 계정을 ${a.active ? '비활성화' : '활성화'}하시겠습니까?`)) return;
+    a.active = !a.active;
+    renderAdminDetail(id);
+  };
+  window.__admDelete = function(id) {
+    const a = findAdmin(id); if (!a) return;
+    if (a.role === 'master') { alert('마스터 계정은 삭제할 수 없습니다.'); return; }
+    if (!confirm(`${a.name} 님 계정을 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?`)) return;
+    const idx = admins.indexOf(a); if (idx >= 0) admins.splice(idx, 1);
+    alert('계정 삭제 완료.');
+    renderAdmins();
+  };
+  window.__admToggleSite = function(adminId, siteId, checked) {
+    const a = findAdmin(adminId); if (!a) return;
+    if (checked && !a.sites.includes(siteId)) a.sites.push(siteId);
+    if (!checked) a.sites = a.sites.filter(s => s !== siteId);
+  };
 
   // ───────────────────────────────────────────────────────
   // 홈 대시보드
@@ -2587,6 +2842,7 @@
     negotiation: renderNegotiation,
     points: () => { pointState.tab = 'request'; renderPoints(); },
     control: renderControl,
+    accounts: renderAdmins,
   };
 
   navItems.forEach(item => {
