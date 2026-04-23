@@ -349,6 +349,17 @@
   function findJob(id) { return jobs.find(j => j.id === id); }
   function findApp(id) { return applications.find(a => a.id === id); }
 
+  // 협의대상 — 전화번호 기반 관리 (재가입 시 자동 매칭)
+  // reason: auto(경고 3회 자동) / manual(수동 등록) / rematch(전화번호 재가입 매칭)
+  const negotiations = [
+    { id: 'n001', phone: '010-1111-2002', name: '이준호',     registeredAt: '2026-01-28', reason: 'auto',    sub: '경고 3회 누적 (지각)',        lastSite: 'CJ 진천 MegaHub',  lastDate: '2026-03-30', workerId: 'w002', registeredBy: '시스템' },
+    { id: 'n002', phone: '010-1111-2006', name: '강시우',     registeredAt: '2026-02-15', reason: 'auto',    sub: '경고 3회 누적 (무단결근 반복)', lastSite: 'CJ 안성 MpHub',    lastDate: '2026-03-15', workerId: 'w006', registeredBy: '시스템' },
+    { id: 'n003', phone: '010-2222-3001', name: '(탈퇴 · 번호만)', registeredAt: '2025-11-10', reason: 'manual',  sub: '지속적 무응답 — 마스터 직접 등록', lastSite: '롯데 남양주 Hub',  lastDate: '2025-11-08', workerId: null,  registeredBy: '테스트(마스터)' },
+    { id: 'n004', phone: '010-2222-3002', name: '홍길동',     registeredAt: '2025-09-05', reason: 'manual',  sub: '도난 의심 사안 — 조사 후 등록', lastSite: 'CJ 군포 Hub_A',    lastDate: '2025-09-01', workerId: null,  registeredBy: '테스트(마스터)' },
+    { id: 'n005', phone: '010-1111-2099', name: '(탈퇴)',     registeredAt: '2025-08-14', reason: 'rematch', sub: '과거 번호 재가입 자동 매칭',     lastSite: '컨벤션 L타워 웨딩홀', lastDate: '2025-07-20', workerId: null,  registeredBy: '시스템' },
+  ];
+  function findNeg(id) { return negotiations.find(n => n.id === id); }
+
   // 공고 상태 판정: open(모집중) · closed(마감·시작전) · progress(진행중) · done(종료)
   function jobStatus(j) {
     if (j.date < TODAY) return 'done';
@@ -897,6 +908,163 @@
       });
     }, 100);
   }
+
+  // ───────────────────────────────────────────────────────
+  // 협의대상 페이지
+  // ───────────────────────────────────────────────────────
+  const negState = {
+    search: '',
+    reason: '',  // '' / auto / manual / rematch
+  };
+
+  function renderNegotiation() {
+    const q = negState.search.trim().toLowerCase();
+    const thisMonth = TODAY.slice(0, 7); // '2026-04'
+
+    let list = negotiations.filter(n => {
+      if (q && !(n.name.toLowerCase().includes(q) || n.phone.includes(q))) return false;
+      if (negState.reason && negState.reason !== n.reason) return false;
+      return true;
+    });
+    list = list.sort((a, b) => b.registeredAt.localeCompare(a.registeredAt));
+
+    const totalN = negotiations.length;
+    const thisMonthN = negotiations.filter(n => n.registeredAt.startsWith(thisMonth)).length;
+    const autoN = negotiations.filter(n => n.reason === 'auto').length;
+    const rematchN = negotiations.filter(n => n.reason === 'rematch').length;
+
+    const REASON_LABEL = { auto: '경고 3회 자동', manual: '수동 등록', rematch: '재가입 매칭' };
+    const REASON_STYLE = {
+      auto:    'background:#FEE2E2; color:#991B1B;',
+      manual:  'background:#F3F4F6; color:#374151;',
+      rematch: 'background:#DBEAFE; color:#1E40AF;',
+    };
+
+    let html = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">협의대상</div>
+          <div class="jf-subtitle">전화번호 기반 관리 · 해제는 마스터 전용</div>
+        </div>
+        <div class="ws-actions">
+          <button onclick="window.__negAdd()">+ 수동 등록</button>
+          <button onclick="alert('협의대상 이력 전체 조회는 추후 구현')">등록/해제 이력</button>
+        </div>
+      </div>
+
+      <div class="ws-warn-box">ℹ 협의대상 유저의 신청은 <strong>시간 무관 관리자 승인</strong>이 필요합니다. 영구 차단은 없으며, 마스터가 해제하면 정상 상태로 복귀합니다.</div>
+
+      <div class="jf-metric-grid">
+        <div class="jf-metric"><div class="jf-metric-label">전체 협의대상</div><div class="jf-metric-value" style="color:${totalN>0?'#EF4444':'#111827'};">${totalN}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div><div class="jf-metric-hint">전화번호 기준</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">이번 달 신규</div><div class="jf-metric-value">${thisMonthN}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div><div class="jf-metric-hint">${thisMonth} 기준</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">경고 3회 자동</div><div class="jf-metric-value">${autoN}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div><div class="jf-metric-hint">시스템 자동 등록</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">재가입 매칭</div><div class="jf-metric-value">${rematchN}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div><div class="jf-metric-hint">과거 번호 자동 감지</div></div>
+      </div>
+
+      <div class="jobs-filters">
+        <div class="jf-search"><input type="text" placeholder="이름 · 전화번호 검색" value="${negState.search}" oninput="window.__negSearch(this.value)" /></div>
+        <select onchange="window.__negFilter('reason', this.value)">
+          <option value="">전체 등록 사유</option>
+          <option value="auto"    ${negState.reason==='auto'?'selected':''}>경고 3회 자동</option>
+          <option value="manual"  ${negState.reason==='manual'?'selected':''}>수동 등록</option>
+          <option value="rematch" ${negState.reason==='rematch'?'selected':''}>재가입 매칭</option>
+        </select>
+        ${(negState.search || negState.reason) ? `<button onclick="window.__negClearFilter()" style="font-size:12px;">필터 초기화</button>` : ''}
+        <div style="margin-left:auto; font-size:12px; color:#6B7684; align-self:center;">${list.length}명 표시</div>
+      </div>
+    `;
+
+    if (list.length === 0) {
+      html += `<div class="jf-placeholder"><div class="jf-placeholder-icon">✅</div><div class="jf-placeholder-title">${negotiations.length === 0 ? '협의대상이 없습니다' : '조건에 맞는 협의대상이 없습니다'}</div><div class="jf-placeholder-desc">${negotiations.length === 0 ? '모든 알바생이 정상 상태입니다.' : '검색어/필터를 변경해보세요.'}</div></div>`;
+    } else {
+      const gridCols = '1.2fr 1.1fr 1.6fr 1.2fr 0.9fr 1.1fr';
+      html += `
+        <div class="jf-table">
+          <div class="jf-table-head" style="grid-template-columns:${gridCols};">
+            <div>이름</div>
+            <div>전화번호</div>
+            <div>등록 사유</div>
+            <div>마지막 근무지</div>
+            <div>등록일</div>
+            <div style="text-align:right;">액션</div>
+          </div>
+      `;
+      list.forEach(n => {
+        const linked = n.workerId ? findWorker(n.workerId) : null;
+        html += `
+          <div class="jf-table-row" style="grid-template-columns:${gridCols}; cursor:default;">
+            <div class="worker-name">
+              ${n.name}
+              ${!linked ? '<span class="apv-badge" style="background:#F3F4F6; color:#6B7684; font-size:10px; padding:2px 6px;">번호만</span>' : ''}
+            </div>
+            <div style="font-family:'SF Mono',Monaco,monospace; font-size:12px; color:#6B7684;">${n.phone}</div>
+            <div>
+              <span class="apv-badge" style="${REASON_STYLE[n.reason]}">${REASON_LABEL[n.reason]}</span>
+              <div style="font-size:11px; color:#6B7684; margin-top:3px;">${n.sub}</div>
+            </div>
+            <div style="font-size:12px;">
+              <div>${n.lastSite}</div>
+              <div style="color:#6B7684; font-size:11px; margin-top:2px;">${n.lastDate}</div>
+            </div>
+            <div style="font-size:12px; color:#6B7684;">
+              <div>${n.registeredAt}</div>
+              <div style="font-size:11px; color:#9CA3AF;">${n.registeredBy}</div>
+            </div>
+            <div style="display:flex; gap:6px; justify-content:flex-end;">
+              ${linked ? `<button onclick="window.__wrkDetail('${linked.id}')" style="font-size:11px; height:30px; padding:0 10px;">상세</button>` : ''}
+              <button class="btn-primary" onclick="window.__negRelease('${n.id}')" style="font-size:11px; height:30px; padding:0 10px;">해제 (마스터)</button>
+            </div>
+          </div>
+        `;
+      });
+      html += `</div>`;
+    }
+
+    main.innerHTML = html;
+  }
+
+  window.__negSearch = function(val) { negState.search = val; renderNegotiation(); };
+  window.__negFilter = function(key, val) { negState[key] = val; renderNegotiation(); };
+  window.__negClearFilter = function() { negState.search = ''; negState.reason = ''; renderNegotiation(); };
+  window.__negAdd = function() {
+    const phone = prompt('협의대상으로 등록할 전화번호를 입력하세요:\n(예: 010-0000-0000)');
+    if (!phone) return;
+    const reason = prompt('등록 사유를 입력하세요:');
+    if (!reason) return;
+    const id = 'n' + String(negotiations.length + 1).padStart(3, '0');
+    // 기존 근무자 매칭 확인
+    const matched = workers.find(w => w.phone === phone);
+    if (matched) {
+      matched.negotiation = true;
+      matched.warnings = Math.max(matched.warnings, 3);
+    }
+    negotiations.push({
+      id,
+      phone,
+      name: matched ? matched.name : '(수동 등록 · 번호만)',
+      registeredAt: TODAY,
+      reason: 'manual',
+      sub: reason,
+      lastSite: matched ? '(근무자 이력 참조)' : '-',
+      lastDate: matched ? matched.lastWorked : '-',
+      workerId: matched ? matched.id : null,
+      registeredBy: '테스트(마스터)',
+    });
+    alert(`협의대상 등록 완료.\n전화번호: ${phone}\n${matched ? '기존 근무자 ' + matched.name + ' 님과 자동 매칭됨.' : '미가입 전화번호로 등록됨.'}`);
+    renderNegotiation();
+  };
+  window.__negRelease = function(id) {
+    const n = findNeg(id); if (!n) return;
+    if (!confirm(`${n.name} (${n.phone}) 님의 협의대상을 해제합니다. (마스터 전용)\n\n• 경고 카운트가 0으로 초기화됩니다\n• 정상 상태로 복귀합니다\n\n계속하시겠습니까?`)) return;
+    if (n.workerId) {
+      const w = findWorker(n.workerId);
+      if (w) { w.negotiation = false; w.warnings = 0; }
+    }
+    const idx = negotiations.indexOf(n);
+    if (idx >= 0) negotiations.splice(idx, 1);
+    alert(`${n.name} 님의 협의대상 해제 완료.`);
+    renderNegotiation();
+  };
 
   // ───────────────────────────────────────────────────────
   // 근무자 관리 페이지
@@ -1623,6 +1791,7 @@
     jobs: () => { jobsState.tab = 'list'; renderJobs(); },
     approval: renderApproval,
     workers: renderWorkers,
+    negotiation: renderNegotiation,
   };
 
   navItems.forEach(item => {
