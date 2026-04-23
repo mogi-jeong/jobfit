@@ -175,6 +175,42 @@
   .btn-reject { background: #fff !important; color: #EF4444 !important; border-color: #EF4444 !important; }
   .btn-reject:hover:not(:disabled) { background: #FEE2E2 !important; }
 
+  /* 관제 시스템 */
+  .ctrl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+  .ctrl-card { background: #fff; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.1s; position: relative; }
+  .ctrl-card:hover { border-color: #2563EB; box-shadow: 0 2px 10px rgba(37,99,235,0.08); }
+  .ctrl-card.done { opacity: 0.6; background: #F9FAFB; }
+  .ctrl-card.progress { border-left: 3px solid #22C55E; }
+  .ctrl-card.waiting { border-left: 3px solid #F59E0B; }
+  .ctrl-card-time { font-size: 11px; color: #6B7684; margin-bottom: 3px; }
+  .ctrl-card-site { font-weight: 500; font-size: 14px; color: #111827; }
+  .ctrl-card-partner { font-size: 11px; color: #6B7684; margin-top: 2px; }
+  .ctrl-atd-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 12px; text-align: center; }
+  .ctrl-atd-cell { padding: 6px 4px; border-radius: 6px; font-size: 11px; }
+  .ctrl-atd-cell strong { display: block; font-size: 16px; font-weight: 500; margin-bottom: 2px; }
+  .ctrl-atd-ok { background: #DCFCE7; color: #166534; }
+  .ctrl-atd-late { background: #FEF3C7; color: #92400E; }
+  .ctrl-atd-no { background: #FEE2E2; color: #991B1B; }
+  .ctrl-atd-wait { background: #F3F4F6; color: #6B7684; }
+
+  /* 명단 리스트 */
+  .ctrl-roster { display: flex; flex-direction: column; gap: 2px; }
+  .ctrl-roster-row { display: grid; grid-template-columns: 30px 1.5fr 1fr 1fr 0.8fr auto; gap: 10px; padding: 10px 12px; align-items: center; font-size: 13px; border-radius: 6px; cursor: pointer; transition: background 0.1s; }
+  .ctrl-roster-row:hover { background: #F5F7FA; }
+  .ctrl-roster-dot { width: 10px; height: 10px; border-radius: 50%; margin: 0 auto; }
+  .dot-ok { background: #22C55E; }
+  .dot-late { background: #F59E0B; }
+  .dot-no { background: #EF4444; }
+  .dot-wait { background: #D1D5DB; }
+
+  /* 계약서·서명 모달 */
+  .jf-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+  .jf-modal { background: #fff; border-radius: 12px; max-width: 680px; width: 100%; max-height: 90vh; overflow-y: auto; }
+  .jf-modal-head { padding: 18px 24px; border-bottom: 0.5px solid rgba(0,0,0,0.08); display: flex; justify-content: space-between; align-items: center; }
+  .jf-modal-title { font-size: 16px; font-weight: 500; }
+  .jf-modal-close { font-size: 22px; color: #6B7684; cursor: pointer; background: none; border: none; line-height: 1; }
+  .jf-modal-body { padding: 24px; }
+
   /* 공용 테이블 (근무자 관리 등) */
   .jf-table { width: 100%; background: #fff; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 12px; overflow: hidden; }
   .jf-table-head { display: grid; padding: 12px 16px; background: #F5F7FA; font-size: 12px; font-weight: 500; color: #6B7684; border-bottom: 0.5px solid rgba(0,0,0,0.08); }
@@ -930,6 +966,323 @@
       });
     }, 100);
   }
+
+  // ───────────────────────────────────────────────────────
+  // 관제 시스템
+  // ───────────────────────────────────────────────────────
+  const ctrlState = {
+    partnerKey: '',
+    siteId: '',
+    slot: '',
+    dateRange: 'today',  // today / week / all / past
+  };
+
+  function addMin(hhmm, m) {
+    const [h, mm] = hhmm.split(':').map(Number);
+    const total = h * 60 + mm + m;
+    return String(Math.floor(total/60) % 24).padStart(2,'0') + ':' + String(total%60).padStart(2,'0');
+  }
+
+  // 결정적 출결 시뮬레이션 — 공고 상태에 따라 분포 조정
+  function getAttendance(jobId) {
+    const job = findJob(jobId); if (!job) return [];
+    const st = jobStatus(job);
+    const seed = [...jobId].reduce((s, c) => s + c.charCodeAt(0), 0);
+    const actualCount = Math.min(job.apply, workers.length);
+    const shuffled = [...workers].sort((a, b) =>
+      ((seed + a.id.charCodeAt(3)) % 100) - ((seed + b.id.charCodeAt(3)) % 100)
+    );
+    const picked = shuffled.slice(0, actualCount);
+
+    return picked.map((w, i) => {
+      const r = (seed + i * 7) % 100;
+      if (st === 'open' || st === 'closed') {
+        return { worker: w, status: '대기', checkin: null, checkout: null };
+      }
+      if (st === 'progress') {
+        if (r < 70) return { worker: w, status: '출근', checkin: job.start, checkout: null };
+        if (r < 90) return { worker: w, status: '지각', checkin: addMin(job.start, 8 + (r % 20)), checkout: null };
+        return { worker: w, status: '결근', checkin: null, checkout: null };
+      }
+      // done
+      if (r < 85) return { worker: w, status: '출근', checkin: job.start, checkout: job.end };
+      if (r < 95) return { worker: w, status: '지각', checkin: addMin(job.start, 5 + (r % 15)), checkout: job.end };
+      return { worker: w, status: '결근', checkin: null, checkout: null };
+    });
+  }
+
+  function attendanceSummary(jobId) {
+    const list = getAttendance(jobId);
+    const sum = { 출근: 0, 지각: 0, 결근: 0, 대기: 0 };
+    list.forEach(a => sum[a.status]++);
+    return sum;
+  }
+
+  function renderControl() {
+    // 날짜 필터
+    const todayStr = TODAY;
+    const weekAgo = new Date(TODAY); weekAgo.setDate(weekAgo.getDate() - 6);
+    const weekAgoStr = weekAgo.toISOString().slice(0, 10);
+
+    let list = jobs.filter(j => {
+      const site = findSite(j.siteId); if (!site) return false;
+      if (ctrlState.partnerKey && ctrlState.partnerKey !== site.partnerKey) return false;
+      if (ctrlState.siteId && ctrlState.siteId !== j.siteId) return false;
+      if (ctrlState.slot && ctrlState.slot !== j.slot) return false;
+      if (ctrlState.dateRange === 'today') return j.date === todayStr;
+      if (ctrlState.dateRange === 'week')  return j.date >= weekAgoStr && j.date <= todayStr;
+      if (ctrlState.dateRange === 'past')  return j.date < todayStr;
+      return true; // all
+    });
+
+    // 시작 시간 임박순: 오늘+미래는 오름차순, 과거는 최근순
+    list = list.sort((a, b) => {
+      if (a.date === b.date) return (a.start || '').localeCompare(b.start || '');
+      return a.date.localeCompare(b.date);
+    });
+
+    // 메트릭 (오늘 기준)
+    const todayJobs = jobs.filter(j => j.date === todayStr);
+    const todayProgress = todayJobs.filter(j => jobStatus(j) === 'progress').length;
+    const todayWaiting = todayJobs.filter(j => ['open', 'closed'].includes(jobStatus(j))).length;
+    const todayDone = todayJobs.filter(j => jobStatus(j) === 'done').length;
+    // 오늘 평균 출근율 (진행/종료 공고 대상)
+    const rateJobs = todayJobs.filter(j => ['progress', 'done'].includes(jobStatus(j)));
+    let avgRate = '-';
+    if (rateJobs.length > 0) {
+      let totalSum = 0, okSum = 0;
+      rateJobs.forEach(j => {
+        const s = attendanceSummary(j.id);
+        const tot = s.출근 + s.지각 + s.결근;
+        totalSum += tot;
+        okSum += s.출근 + s.지각;
+      });
+      avgRate = totalSum > 0 ? Math.round(okSum / totalSum * 100) + '%' : '-';
+    }
+
+    const partnerOpts = Object.keys(worksites).map(k =>
+      `<option value="${k}" ${ctrlState.partnerKey === k ? 'selected' : ''}>${worksites[k].name}</option>`).join('');
+    const siteOpts = (() => {
+      const sites = ctrlState.partnerKey
+        ? worksites[ctrlState.partnerKey].sites
+        : Object.values(worksites).flatMap(p => p.sites);
+      return sites.map(s => `<option value="${s.id}" ${ctrlState.siteId === s.id ? 'selected' : ''}>${s.name}</option>`).join('');
+    })();
+
+    let html = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">관제 시스템</div>
+          <div class="jf-subtitle">실시간 출근 현황 · 전 근무지 열람 (등급 무관)</div>
+        </div>
+        <div class="ws-actions">
+          <button onclick="window.__ctrlRefresh()">↻ 새로고침</button>
+        </div>
+      </div>
+
+      <div class="jf-metric-grid">
+        <div class="jf-metric"><div class="jf-metric-label">진행 중</div><div class="jf-metric-value" style="color:#22C55E;">${todayProgress}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">오늘 근무 중</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">대기 (시작 전)</div><div class="jf-metric-value" style="color:#F59E0B;">${todayWaiting}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">오늘 예정 공고</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">종료</div><div class="jf-metric-value" style="color:#6B7684;">${todayDone}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">오늘 마감된 공고</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">평균 출근율</div><div class="jf-metric-value">${avgRate}</div><div class="jf-metric-hint">오늘 진행·종료 기준</div></div>
+      </div>
+
+      <div class="jobs-filters">
+        <select onchange="window.__ctrlFilter('dateRange', this.value)">
+          <option value="today" ${ctrlState.dateRange==='today'?'selected':''}>오늘</option>
+          <option value="week"  ${ctrlState.dateRange==='week'?'selected':''}>최근 7일</option>
+          <option value="past"  ${ctrlState.dateRange==='past'?'selected':''}>과거 전체</option>
+          <option value="all"   ${ctrlState.dateRange==='all'?'selected':''}>전체 (과거+예정)</option>
+        </select>
+        <select onchange="window.__ctrlFilter('partnerKey', this.value)">
+          <option value="">전체 파트너사</option>${partnerOpts}
+        </select>
+        <select onchange="window.__ctrlFilter('siteId', this.value)">
+          <option value="">전체 근무지</option>${siteOpts}
+        </select>
+        <select onchange="window.__ctrlFilter('slot', this.value)">
+          <option value="">전체 시간대</option>
+          <option value="주간" ${ctrlState.slot==='주간'?'selected':''}>주간</option>
+          <option value="야간" ${ctrlState.slot==='야간'?'selected':''}>야간</option>
+          <option value="새벽" ${ctrlState.slot==='새벽'?'selected':''}>새벽</option>
+          <option value="웨딩" ${ctrlState.slot==='웨딩'?'selected':''}>웨딩</option>
+        </select>
+        <div style="margin-left:auto; font-size:12px; color:#6B7684; align-self:center;">${list.length}건 · 시작 임박순 정렬</div>
+      </div>
+    `;
+
+    if (list.length === 0) {
+      html += `<div class="jf-placeholder"><div class="jf-placeholder-icon">📡</div><div class="jf-placeholder-title">조건에 맞는 공고가 없습니다</div><div class="jf-placeholder-desc">날짜 범위나 필터를 변경해보세요.</div></div>`;
+    } else {
+      html += `<div class="ctrl-grid">`;
+      list.forEach(j => {
+        const site = findSite(j.siteId);
+        const st = jobStatus(j);
+        const cls = st === 'done' ? 'done' : st === 'progress' ? 'progress' : 'waiting';
+        const stLabel = STATUS_LABEL[st];
+        const stColor = { open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
+        const sum = attendanceSummary(j.id);
+
+        html += `
+          <div class="ctrl-card ${cls}" onclick="window.__ctrlDetail('${j.id}')">
+            <div class="ctrl-card-time">${j.date} · ${j.slot} ${j.start}~${j.end}</div>
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+              <div>
+                <div class="ctrl-card-site">${site.site.name}</div>
+                <div class="ctrl-card-partner">${site.partner} · 모집 ${j.apply}/${j.cap}명</div>
+              </div>
+              <span class="jobs-status" style="background:${stColor}22; color:${stColor};">${stLabel}</span>
+            </div>
+            <div class="ctrl-atd-row">
+              <div class="ctrl-atd-cell ctrl-atd-ok"><strong>${sum.출근}</strong>🟢 출근</div>
+              <div class="ctrl-atd-cell ctrl-atd-late"><strong>${sum.지각}</strong>🟡 지각</div>
+              <div class="ctrl-atd-cell ctrl-atd-no"><strong>${sum.결근}</strong>🔴 결근</div>
+              <div class="ctrl-atd-cell ctrl-atd-wait"><strong>${sum.대기}</strong>⚪ 대기</div>
+            </div>
+          </div>
+        `;
+      });
+      html += `</div>`;
+    }
+
+    main.innerHTML = html;
+  }
+
+  function renderControlDetail(jobId) {
+    const j = findJob(jobId); if (!j) return;
+    const site = findSite(j.siteId);
+    const st = jobStatus(j);
+    const attend = getAttendance(jobId);
+    const sum = attendanceSummary(jobId);
+    const stLabel = STATUS_LABEL[st];
+    const stColor = { open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
+
+    // 포인트 지급 내역 (종료된 공고만)
+    const payoutHtml = st === 'done'
+      ? `<div class="jf-panel" style="margin-top:12px;">
+          <div class="ws-section-title">포인트 지급 내역</div>
+          ${attend.filter(a => a.status !== '결근' && a.status !== '대기').map(a =>
+            `<div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:0.5px solid rgba(0,0,0,0.06); font-size:13px;">
+              <span>${a.worker.name} <span style="color:#6B7684; font-size:11px;">${a.worker.phone}</span></span>
+              <strong style="color:#2563EB;">+${j.wage.toLocaleString()} P</strong>
+            </div>`).join('')}
+          <div style="display:flex; justify-content:space-between; padding:12px 0 0; font-size:13px; font-weight:500;">
+            <span>총 지급</span>
+            <strong>${((sum.출근+sum.지각) * j.wage).toLocaleString()} P</strong>
+          </div>
+        </div>`
+      : '';
+
+    main.innerHTML = `
+      <span class="jf-back" onclick="window.__ctrlBack()">← 관제 목록으로</span>
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">${site.site.name} <span class="ws-mini-tag" style="vertical-align:middle;">${site.partner}</span></div>
+          <div class="jf-subtitle">${j.date} · ${j.slot} ${j.start}~${j.end} · ${j.wage.toLocaleString()}원/${j.wageType}</div>
+        </div>
+        <div>
+          <span class="jobs-status" style="background:${stColor}22; color:${stColor}; font-size:13px; padding:6px 14px;">${stLabel}</span>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+        <div class="jf-metric"><div class="jf-metric-label">🟢 출근</div><div class="jf-metric-value" style="color:#22C55E;">${sum.출근}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div></div>
+        <div class="jf-metric"><div class="jf-metric-label">🟡 지각</div><div class="jf-metric-value" style="color:#F59E0B;">${sum.지각}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div></div>
+        <div class="jf-metric"><div class="jf-metric-label">🔴 결근</div><div class="jf-metric-value" style="color:#EF4444;">${sum.결근}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div></div>
+        <div class="jf-metric"><div class="jf-metric-label">⚪ 대기</div><div class="jf-metric-value" style="color:#6B7684;">${sum.대기}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div></div>
+      </div>
+
+      <div class="jf-panel">
+        <div class="ws-section-title">알바생 명단 <span style="font-size:11px; color:#6B7684; font-weight:400;">이름 클릭 시 계약서 + 서명 확인</span></div>
+        <div class="jf-table-head" style="grid-template-columns: 30px 1.5fr 1fr 1fr 0.8fr auto; padding: 10px 12px;">
+          <div></div>
+          <div>이름</div>
+          <div>출근 시각</div>
+          <div>퇴근 시각</div>
+          <div>상태</div>
+          <div></div>
+        </div>
+        <div class="ctrl-roster">
+          ${attend.map(a => {
+            const dotCls = { 출근:'dot-ok', 지각:'dot-late', 결근:'dot-no', 대기:'dot-wait' }[a.status];
+            const stClr = { 출근:'#166534', 지각:'#92400E', 결근:'#991B1B', 대기:'#6B7684' }[a.status];
+            return `
+              <div class="ctrl-roster-row" onclick="window.__ctrlContract('${j.id}','${a.worker.id}')">
+                <div><span class="ctrl-roster-dot ${dotCls}"></span></div>
+                <div>
+                  <div style="font-weight:500;">${a.worker.name}</div>
+                  <div style="font-size:11px; color:#6B7684; font-family:'SF Mono',Monaco,monospace;">${a.worker.phone}</div>
+                </div>
+                <div style="font-size:12px; color:${a.checkin ? '#111827' : '#D1D5DB'};">${a.checkin || '-'}</div>
+                <div style="font-size:12px; color:${a.checkout ? '#111827' : '#D1D5DB'};">${a.checkout || '-'}</div>
+                <div style="color:${stClr}; font-size:12px; font-weight:500;">${a.status}</div>
+                <div style="text-align:right; color:#2563EB; font-size:12px;">📄 계약서</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
+      ${payoutHtml}
+    `;
+  }
+
+  function renderContractModal(jobId, workerId) {
+    const j = findJob(jobId); if (!j) return;
+    const w = findWorker(workerId); if (!w) return;
+    const site = findSite(j.siteId);
+    const filename = `${j.date.replace(/-/g,'')}_${site.site.name}_${w.name}.pdf`;
+    const overlay = document.createElement('div');
+    overlay.className = 'jf-modal-overlay';
+    overlay.innerHTML = `
+      <div class="jf-modal" onclick="event.stopPropagation()">
+        <div class="jf-modal-head">
+          <div class="jf-modal-title">📄 ${filename}</div>
+          <button class="jf-modal-close" onclick="this.closest('.jf-modal-overlay').remove()">×</button>
+        </div>
+        <div class="jf-modal-body">
+          <div style="padding: 20px; background: #F9FAFB; border-radius: 8px; border: 0.5px solid rgba(0,0,0,0.08); font-size: 13px; line-height: 1.8;">
+            <div style="text-align:center; font-size:18px; font-weight:500; margin-bottom:14px;">단기 근로계약서</div>
+            <div><strong>근로자:</strong> ${w.name} (${w.phone})</div>
+            <div><strong>근무지:</strong> ${site.partner} — ${site.site.name}</div>
+            <div><strong>주소:</strong> ${site.site.addr}</div>
+            <div><strong>근무일:</strong> ${j.date}</div>
+            <div><strong>근무시간:</strong> ${j.slot} ${j.start} ~ ${j.end}</div>
+            <div><strong>${j.wageType}:</strong> ${j.wage.toLocaleString()}원</div>
+            <div><strong>담당자:</strong> ${j.contact}</div>
+            <div style="margin-top:10px; padding-top:10px; border-top: 0.5px dashed rgba(0,0,0,0.15); color:#6B7684; font-size:12px;">
+              ※ 실제 앱에서는 Supabase Storage의 계약서 PDF 파일이 렌더됩니다.
+            </div>
+          </div>
+
+          <div style="margin-top: 16px; padding: 16px; background: #fff; border: 0.5px solid rgba(0,0,0,0.08); border-radius: 8px;">
+            <div style="font-size: 12px; color: #6B7684; margin-bottom: 8px;">전자 서명</div>
+            <svg width="100%" height="90" viewBox="0 0 300 90" style="background:#FAFBFC; border: 0.5px dashed rgba(0,0,0,0.1); border-radius:4px;">
+              <path d="M 30 60 Q 50 20, 70 50 T 110 55 Q 130 30, 150 55 T 195 50 Q 220 40, 240 65 Q 255 70, 270 50" fill="none" stroke="#1B3A6B" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <div style="font-size: 11px; color: #6B7684; margin-top: 6px;">서명 일시: ${j.date} ${j.start} · 서명자: ${w.name}</div>
+          </div>
+
+          <div style="display:flex; gap:8px; margin-top: 16px;">
+            <button onclick="alert('PDF 다운로드는 추후 구현')" style="flex:1;">PDF 다운로드</button>
+            <button class="btn-primary" onclick="this.closest('.jf-modal-overlay').remove()" style="flex:1;">닫기</button>
+          </div>
+        </div>
+      </div>
+    `;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  }
+
+  window.__ctrlFilter = function(key, val) {
+    ctrlState[key] = val;
+    if (key === 'partnerKey') ctrlState.siteId = '';
+    renderControl();
+  };
+  window.__ctrlRefresh = function() { renderControl(); };
+  window.__ctrlDetail = function(id) { renderControlDetail(id); };
+  window.__ctrlBack = function() { renderControl(); };
+  window.__ctrlContract = function(jobId, workerId) { renderContractModal(jobId, workerId); };
 
   // ───────────────────────────────────────────────────────
   // 포인트 페이지
@@ -2028,6 +2381,7 @@
     workers: renderWorkers,
     negotiation: renderNegotiation,
     points: () => { pointState.tab = 'request'; renderPoints(); },
+    control: renderControl,
   };
 
   navItems.forEach(item => {
