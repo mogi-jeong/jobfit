@@ -654,8 +654,8 @@
           <div class="jf-subtitle">마스터 전용 · 파트너사 · 근무지 계층 관리</div>
         </div>
         <div class="ws-actions">
-          <button onclick="alert('엑셀 업/다운로드는 추후 단계에서 구현')">엑셀</button>
-          <button onclick="alert('파트너사 추가 폼은 추후 단계에서 구현')">+ 파트너사 추가</button>
+          <button onclick="showExcelModal('sites')">엑셀</button>
+          <button onclick="window.__partnerAdd()">+ 파트너사 추가</button>
           <button class="btn-primary" onclick="window.__wsAddSite()">+ 근무지 추가</button>
         </div>
       </div>
@@ -684,7 +684,7 @@
               <span class="ws-partner-count">${p.sites.length}곳</span>
             </div>
             <div class="ws-actions">
-              <button onclick="event.stopPropagation(); alert('${p.name} 파트너사 설정은 추후 구현')" style="font-size:11px; padding:5px 10px; height:auto;">파트너사 설정</button>
+              <button onclick="event.stopPropagation(); window.__partnerEdit('${key}')" style="font-size:11px; padding:5px 10px; height:auto;">파트너사 설정</button>
             </div>
           </div>
           <div class="ws-partner-body">
@@ -1540,17 +1540,100 @@
   window.__admClearFilter = function() { adminState.search = ''; adminState.role = ''; adminState.active = ''; renderAdmins(); };
   window.__admDetail = function(id) { renderAdminDetail(id); };
   window.__admBack = function() { renderAdmins(); };
+  const adminFormState = {
+    name: '', phone: '', role: 'admin2', sites: [],
+  };
   window.__admAdd = function() {
-    const name = prompt('새 관리자 이름을 입력하세요:'); if (!name) return;
-    const phone = prompt('전화번호 (010-xxxx-xxxx):'); if (!phone) return;
-    const role = prompt('등급을 입력하세요 (admin1 / admin2):');
-    if (!role || !['admin1', 'admin2'].includes(role)) { alert('등급은 admin1 또는 admin2여야 합니다.'); return; }
+    Object.assign(adminFormState, { name: '', phone: '', role: 'admin2', sites: [] });
+    renderAdminAddModal();
+  };
+  function renderAdminAddModal() {
+    document.querySelectorAll('.jf-modal-overlay.admin-add').forEach(el => el.remove());
+    const f = adminFormState;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'jf-modal-overlay admin-add';
+    overlay.innerHTML = `
+      <div class="jf-modal" style="max-width: 560px;" onclick="event.stopPropagation()">
+        <div class="jf-modal-head">
+          <div class="jf-modal-title">+ 새 관리자 추가</div>
+          <button class="jf-modal-close" onclick="this.closest('.jf-modal-overlay').remove()">×</button>
+        </div>
+        <div class="jf-modal-body">
+          <div class="jf-form-row">
+            <div class="jf-form-label">이름<span class="req">*</span></div>
+            <input type="text" placeholder="실명 입력" value="${f.name}" oninput="adminFormState.name = this.value" style="max-width:220px;" />
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">전화번호<span class="req">*</span></div>
+            <input type="tel" placeholder="010-XXXX-XXXX" value="${f.phone}" oninput="adminFormState.phone = this.value" style="max-width:220px;" />
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">등급<span class="req">*</span></div>
+            <div style="display:flex; gap:6px;">
+              <button class="login-role-btn ${f.role==='admin1'?'active':''}" onclick="adminFormState.role='admin1'; adminFormState.sites=[]; renderAdminAddModal();">관리자 1등급</button>
+              <button class="login-role-btn ${f.role==='admin2'?'active':''}" onclick="adminFormState.role='admin2'; renderAdminAddModal();">관리자 2등급</button>
+            </div>
+          </div>
+          <div class="jf-form-row top">
+            <div class="jf-form-label"></div>
+            <div style="font-size:11px; color:#6B7684; background:#F5F7FA; padding:10px 12px; border-radius:8px;">
+              ${f.role === 'admin1'
+                ? '✓ 전 근무지 접근 권한<br>✓ 2등급 계정 관리 가능<br>✗ 협의대상 해제 (마스터 전용)'
+                : '✓ 담당 근무지 한정 접근<br>✓ 경고 부여 / 해제 (담당 근무지)<br>✓ 관제 시스템 전 근무지 열람 (등급 무관)<br>✗ 근무지 등록 / 템플릿 등록'}
+            </div>
+          </div>
+          ${f.role === 'admin2' ? `
+            <div class="jf-form-row top" style="padding-top:14px;">
+              <div class="jf-form-label">담당 근무지<span class="req">*</span></div>
+              <div style="max-height: 260px; overflow-y: auto; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 8px; padding: 8px 12px;">
+                ${Object.keys(worksites).map(pk => `
+                  <div style="padding: 6px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06);">
+                    <div style="font-size: 12px; font-weight: 500; color: #111827; margin-bottom: 6px;">${worksites[pk].name}</div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+                      ${worksites[pk].sites.map(s => `
+                        <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;">
+                          <input type="checkbox" value="${s.id}" ${f.sites.includes(s.id)?'checked':''} onchange="window.__admFormToggleSite('${s.id}', this.checked)">
+                          ${s.name}
+                        </label>
+                      `).join('')}
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+              <div class="jf-form-hint" style="margin-top:6px;">복수 파트너사 교차 배정 가능 · 선택 ${f.sites.length}곳</div>
+            </div>
+          ` : ''}
+          <div style="display:flex; gap:8px; margin-top: 20px; padding-top:14px; border-top: 0.5px solid rgba(0,0,0,0.08);">
+            <button onclick="this.closest('.jf-modal-overlay').remove()">취소</button>
+            <div style="flex:1;"></div>
+            <button class="btn-primary" onclick="window.__admFormSubmit()">관리자 추가</button>
+          </div>
+        </div>
+      </div>
+    `;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  }
+  window.__admFormToggleSite = function(siteId, checked) {
+    if (checked && !adminFormState.sites.includes(siteId)) adminFormState.sites.push(siteId);
+    if (!checked) adminFormState.sites = adminFormState.sites.filter(s => s !== siteId);
+  };
+  window.__admFormSubmit = function() {
+    const f = adminFormState;
+    if (!f.name.trim()) { alert('이름을 입력해주세요'); return; }
+    if (!f.phone.trim()) { alert('전화번호를 입력해주세요'); return; }
+    if (f.role === 'admin2' && f.sites.length === 0) {
+      if (!confirm('담당 근무지가 배정되지 않았습니다. 계정은 생성되지만 아무 근무지에도 접근할 수 없습니다. 계속하시겠습니까?')) return;
+    }
     const id = 'adm_' + String(admins.length + 1).padStart(3, '0');
     admins.push({
-      id, name, phone, role, sites: [], active: true,
+      id, name: f.name, phone: f.phone, role: f.role,
+      sites: [...f.sites], active: true,
       lastLogin: '-', joinedAt: TODAY, createdBy: '테스트(마스터)',
     });
-    alert(`${name} (${ROLE_LABEL[role]}) 관리자 추가 완료.${role === 'admin2' ? '\n담당 근무지를 배정해주세요.' : ''}`);
+    alert(`${f.name} (${ROLE_LABEL[f.role]}) 관리자 추가 완료.${f.role === 'admin2' ? `\n담당 근무지 ${f.sites.length}곳 배정됨.` : ''}`);
+    document.querySelectorAll('.jf-modal-overlay.admin-add').forEach(el => el.remove());
     renderAdmins();
   };
   window.__admToggleActive = function(id) {
@@ -1668,6 +1751,7 @@
         <div class="ws-actions">
           <button class="btn-primary" onclick="window.__navGoto('jobs')">+ 새 공고 등록</button>
           <button onclick="window.__navGoto('approval')">신청 승인 (${pendingAll})</button>
+          <button onclick="window.__notifAll()">📣 알림 발송</button>
         </div>
       </div>
 
@@ -2212,7 +2296,7 @@
           <div class="jf-subtitle">출금 요청 처리 · 회수 로그 · 반자동 처리 (1차 출시)</div>
         </div>
         <div class="ws-actions">
-          <button onclick="alert('엑셀 다운로드는 추후 구현')">엑셀</button>
+          <button onclick="showExcelModal('points')">엑셀</button>
         </div>
       </div>
 
@@ -2595,8 +2679,7 @@
           <div class="jf-subtitle">전체 알바생 · 경고 이력 · 포인트 현황</div>
         </div>
         <div class="ws-actions">
-          <button onclick="alert('엑셀 업로드: 명단 일괄 등록용 (N12로 이월)')">엑셀 업로드</button>
-          <button onclick="alert('엑셀 다운로드는 추후 구현')">엑셀 다운로드</button>
+          <button onclick="showExcelModal('workers')">엑셀</button>
         </div>
       </div>
 
@@ -2698,7 +2781,7 @@
           ${w.negotiation
             ? '<button class="btn-primary" onclick="window.__wrkNegRelease(\'' + w.id + '\')">협의대상 해제 (마스터)</button>'
             : '<button onclick="window.__wrkWarnAdd(\'' + w.id + '\')">경고 부여</button>'}
-          <button onclick="alert('알바생 메시지/알림 발송은 추후 구현')">알림 발송</button>
+          <button onclick="window.__notifWorker('${w.id}')">알림 발송</button>
         </div>
       </div>
 
@@ -2759,6 +2842,11 @@
   window.__wrkFilter = function(key, val) { workerState[key] = val; renderWorkers(); };
   window.__wrkClearFilter = function() { workerState.search = ''; workerState.status = ''; renderWorkers(); };
   window.__wrkDetail = function(id) { renderWorkerDetail(id); };
+  window.__notifWorker = function(id) {
+    const w = findWorker(id); if (!w) return;
+    showNotificationModal([{ id: w.id, name: w.name, phone: w.phone, type: 'worker' }]);
+  };
+  window.__notifAll = function() { showNotificationModal([]); };
   window.__wrkBack = function() { renderWorkers(); };
   window.__wrkWarnAdd = function(id) {
     const w = findWorker(id); if (!w) return;
@@ -3041,7 +3129,7 @@
           <div class="jf-subtitle">파트너사 · 근무지 기준 공고 등록 및 관리</div>
         </div>
         <div class="ws-actions">
-          <button onclick="alert('엑셀 업/다운로드는 추후 구현')">엑셀</button>
+          <button onclick="showExcelModal('jobs')">엑셀</button>
           <button class="btn-primary" onclick="window.__jobsTab('create')">+ 새 공고 등록</button>
         </div>
       </div>
@@ -3112,7 +3200,7 @@
               <div class="jobs-progress-label"><span>모집 ${j.apply} / ${j.cap}명</span><span>${pct}%</span></div>
               <div class="jobs-card-foot" onclick="event.stopPropagation()">
                 <button onclick="alert('신청자 목록은 추후 구현')">신청자</button>
-                <button onclick="alert('공고 수정 폼은 추후 구현')">수정</button>
+                <button onclick="window.__jobEdit('${j.id}')">수정</button>
               </div>
             </div>
           `;
@@ -3674,7 +3762,7 @@
           <div class="jf-subtitle">${j.date} · ${j.slot} ${j.start}~${j.end} · 공고 ID ${j.id}</div>
         </div>
         <div class="ws-actions">
-          <button onclick="alert('공고 수정 폼은 추후 구현 (등록 폼 재사용 예정)')">수정</button>
+          <button onclick="window.__jobEdit('${j.id}')">수정</button>
           <button onclick="window.__jobsDuplicate('${j.id}')">복제</button>
           <button onclick="window.__jobsDelete('${j.id}')" class="btn-danger" ${st!=='open'&&st!=='closed'?'disabled':''}>삭제</button>
         </div>
@@ -3769,6 +3857,128 @@
       </div>
     `;
   }
+
+  // 공고 수정 폼 — 단일 공고 편집
+  const jobEditState = { jobId: null, draft: null };
+
+  function renderJobEdit(jobId) {
+    const j = findJob(jobId); if (!j) return;
+    if (jobEditState.jobId !== jobId) {
+      jobEditState.jobId = jobId;
+      jobEditState.draft = { ...j };  // 깊은 복사 (플랫 객체니까 얕은 복사로 충분)
+    }
+    const d = jobEditState.draft;
+    const site = findSite(d.siteId);
+    const reward = pointRewardFor(d);
+
+    main.innerHTML = `
+      <span class="jf-back" onclick="window.__jobsDetail('${jobId}')">← 공고 상세로</span>
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">공고 수정</div>
+          <div class="jf-subtitle">${site.site.name} · ${site.partner} · 공고 ID ${jobId}</div>
+        </div>
+        <div class="ws-actions">
+          <button onclick="window.__jobsDetail('${jobId}')">취소</button>
+          <button class="btn-primary" onclick="window.__jobEditSave()">저장</button>
+        </div>
+      </div>
+
+      <div class="jf-panel">
+        <div class="ws-section-title">공고 정보</div>
+        <div class="jf-form-row">
+          <div class="jf-form-label">근무지</div>
+          <div style="font-size:13px;">${site.site.name} <span style="color:#6B7684; font-weight:400;">(변경 불가 — 복제 후 새 공고 등록)</span></div>
+        </div>
+        <div class="jf-form-row">
+          <div class="jf-form-label">날짜<span class="req">*</span></div>
+          <input type="date" value="${d.date}" onchange="jobEditState.draft.date=this.value" style="max-width:200px;" />
+        </div>
+        <div class="jf-form-row">
+          <div class="jf-form-label">시간대<span class="req">*</span></div>
+          <div style="display:flex; gap:8px;">
+            <select onchange="jobEditState.draft.slot=this.value; renderJobEdit('${jobId}')">
+              <option ${d.slot==='주간'?'selected':''}>주간</option>
+              <option ${d.slot==='야간'?'selected':''}>야간</option>
+              <option ${d.slot==='새벽'?'selected':''}>새벽</option>
+              <option ${d.slot==='웨딩'?'selected':''}>웨딩</option>
+            </select>
+            <input type="time" value="${d.start}" onchange="jobEditState.draft.start=this.value" style="width:130px;" />
+            <span style="align-self:center;">~</span>
+            <input type="time" value="${d.end}" onchange="jobEditState.draft.end=this.value" style="width:130px;" />
+          </div>
+        </div>
+        <div class="jf-form-row">
+          <div class="jf-form-label">모집 인원<span class="req">*</span></div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="number" min="1" value="${d.cap}" onchange="jobEditState.draft.cap=parseInt(this.value)||1" style="width:100px;" />
+            <span style="font-size:12px; color:#6B7684;">명 (현재 ${d.apply}명 확정 — 모집인원을 ${d.apply}명 미만으로 줄일 수 없음)</span>
+          </div>
+        </div>
+        <div class="jf-form-row">
+          <div class="jf-form-label">알바비<span class="req">*</span></div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <select onchange="jobEditState.draft.wageType=this.value">
+              <option value="일급" ${d.wageType==='일급'?'selected':''}>일급</option>
+              <option value="시급" ${d.wageType==='시급'?'selected':''}>시급</option>
+            </select>
+            <input type="number" step="1000" value="${d.wage}" onchange="jobEditState.draft.wage=parseInt(this.value)||0" style="width:140px;" />
+            <span style="font-size:13px; color:#6B7684;">원 <span style="color:#9CA3AF; font-size:11px;">(${site.partner} 직접 지급)</span></span>
+          </div>
+        </div>
+        <div class="jf-form-row">
+          <div class="jf-form-label">잡핏 포인트</div>
+          <div style="font-size:13px; color:#2563EB;">+${reward.toLocaleString()} P <span style="color:#9CA3AF; font-size:11px; font-weight:400;">시간대별 자동 산정 (주간 2,000P · 야간 2,500P · 새벽 3,000P · 웨딩 2,500P)</span></div>
+        </div>
+        <div class="jf-form-row">
+          <div class="jf-form-label">담당자 전화번호<span class="req">*</span></div>
+          <input type="tel" value="${d.contact || ''}" onchange="jobEditState.draft.contact=this.value" style="max-width:220px;" />
+        </div>
+        <div class="jf-form-row top" style="padding-top:14px;">
+          <div class="jf-form-label">옵션</div>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <label class="jf-toggle">
+              <input type="checkbox" ${d.contract?'checked':''} onchange="jobEditState.draft.contract=this.checked">
+              <span class="jf-toggle-switch"></span>
+              <span class="jf-toggle-text">근로계약서 사용</span>
+            </label>
+            <label class="jf-toggle">
+              <input type="checkbox" ${d.safety?'checked':''} onchange="jobEditState.draft.safety=this.checked">
+              <span class="jf-toggle-switch"></span>
+              <span class="jf-toggle-text">안전교육 자료 노출</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      ${d.apply > 0 ? `
+        <div class="ws-warn-box" style="margin-top: 14px;">
+          ⚠ 이 공고에 ${d.apply}명이 이미 확정되었습니다. 날짜/시간대 변경 시 <strong>확정된 알바생에게 자동 알림이 발송</strong>됩니다.
+        </div>
+      ` : ''}
+
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 20px; padding-top:16px; border-top:0.5px solid rgba(0,0,0,0.08);">
+        <button onclick="window.__jobsDetail('${jobId}')">취소</button>
+        <button class="btn-primary" onclick="window.__jobEditSave()">변경사항 저장</button>
+      </div>
+    `;
+  }
+
+  window.__jobEditSave = function() {
+    const j = findJob(jobEditState.jobId); if (!j) return;
+    const d = jobEditState.draft;
+    if (!d.date || !d.start || !d.end) { alert('날짜/시간을 확인해주세요'); return; }
+    if (d.cap < d.apply) { alert(`이미 확정된 ${d.apply}명보다 모집 인원을 적게 설정할 수 없습니다.`); return; }
+    if (d.wage <= 0) { alert('알바비 금액을 확인해주세요'); return; }
+    if (!d.contact || !d.contact.trim()) { alert('담당자 전화번호를 입력해주세요'); return; }
+
+    // 기존 공고 객체에 변경사항 반영
+    Object.assign(j, d);
+    const changeNotify = j.apply > 0 ? '\n\n확정 알바생 ' + j.apply + '명에게 변경 알림이 발송되었습니다.' : '';
+    alert('공고 수정 완료.' + changeNotify);
+    jobEditState.jobId = null; jobEditState.draft = null;
+    renderJobDetail(j.id);
+  };
 
   window.__jobsBackToList = function() { jobsState.tab = 'list'; renderJobs(); };
   window.__jobsDuplicate = function(jobId) {
@@ -4292,6 +4502,7 @@
     renderJobsList();
   };
   window.__jobsDetail = function(id) { renderJobDetail(id); };
+  window.__jobEdit = function(id) { renderJobEdit(id); };
   window.__jobsCalDay = function(dateStr) {
     // 해당 날짜 공고가 1건이면 바로 상세로, 여러 개면 리스트 뷰로 전환 후 필터
     const dayJobs = jobs.filter(j => j.date === dateStr);
@@ -4311,6 +4522,462 @@
   window.__wsDetail = function(id) { renderDetail(id); };
   window.__wsGps = function(id) { renderGpsEditor(id); };
   window.__wsBack = function() { renderList(); };
+  window.__partnerAdd = function() { renderPartnerForm('add'); };
+  window.__partnerEdit = function(key) { renderPartnerForm('edit', key); };
+
+  // ───────────────────────────────────────────────────────
+  // 엑셀 업/다운로드 모달 (공용)
+  // ───────────────────────────────────────────────────────
+  const EXCEL_CONTEXTS = {
+    workers: {
+      title: '근무자 엑셀 관리',
+      filename: 'jobfit_workers.xlsx',
+      columns: [
+        { name: '이름',      desc: '실명', required: true },
+        { name: '전화번호',  desc: '010-XXXX-XXXX 형식', required: true },
+        { name: '가입일',    desc: 'YYYY-MM-DD', required: false },
+        { name: '경고 횟수', desc: '0~3', required: false },
+        { name: '보유 포인트', desc: '숫자', required: false },
+        { name: '최근 근무지', desc: '근무지 ID', required: false },
+      ],
+    },
+    jobs: {
+      title: '공고 엑셀 관리',
+      filename: 'jobfit_jobs.xlsx',
+      columns: [
+        { name: '근무지 ID',  desc: 'gonjiam, icheon 등', required: true },
+        { name: '날짜',       desc: 'YYYY-MM-DD', required: true },
+        { name: '시간대',     desc: '주간/야간/새벽/웨딩', required: true },
+        { name: '시작/종료',  desc: 'HH:MM~HH:MM', required: true },
+        { name: '모집 인원',  desc: '숫자', required: true },
+        { name: '알바비',     desc: '일급/시급 + 금액', required: true },
+      ],
+    },
+    points: {
+      title: '포인트 거래 엑셀 다운로드',
+      filename: 'jobfit_point_transactions.xlsx',
+      columns: [
+        { name: '거래 ID',     desc: '자동', required: false },
+        { name: '알바생',      desc: '이름/전화번호', required: false },
+        { name: '종류',        desc: '출금/차감/지급', required: false },
+        { name: '금액',        desc: '숫자 (P 단위)', required: false },
+        { name: '상태',        desc: '대기/완료/실패', required: false },
+        { name: '처리 일시',   desc: 'YYYY-MM-DD HH:MM', required: false },
+      ],
+    },
+    sites: {
+      title: '근무지 엑셀 관리',
+      filename: 'jobfit_worksites.xlsx',
+      columns: [
+        { name: '파트너사 키', desc: 'cj/lotte/convention', required: true },
+        { name: '근무지명',    desc: '표시 이름', required: true },
+        { name: '주소',        desc: '도로명', required: true },
+        { name: '좌표',        desc: 'lat,lng', required: false },
+        { name: '담당자',      desc: '010-XXXX-XXXX', required: true },
+      ],
+    },
+  };
+
+  const excelState = { context: 'workers', mode: 'download', uploading: false, progress: 0 };
+
+  function showExcelModal(context) {
+    excelState.context = context || 'workers';
+    excelState.mode = 'download';
+    excelState.uploading = false;
+    excelState.progress = 0;
+    renderExcelModal();
+  }
+
+  function renderExcelModal() {
+    document.querySelectorAll('.jf-modal-overlay.excel').forEach(el => el.remove());
+    const e = excelState;
+    const ctx = EXCEL_CONTEXTS[e.context];
+
+    const overlay = document.createElement('div');
+    overlay.className = 'jf-modal-overlay excel';
+    overlay.innerHTML = `
+      <div class="jf-modal" style="max-width: 600px;" onclick="event.stopPropagation()">
+        <div class="jf-modal-head">
+          <div class="jf-modal-title">${ctx.title}</div>
+          <button class="jf-modal-close" onclick="this.closest('.jf-modal-overlay').remove()">×</button>
+        </div>
+        <div class="jf-modal-body">
+          <div class="jobs-view-toggle" style="margin-bottom: 16px;">
+            <button class="${e.mode==='download'?'active':''}" onclick="excelState.mode='download'; renderExcelModal();">다운로드</button>
+            <button class="${e.mode==='upload'?'active':''}" onclick="excelState.mode='upload'; renderExcelModal();">업로드</button>
+          </div>
+
+          ${e.mode === 'download' ? `
+            <div style="font-size: 13px; color: #6B7684; margin-bottom: 14px;">
+              현재 조건에 맞는 데이터를 엑셀 파일로 내려받습니다.
+            </div>
+            <div class="jf-panel" style="padding: 14px; background: #F9FAFB;">
+              <div style="display:flex; gap:12px; align-items:center;">
+                <div style="width:44px; height:52px; background:#16A34A; color:#fff; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600; flex-shrink:0;">XLSX</div>
+                <div style="flex:1;">
+                  <div style="font-weight:500; font-size:13px;">${ctx.filename}</div>
+                  <div style="font-size:11px; color:#6B7684; margin-top:2px;">컬럼 ${ctx.columns.length}개 · 예상 행 수 ${e.context==='workers'?workers.length:e.context==='jobs'?jobs.length:e.context==='points'?pointTxs.length:(function(){let n=0;Object.values(worksites).forEach(p=>n+=p.sites.length);return n;})()}건</div>
+                </div>
+                <button class="btn-primary" onclick="window.__excelDownload()">↓ 다운로드</button>
+              </div>
+            </div>
+            <div style="font-size: 12px; color: #6B7684; margin-top: 12px;">포함 컬럼:</div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px; margin-top:6px;">
+              ${ctx.columns.map(c => `<div style="font-size:11px; color:#374151; padding:4px 0;">• ${c.name}</div>`).join('')}
+            </div>
+          ` : `
+            <div style="font-size: 13px; color: #6B7684; margin-bottom: 14px;">
+              엑셀 파일로 데이터를 일괄 등록/업데이트합니다.
+            </div>
+            <div style="margin-bottom: 12px;">
+              <button onclick="window.__excelTemplate()" style="font-size:12px;">📥 빈 양식 다운로드</button>
+            </div>
+            <div style="border: 2px dashed rgba(0,0,0,0.15); border-radius: 8px; padding: 40px 20px; text-align: center; background: #FAFBFC; cursor: pointer;" onclick="window.__excelPickFile()">
+              ${e.uploading ? `
+                <div style="font-size: 14px; color: #2563EB; margin-bottom: 12px;">업로드 중... ${e.progress}%</div>
+                <div style="height: 6px; background: #E5E7EB; border-radius: 3px; overflow: hidden; max-width: 300px; margin: 0 auto;">
+                  <div style="height:100%; background: #2563EB; width: ${e.progress}%; transition: width 0.2s;"></div>
+                </div>
+              ` : `
+                <div style="font-size: 36px; opacity: 0.3; margin-bottom: 8px;">📂</div>
+                <div style="font-size: 13px; color: #111827; font-weight: 500;">엑셀 파일을 끌어다 놓거나 클릭하여 선택</div>
+                <div style="font-size: 11px; color: #6B7684; margin-top: 4px;">.xlsx, .xls, .csv 지원 · 최대 5MB</div>
+              `}
+            </div>
+            <div class="ws-warn-box" style="margin-top: 14px;">
+              ℹ 양식에 맞지 않거나 필수 컬럼이 비어있는 행은 <strong>자동 제외</strong>됩니다. 업로드 후 결과 보고서를 확인해주세요.
+            </div>
+
+            <div style="font-size: 12px; color: #6B7684; margin-top: 14px;">필수 컬럼:</div>
+            <div style="margin-top: 6px;">
+              ${ctx.columns.map(c => `
+                <div style="display:flex; justify-content:space-between; font-size:12px; padding:6px 0; border-bottom:0.5px solid rgba(0,0,0,0.06);">
+                  <span style="color:#111827; font-weight:500;">${c.name} ${c.required ? '<span style="color:#EF4444;">*</span>' : ''}</span>
+                  <span style="color:#6B7684; font-size:11px;">${c.desc}</span>
+                </div>
+              `).join('')}
+            </div>
+          `}
+
+          <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 20px; padding-top:14px; border-top:0.5px solid rgba(0,0,0,0.08);">
+            <button onclick="this.closest('.jf-modal-overlay').remove()">닫기</button>
+          </div>
+        </div>
+      </div>
+    `;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  }
+
+  window.__excelDownload = function() {
+    const ctx = EXCEL_CONTEXTS[excelState.context];
+    alert(`${ctx.filename} 다운로드 시작.\n\n(시뮬레이션: 실제 앱에서는 Supabase Edge Function이 데이터를 조회해서 XLSX 파일을 생성 후 전송합니다.)`);
+    document.querySelectorAll('.jf-modal-overlay.excel').forEach(el => el.remove());
+  };
+  window.__excelTemplate = function() {
+    const ctx = EXCEL_CONTEXTS[excelState.context];
+    alert(`빈 양식 다운로드: ${ctx.filename.replace('.xlsx', '_template.xlsx')}\n\n양식 파일에는 컬럼 헤더와 예시 1행이 포함됩니다.`);
+  };
+  window.__excelPickFile = function() {
+    if (excelState.uploading) return;
+    excelState.uploading = true;
+    excelState.progress = 0;
+    renderExcelModal();
+    // 가짜 업로드 진행 시뮬레이션
+    const step = () => {
+      if (!document.querySelector('.jf-modal-overlay.excel')) return; // 모달 닫히면 중단
+      excelState.progress += 10;
+      if (excelState.progress >= 100) {
+        excelState.uploading = false;
+        excelState.progress = 0;
+        alert('업로드 완료.\n\n결과: 48건 성공 · 2건 오류 (필수 컬럼 누락)\n\n(실제 앱에서는 결과 상세 리포트 모달 표시 예정)');
+        document.querySelectorAll('.jf-modal-overlay.excel').forEach(el => el.remove());
+        return;
+      }
+      renderExcelModal();
+      setTimeout(step, 180);
+    };
+    setTimeout(step, 300);
+  };
+
+  // ───────────────────────────────────────────────────────
+  // 알림 발송 모달 (공용)
+  // ───────────────────────────────────────────────────────
+  const notifState = {
+    targets: [],       // [{id, name, phone, type}]  type: worker/admin/group
+    groupMode: 'specific',  // specific / all_workers / negotiation / warn / all_admins
+    notifType: 'service',   // service / marketing / urgent
+    title: '',
+    body: '',
+    allowNight: false,
+    scheduled: false,
+    scheduleAt: '',
+  };
+
+  function showNotificationModal(initialTargets = []) {
+    document.querySelectorAll('.jf-modal-overlay.notif').forEach(el => el.remove());
+    Object.assign(notifState, {
+      targets: initialTargets,
+      groupMode: initialTargets.length > 0 ? 'specific' : 'all_workers',
+      notifType: 'service',
+      title: '',
+      body: '',
+      allowNight: false,
+      scheduled: false,
+      scheduleAt: '',
+    });
+    renderNotificationModal();
+  }
+
+  function renderNotificationModal() {
+    document.querySelectorAll('.jf-modal-overlay.notif').forEach(el => el.remove());
+    const n = notifState;
+
+    // 수신 대상 개수 계산
+    let recipientCount = 0;
+    if (n.groupMode === 'specific') recipientCount = n.targets.length;
+    if (n.groupMode === 'all_workers') recipientCount = workers.length;
+    if (n.groupMode === 'negotiation') recipientCount = workers.filter(w => w.negotiation).length;
+    if (n.groupMode === 'warn') recipientCount = workers.filter(w => w.warnings >= 1 && !w.negotiation).length;
+    if (n.groupMode === 'all_admins') recipientCount = admins.filter(a => a.active).length;
+
+    const TYPE_LABEL = { service: '서비스 알림', marketing: '마케팅', urgent: '긴급 구인' };
+    const TYPE_HINT = {
+      service: '필수 알림 · 야간 제한 해제 가능',
+      marketing: '수신 동의자에게만 발송 · 22:00~08:00 발송 금지',
+      urgent: '수신 동의자에게만 발송 · 야간 발송 허용',
+    };
+
+    const overlay = document.createElement('div');
+    overlay.className = 'jf-modal-overlay notif';
+    overlay.innerHTML = `
+      <div class="jf-modal" style="max-width: 540px;" onclick="event.stopPropagation()">
+        <div class="jf-modal-head">
+          <div class="jf-modal-title">알림 발송</div>
+          <button class="jf-modal-close" onclick="this.closest('.jf-modal-overlay').remove()">×</button>
+        </div>
+        <div class="jf-modal-body">
+          <div class="jf-form-row">
+            <div class="jf-form-label">수신 대상</div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+              ${n.targets.length > 0 ? `<button class="login-role-btn ${n.groupMode==='specific'?'active':''}" onclick="notifState.groupMode='specific'; renderNotificationModal();">지정 (${n.targets.length}명)</button>` : ''}
+              <button class="login-role-btn ${n.groupMode==='all_workers'?'active':''}" onclick="notifState.groupMode='all_workers'; renderNotificationModal();">전체 근무자</button>
+              <button class="login-role-btn ${n.groupMode==='warn'?'active':''}" onclick="notifState.groupMode='warn'; renderNotificationModal();">경고 보유</button>
+              <button class="login-role-btn ${n.groupMode==='negotiation'?'active':''}" onclick="notifState.groupMode='negotiation'; renderNotificationModal();">협의대상</button>
+              <button class="login-role-btn ${n.groupMode==='all_admins'?'active':''}" onclick="notifState.groupMode='all_admins'; renderNotificationModal();">전체 관리자</button>
+            </div>
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label"></div>
+            <div style="font-size:12px; color:#2563EB; font-weight:500; padding-top:2px;">→ 발송 예정: ${recipientCount}명</div>
+          </div>
+
+          <div class="jf-form-row">
+            <div class="jf-form-label">알림 유형</div>
+            <div>
+              <div style="display:flex; gap:6px;">
+                ${['service','marketing','urgent'].map(t => `
+                  <button class="login-role-btn ${n.notifType===t?'active':''}" onclick="notifState.notifType='${t}'; renderNotificationModal();">${TYPE_LABEL[t]}</button>
+                `).join('')}
+              </div>
+              <div class="jf-form-hint">${TYPE_HINT[n.notifType]}</div>
+            </div>
+          </div>
+
+          <div class="jf-form-row">
+            <div class="jf-form-label">제목<span class="req">*</span></div>
+            <input type="text" placeholder="최대 30자" maxlength="30" value="${n.title}" oninput="notifState.title = this.value" />
+          </div>
+          <div class="jf-form-row top">
+            <div class="jf-form-label">내용<span class="req">*</span></div>
+            <textarea rows="4" placeholder="알림 본문을 입력하세요..." oninput="notifState.body = this.value">${n.body}</textarea>
+          </div>
+
+          <div class="jf-form-row top" style="padding-top:14px;">
+            <div class="jf-form-label">옵션</div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <label class="jf-toggle">
+                <input type="checkbox" ${n.allowNight?'checked':''} ${n.notifType==='marketing'?'disabled':''} onchange="notifState.allowNight = this.checked">
+                <span class="jf-toggle-switch"></span>
+                <span class="jf-toggle-text">야간 시간대(22:00~08:00)에도 발송</span>
+              </label>
+              <label class="jf-toggle">
+                <input type="checkbox" ${n.scheduled?'checked':''} onchange="notifState.scheduled = this.checked; renderNotificationModal();">
+                <span class="jf-toggle-switch"></span>
+                <span class="jf-toggle-text">예약 발송</span>
+              </label>
+              ${n.scheduled ? `
+                <input type="datetime-local" value="${n.scheduleAt}" oninput="notifState.scheduleAt = this.value" style="max-width:240px; margin-left:48px;" />
+              ` : ''}
+            </div>
+          </div>
+
+          <div style="display:flex; gap:8px; margin-top: 20px; padding-top:14px; border-top:0.5px solid rgba(0,0,0,0.08);">
+            <button onclick="this.closest('.jf-modal-overlay').remove()">취소</button>
+            <button onclick="alert('발송 전 미리보기 (추후 구현)')">미리보기</button>
+            <div style="flex:1;"></div>
+            <button class="btn-primary" onclick="window.__notifSend()" ${recipientCount===0 ? 'disabled' : ''}>${n.scheduled ? '예약 등록' : '즉시 발송'} (${recipientCount}명)</button>
+          </div>
+        </div>
+      </div>
+    `;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  }
+
+  window.__notifSend = function() {
+    const n = notifState;
+    if (!n.title.trim()) { alert('제목을 입력해주세요'); return; }
+    if (!n.body.trim()) { alert('내용을 입력해주세요'); return; }
+    if (n.scheduled && !n.scheduleAt) { alert('예약 시간을 선택해주세요'); return; }
+
+    let count = 0;
+    if (n.groupMode === 'specific') count = n.targets.length;
+    if (n.groupMode === 'all_workers') count = workers.length;
+    if (n.groupMode === 'warn') count = workers.filter(w => w.warnings >= 1 && !w.negotiation).length;
+    if (n.groupMode === 'negotiation') count = workers.filter(w => w.negotiation).length;
+    if (n.groupMode === 'all_admins') count = admins.filter(a => a.active).length;
+
+    const action = n.scheduled ? `예약 등록 (${n.scheduleAt})` : '즉시 발송';
+    alert(`알림 ${action}\n\n유형: ${({service:'서비스',marketing:'마케팅',urgent:'긴급 구인'})[n.notifType]}\n대상: ${count}명\n제목: ${n.title}`);
+    document.querySelectorAll('.jf-modal-overlay.notif').forEach(el => el.remove());
+  };
+
+  // ───────────────────────────────────────────────────────
+  // 파트너사 추가/수정 모달
+  // ───────────────────────────────────────────────────────
+  const partnerFormState = {
+    mode: 'add',        // add / edit
+    key: '',
+    name: '',
+    category: '택배',    // 택배 / 컨벤션 / 기타
+    applyLimit: true,
+    weekLimit: 4,
+    description: '',
+  };
+
+  function renderPartnerForm(mode, existingKey) {
+    const f = partnerFormState;
+    f.mode = mode;
+    if (mode === 'edit' && existingKey) {
+      const p = worksites[existingKey];
+      if (!p) return;
+      f.key = existingKey;
+      f.name = p.name;
+      f.category = p.category || (existingKey === 'convention' ? '컨벤션' : '택배');
+      f.applyLimit = p.applyLimit !== undefined ? p.applyLimit : (existingKey !== 'convention');
+      f.weekLimit = p.weekLimit || 4;
+      f.description = p.description || '';
+    } else {
+      Object.assign(f, { mode: 'add', key: '', name: '', category: '택배', applyLimit: true, weekLimit: 4, description: '' });
+    }
+    showPartnerFormModal();
+  }
+
+  function showPartnerFormModal() {
+    const f = partnerFormState;
+    document.querySelectorAll('.jf-modal-overlay.partner-form').forEach(el => el.remove());
+
+    const overlay = document.createElement('div');
+    overlay.className = 'jf-modal-overlay partner-form';
+    overlay.innerHTML = `
+      <div class="jf-modal" onclick="event.stopPropagation()">
+        <div class="jf-modal-head">
+          <div class="jf-modal-title">${f.mode === 'edit' ? '파트너사 설정' : '+ 새 파트너사 추가'}</div>
+          <button class="jf-modal-close" onclick="this.closest('.jf-modal-overlay').remove()">×</button>
+        </div>
+        <div class="jf-modal-body">
+          <div class="jf-form-row">
+            <div class="jf-form-label">파트너사명<span class="req">*</span></div>
+            <input type="text" placeholder="예: CJ대한통운" value="${f.name}" oninput="partnerFormState.name = this.value" style="max-width:280px;" />
+          </div>
+          <div class="jf-form-row">
+            <div class="jf-form-label">업종 카테고리</div>
+            <div style="display:flex; gap:6px;">
+              ${['택배','컨벤션','기타'].map(c => `
+                <button class="login-role-btn ${f.category===c?'active':''}" onclick="partnerFormState.category='${c}'; showPartnerFormModal();">${c}</button>
+              `).join('')}
+            </div>
+          </div>
+          <div class="jf-form-row top" style="padding-top: 14px;">
+            <div class="jf-form-label">주 근무일 제한</div>
+            <div>
+              <label class="jf-toggle">
+                <input type="checkbox" ${f.applyLimit?'checked':''} onchange="partnerFormState.applyLimit = this.checked; showPartnerFormModal();">
+                <span class="jf-toggle-switch"></span>
+                <span class="jf-toggle-text">파트너사 내 주 N일 제한 적용</span>
+              </label>
+              ${f.applyLimit ? `
+                <div style="margin-top: 10px; display:flex; align-items:center; gap:8px;">
+                  <span style="font-size:12px; color:#6B7684;">주 최대</span>
+                  <input type="number" min="1" max="7" value="${f.weekLimit}" onchange="partnerFormState.weekLimit = parseInt(this.value)||4" style="width:60px;" />
+                  <span style="font-size:12px; color:#6B7684;">일 근무 가능</span>
+                </div>
+              ` : ''}
+              <div class="jf-form-hint">택배(CJ/롯데)는 보통 4일 제한. 컨벤션은 제한 없음.</div>
+            </div>
+          </div>
+          <div class="jf-form-row top">
+            <div class="jf-form-label">비고</div>
+            <textarea rows="3" placeholder="특이사항, 계약 조건 등..." oninput="partnerFormState.description = this.value">${f.description}</textarea>
+          </div>
+          ${f.mode === 'edit' ? `
+            <div style="margin-top: 16px; padding: 12px; background: #F5F7FA; border-radius: 8px; font-size: 12px; color: #6B7684;">
+              이 파트너사에 등록된 근무지: <strong style="color:#111827;">${worksites[f.key]?.sites.length || 0}곳</strong>
+            </div>
+          ` : ''}
+          <div style="display:flex; gap:8px; margin-top: 20px;">
+            ${f.mode === 'edit' ? `<button class="btn-danger" onclick="window.__partnerDelete()" style="color:#EF4444;">삭제</button>` : ''}
+            <div style="flex:1;"></div>
+            <button onclick="this.closest('.jf-modal-overlay').remove()">취소</button>
+            <button class="btn-primary" onclick="window.__partnerSubmit()">${f.mode === 'edit' ? '저장' : '추가'}</button>
+          </div>
+        </div>
+      </div>
+    `;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  }
+
+  window.__partnerSubmit = function() {
+    const f = partnerFormState;
+    if (!f.name.trim()) { alert('파트너사명을 입력해주세요'); return; }
+
+    if (f.mode === 'add') {
+      const key = f.name.replace(/[^a-zA-Z0-9가-힣]/g, '').toLowerCase().slice(0, 10) + '_' + Date.now().toString(36).slice(-3);
+      worksites[key] = {
+        name: f.name,
+        category: f.category,
+        applyLimit: f.applyLimit,
+        weekLimit: f.weekLimit,
+        description: f.description,
+        count: 0,
+        sites: [],
+      };
+      alert(`"${f.name}" 파트너사 추가 완료.\n키: ${key}\n\n이제 "+ 근무지 추가"로 근무지를 등록해주세요.`);
+    } else {
+      const p = worksites[f.key]; if (!p) return;
+      p.name = f.name;
+      p.category = f.category;
+      p.applyLimit = f.applyLimit;
+      p.weekLimit = f.weekLimit;
+      p.description = f.description;
+      alert(`"${f.name}" 정보 저장 완료.`);
+    }
+    document.querySelectorAll('.jf-modal-overlay.partner-form').forEach(el => el.remove());
+    renderList();
+  };
+  window.__partnerDelete = function() {
+    const f = partnerFormState;
+    const p = worksites[f.key]; if (!p) return;
+    if (p.sites.length > 0) { alert(`이 파트너사에 등록된 근무지가 ${p.sites.length}곳 있습니다.\n먼저 근무지를 모두 삭제하거나 다른 파트너사로 이동해주세요.`); return; }
+    if (!confirm(`"${p.name}" 파트너사를 삭제합니다. 계속하시겠습니까?`)) return;
+    delete worksites[f.key];
+    alert('삭제 완료.');
+    document.querySelectorAll('.jf-modal-overlay.partner-form').forEach(el => el.remove());
+    renderList();
+  };
+
   window.__wsAddSite = function() {
     Object.assign(siteFormState, { step: 1, partnerKey: '', siteName: '', address: '', lat: 37.5665, lng: 126.9780, bus: false, wage: 100000, wageType: '일급', holiday: '주 4일 만근', contact: '', manager1: '', manager2: '' });
     renderSiteWizard();
