@@ -363,6 +363,42 @@ git -C c:/jobpit push origin main
 - 현재까지 사용한 패턴: 한글 간결체 (ex: "대기열 시스템 구현 (FULL·순번·수락 대기·자동거절·REOPENED·실시간 타이머)")
 - 영문 prefix 안 씀 (feat:/fix: 등 불필요)
 
+### 브랜치 전략 — 스냅샷 보관용
+
+Main 브랜치에서 계속 작업하되, **큰 구조 변경이 있는 시점마다 스냅샷 브랜치**를 만들어 보관.
+
+| 브랜치 | 생성 시점 | 내용 |
+|---|---|---|
+| `main` | 항상 최신 | 진행 중 · GitHub Pages 배포 대상 |
+| `v0.6-file-split` | 2026-04-24 | 파일 3분할 완료 시점 (index.html + js/data.js + js/app.js) |
+
+**스냅샷 만드는 법:**
+```bash
+# 현재 상태를 새 브랜치로 보존 (main은 그대로)
+git -C c:/jobpit checkout -b v0.7-설명
+git -C c:/jobpit push -u origin v0.7-설명
+git -C c:/jobpit checkout main  # main으로 복귀
+```
+
+**스냅샷으로 복원:**
+```bash
+# 스냅샷 보기만 (일시 이동)
+git -C c:/jobpit checkout v0.6-file-split
+
+# main을 스냅샷 시점으로 되돌리기 (되돌아가서 다시 시작)
+git -C c:/jobpit checkout main
+git -C c:/jobpit reset --hard v0.6-file-split
+git -C c:/jobpit push --force-with-lease origin main  # 주의: 이후 커밋 소실
+```
+
+**언제 스냅샷을 만들어야 하나:**
+- 큰 리팩토링 완료 후 (파일 분리, 구조 변경 등)
+- 대형 기능 추가 직전 (롤백 대비)
+- 외부에 공유하기 전 안정 버전
+- 버전 번호가 올라갈 만한 변화 (v0.6 → v0.7)
+
+**⚠ 주의:** 스냅샷 브랜치는 **다시 건드리지 않음** (그 시점 고정 보관 용도). 새 작업은 항상 `main` 에서.
+
 ---
 
 ## Claude Code 작업 팁
