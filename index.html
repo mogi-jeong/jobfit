@@ -360,6 +360,28 @@
   ];
   function findNeg(id) { return negotiations.find(n => n.id === id); }
 
+  // 포인트 트랜잭션 — type: withdraw(출금) / deduct(회수·차감) / earn(지급)
+  // status: pending / processing / done / failed
+  const pointTxs = [
+    // 출금 요청 (pending)
+    { id: 'p001', workerId: 'w001', type: 'withdraw', status: 'pending', amount: 30000, bank: '국민은행',   account: '123456-78-901234', requestedAt: '2026-04-22 18:30' },
+    { id: 'p002', workerId: 'w007', type: 'withdraw', status: 'pending', amount: 50000, bank: '신한은행',   account: '110-234-567890',   requestedAt: '2026-04-23 08:15' },
+    { id: 'p003', workerId: 'w005', type: 'withdraw', status: 'pending', amount: 30000, bank: '카카오뱅크', account: '3333-01-2345678',  requestedAt: '2026-04-23 11:40' },
+    { id: 'p004', workerId: 'w010', type: 'withdraw', status: 'pending', amount: 40000, bank: '우리은행',   account: '1002-123-456789',  requestedAt: '2026-04-23 13:05' },
+    // 출금 처리 완료 (done)
+    { id: 'p005', workerId: 'w010', type: 'withdraw', status: 'done',    amount: 40000, bank: '우리은행',   account: '1002-123-456789',  requestedAt: '2026-04-20 20:00', processedAt: '2026-04-21 10:30', processedBy: '테스트(마스터)' },
+    { id: 'p006', workerId: 'w007', type: 'withdraw', status: 'done',    amount: 80000, bank: '신한은행',   account: '110-234-567890',   requestedAt: '2026-04-15 09:00', processedAt: '2026-04-15 14:20', processedBy: '테스트(마스터)' },
+    { id: 'p007', workerId: 'w001', type: 'withdraw', status: 'done',    amount: 30000, bank: '국민은행',   account: '123456-78-901234', requestedAt: '2026-04-10 15:00', processedAt: '2026-04-11 11:10', processedBy: '테스트(마스터)' },
+    // 출금 실패 (failed)
+    { id: 'p008', workerId: 'w003', type: 'withdraw', status: 'failed',  amount: 30000, bank: '우리은행',   account: '1002-999-999999',  requestedAt: '2026-04-18 14:00', processedAt: '2026-04-19 09:00', processedBy: '테스트(마스터)', failReason: '계좌번호 오류 — 수동 재처리 필요' },
+    // 회수/차감 (deduct)
+    { id: 'p009', workerId: 'w003', type: 'deduct', status: 'done', amount: -1000,  reason: '단순 변심 취소 자동 차감',         requestedAt: '2026-04-18 11:00', processedBy: '시스템' },
+    { id: 'p010', workerId: 'w002', type: 'deduct', status: 'done', amount: -5000,  reason: '무단결근 후 수동 회수 — 마스터 처리', requestedAt: '2026-04-10 15:30', processedBy: '테스트(마스터)' },
+    { id: 'p011', workerId: 'w006', type: 'deduct', status: 'done', amount: -3000,  reason: '단순 변심 취소 자동 차감',         requestedAt: '2026-03-28 09:20', processedBy: '시스템' },
+    { id: 'p012', workerId: 'w009', type: 'deduct', status: 'done', amount: -1000,  reason: '단순 변심 취소 자동 차감',         requestedAt: '2026-04-05 18:00', processedBy: '시스템' },
+  ];
+  function findTx(id) { return pointTxs.find(t => t.id === id); }
+
   // 공고 상태 판정: open(모집중) · closed(마감·시작전) · progress(진행중) · done(종료)
   function jobStatus(j) {
     if (j.date < TODAY) return 'done';
@@ -908,6 +930,219 @@
       });
     }, 100);
   }
+
+  // ───────────────────────────────────────────────────────
+  // 포인트 페이지
+  // ───────────────────────────────────────────────────────
+  const pointState = {
+    tab: 'request', // request / history / deduct
+  };
+
+  function pointTabsHtml() {
+    const pendingCount = pointTxs.filter(t => t.type === 'withdraw' && t.status === 'pending').length;
+    const tabs = [
+      { id: 'request', label: '출금 요청' + (pendingCount > 0 ? ` (${pendingCount})` : '') },
+      { id: 'history', label: '출금 이력' },
+      { id: 'deduct',  label: '회수 로그' },
+    ];
+    return `<div class="jf-tabs">${tabs.map(t =>
+      `<div class="jf-tab ${pointState.tab === t.id ? 'active' : ''}" onclick="window.__ptTab('${t.id}')">${t.label}</div>`
+    ).join('')}</div>`;
+  }
+
+  function renderPoints() {
+    const pendingW = pointTxs.filter(t => t.type === 'withdraw' && t.status === 'pending');
+    const pendingAmount = pendingW.reduce((s, t) => s + t.amount, 0);
+    const thisMonth = TODAY.slice(0, 7);
+    const paidThisMonth = pointTxs.filter(t => t.type === 'withdraw' && t.status === 'done' && t.processedAt && t.processedAt.startsWith(thisMonth)).reduce((s, t) => s + t.amount, 0);
+    const todayProcessed = pointTxs.filter(t => t.type === 'withdraw' && t.processedAt && t.processedAt.startsWith(TODAY)).length;
+    const failedCount = pointTxs.filter(t => t.status === 'failed').length;
+
+    let html = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">포인트</div>
+          <div class="jf-subtitle">출금 요청 처리 · 회수 로그 · 반자동 처리 (1차 출시)</div>
+        </div>
+        <div class="ws-actions">
+          <button onclick="alert('엑셀 다운로드는 추후 구현')">엑셀</button>
+        </div>
+      </div>
+
+      ${pointTabsHtml()}
+
+      <div class="jf-metric-grid">
+        <div class="jf-metric"><div class="jf-metric-label">대기 중 요청</div><div class="jf-metric-value" style="color:${pendingW.length>0?'#F59E0B':'#111827'};">${pendingW.length}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">총 ${pendingAmount.toLocaleString()}P</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">오늘 처리</div><div class="jf-metric-value">${todayProcessed}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">완료 + 실패</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">이번 달 지급</div><div class="jf-metric-value">${paidThisMonth.toLocaleString()}<span style="font-size:13px; color:#6B7684; font-weight:400;"> P</span></div><div class="jf-metric-hint">${thisMonth} 완료 기준</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">출금 실패</div><div class="jf-metric-value" style="color:${failedCount>0?'#EF4444':'#16A34A'};">${failedCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">${failedCount>0?'재처리 필요':'모두 정상'}</div></div>
+      </div>
+
+      <div class="ws-warn-box">ℹ 1차 출시는 <strong>반자동 처리</strong>입니다. 마스터가 인터넷뱅킹으로 직접 이체 후 "처리 완료" 버튼을 클릭해주세요. 토스 자동 이체는 본 계약 범위 외(전자금융업 등록 후 별도 진행).</div>
+    `;
+
+    if (pointState.tab === 'request')  html += renderPointWithdraws(pendingW);
+    if (pointState.tab === 'history')  html += renderPointHistory();
+    if (pointState.tab === 'deduct')   html += renderPointDeduct();
+
+    main.innerHTML = html;
+  }
+
+  function renderPointWithdraws(list) {
+    if (list.length === 0) {
+      return `<div class="jf-placeholder"><div class="jf-placeholder-icon">✅</div><div class="jf-placeholder-title">대기 중인 출금 요청이 없습니다</div><div class="jf-placeholder-desc">알바생이 요청하면 여기에 표시됩니다. 최초 3만P부터 1만P 단위로 요청 가능.</div></div>`;
+    }
+    const sorted = [...list].sort((a, b) => a.requestedAt.localeCompare(b.requestedAt));
+    const gridCols = '1.3fr 1fr 1.6fr 1fr 1fr';
+    let html = `
+      <div class="jf-table">
+        <div class="jf-table-head" style="grid-template-columns:${gridCols};">
+          <div>알바생</div>
+          <div>요청 포인트</div>
+          <div>입금 계좌</div>
+          <div>요청 일시</div>
+          <div style="text-align:right;">처리</div>
+        </div>
+    `;
+    sorted.forEach(t => {
+      const w = findWorker(t.workerId);
+      html += `
+        <div class="jf-table-row" style="grid-template-columns:${gridCols}; cursor:default;">
+          <div>
+            <div class="worker-name">${w.name}</div>
+            <div style="font-family:'SF Mono',Monaco,monospace; font-size:11px; color:#6B7684; margin-top:2px;">${w.phone}</div>
+          </div>
+          <div><strong style="font-size:15px; color:#2563EB;">${t.amount.toLocaleString()}</strong><span style="color:#6B7684; font-size:12px;"> P</span></div>
+          <div>
+            <div style="font-size:13px; font-weight:500;">${t.bank}</div>
+            <div style="font-family:'SF Mono',Monaco,monospace; font-size:12px; color:#111827; margin-top:3px;">${t.account}</div>
+            <button onclick="window.__ptCopy('${t.bank} ${t.account}')" style="font-size:10px; height:22px; padding:0 8px; margin-top:3px;">계좌 복사</button>
+          </div>
+          <div style="font-size:12px; color:#6B7684;">${t.requestedAt}</div>
+          <div style="display:flex; gap:6px; justify-content:flex-end;">
+            <button onclick="window.__ptFail('${t.id}')" style="font-size:11px; height:32px; padding:0 12px; color:#EF4444;">출금 실패</button>
+            <button class="btn-primary" onclick="window.__ptDone('${t.id}')" style="font-size:11px; height:32px; padding:0 14px;">처리 완료</button>
+          </div>
+        </div>
+      `;
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function renderPointHistory() {
+    const list = pointTxs.filter(t => t.type === 'withdraw' && t.status !== 'pending')
+      .sort((a, b) => (b.processedAt || '').localeCompare(a.processedAt || ''));
+    if (list.length === 0) {
+      return `<div class="jf-placeholder"><div class="jf-placeholder-icon">📜</div><div class="jf-placeholder-title">출금 이력이 없습니다</div></div>`;
+    }
+    const gridCols = '1.3fr 1fr 1.6fr 1.2fr 0.8fr';
+    let html = `
+      <div class="jf-table">
+        <div class="jf-table-head" style="grid-template-columns:${gridCols};">
+          <div>알바생</div>
+          <div>금액</div>
+          <div>입금 계좌</div>
+          <div>처리 정보</div>
+          <div>상태</div>
+        </div>
+    `;
+    list.forEach(t => {
+      const w = findWorker(t.workerId);
+      const stStyle = t.status === 'done' ? 'background:#DCFCE7; color:#166534;' : 'background:#FEE2E2; color:#991B1B;';
+      const stLabel = t.status === 'done' ? '완료' : '실패';
+      html += `
+        <div class="jf-table-row" style="grid-template-columns:${gridCols}; cursor:default;">
+          <div>
+            <div class="worker-name">${w.name}</div>
+            <div style="font-family:'SF Mono',Monaco,monospace; font-size:11px; color:#6B7684; margin-top:2px;">${w.phone}</div>
+          </div>
+          <div><strong>${t.amount.toLocaleString()}</strong><span style="color:#6B7684; font-size:12px;"> P</span></div>
+          <div>
+            <div style="font-size:12px;">${t.bank}</div>
+            <div style="font-family:'SF Mono',Monaco,monospace; font-size:11px; color:#6B7684; margin-top:2px;">${t.account}</div>
+          </div>
+          <div style="font-size:12px;">
+            <div>처리 ${t.processedAt || '-'}</div>
+            <div style="color:#6B7684; font-size:11px; margin-top:2px;">${t.processedBy || ''}</div>
+            ${t.failReason ? '<div style="color:#EF4444; font-size:11px; margin-top:3px;">' + t.failReason + '</div>' : ''}
+          </div>
+          <div><span class="apv-badge" style="${stStyle}">${stLabel}</span></div>
+        </div>
+      `;
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function renderPointDeduct() {
+    const list = pointTxs.filter(t => t.type === 'deduct')
+      .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+    if (list.length === 0) {
+      return `<div class="jf-placeholder"><div class="jf-placeholder-icon">📋</div><div class="jf-placeholder-title">회수 내역이 없습니다</div></div>`;
+    }
+    const gridCols = '1.3fr 1fr 2fr 1fr 0.8fr';
+    let html = `
+      <div class="jf-table">
+        <div class="jf-table-head" style="grid-template-columns:${gridCols};">
+          <div>알바생</div>
+          <div>차감 포인트</div>
+          <div>사유</div>
+          <div>일시</div>
+          <div>처리자</div>
+        </div>
+    `;
+    list.forEach(t => {
+      const w = findWorker(t.workerId);
+      const isAuto = t.processedBy === '시스템';
+      html += `
+        <div class="jf-table-row" style="grid-template-columns:${gridCols}; cursor:default;">
+          <div>
+            <div class="worker-name">${w.name}</div>
+            <div style="font-family:'SF Mono',Monaco,monospace; font-size:11px; color:#6B7684; margin-top:2px;">${w.phone}</div>
+          </div>
+          <div><strong style="color:#EF4444;">${t.amount.toLocaleString()}</strong><span style="color:#6B7684; font-size:12px;"> P</span></div>
+          <div style="font-size:12px;">${t.reason}</div>
+          <div style="font-size:12px; color:#6B7684;">${t.requestedAt}</div>
+          <div><span class="apv-badge" style="${isAuto ? 'background:#DBEAFE; color:#1E40AF;' : 'background:#F3F4F6; color:#374151;'}">${t.processedBy}</span></div>
+        </div>
+      `;
+    });
+    html += '</div>';
+    return html;
+  }
+
+  window.__ptTab = function(id) { pointState.tab = id; renderPoints(); };
+  window.__ptCopy = function(text) {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => alert('복사됨: ' + text));
+    } else {
+      alert('복사: ' + text);
+    }
+  };
+  window.__ptDone = function(id) {
+    const t = findTx(id); if (!t) return;
+    const w = findWorker(t.workerId);
+    if (!confirm(`${w.name} 님에게 ${t.amount.toLocaleString()}P (${t.bank} ${t.account}) 이체를 완료하셨나요?\n\n처리 완료를 누르면 알바생의 보유 포인트에서 차감되고 완료 알림이 발송됩니다.`)) return;
+    t.status = 'done';
+    t.processedAt = TODAY + ' ' + new Date().toTimeString().slice(0,5);
+    t.processedBy = '테스트(마스터)';
+    w.points = Math.max(w.points - t.amount, 0);
+    alert(`${w.name} 님 출금 ${t.amount.toLocaleString()}P 처리 완료.`);
+    renderPoints();
+  };
+  window.__ptFail = function(id) {
+    const t = findTx(id); if (!t) return;
+    const w = findWorker(t.workerId);
+    const reason = prompt(`${w.name} 님의 출금 처리 실패 사유를 입력하세요:\n(예: 계좌번호 오류, 은행 점검 중 등)`);
+    if (!reason) return;
+    t.status = 'failed';
+    t.processedAt = TODAY + ' ' + new Date().toTimeString().slice(0,5);
+    t.processedBy = '테스트(마스터)';
+    t.failReason = reason;
+    alert(`출금 실패 로그 저장됨. 알바생에게 알림 발송.\n포인트는 차감되지 않음. 재요청을 기다려주세요.`);
+    renderPoints();
+  };
 
   // ───────────────────────────────────────────────────────
   // 협의대상 페이지
@@ -1792,6 +2027,7 @@
     approval: renderApproval,
     workers: renderWorkers,
     negotiation: renderNegotiation,
+    points: () => { pointState.tab = 'request'; renderPoints(); },
   };
 
   navItems.forEach(item => {
