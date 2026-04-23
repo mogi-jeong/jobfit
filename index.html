@@ -175,6 +175,33 @@
   .btn-reject { background: #fff !important; color: #EF4444 !important; border-color: #EF4444 !important; }
   .btn-reject:hover:not(:disabled) { background: #FEE2E2 !important; }
 
+  /* 공용 테이블 (근무자 관리 등) */
+  .jf-table { width: 100%; background: #fff; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 12px; overflow: hidden; }
+  .jf-table-head { display: grid; padding: 12px 16px; background: #F5F7FA; font-size: 12px; font-weight: 500; color: #6B7684; border-bottom: 0.5px solid rgba(0,0,0,0.08); }
+  .jf-table-row { display: grid; padding: 14px 16px; font-size: 13px; align-items: center; border-bottom: 0.5px solid rgba(0,0,0,0.06); cursor: pointer; transition: background 0.1s; }
+  .jf-table-row:hover { background: #F9FAFB; }
+  .jf-table-row:last-child { border-bottom: none; }
+  .jf-search { position: relative; flex: 0 0 280px; }
+  .jf-search input { width: 100%; padding-left: 36px; }
+  .jf-search::before { content: '🔍'; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 12px; opacity: 0.5; pointer-events: none; }
+  .worker-name { font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .warn-pill { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 500; }
+  .warn-0 { background: #F3F4F6; color: #6B7684; }
+  .warn-1 { background: #FEF3C7; color: #92400E; }
+  .warn-2 { background: #FED7AA; color: #9A3412; }
+  .warn-3 { background: #FEE2E2; color: #991B1B; }
+
+  /* 타임라인 (경고 이력 등) */
+  .tl { position: relative; padding-left: 16px; border-left: 1.5px solid #E5E7EB; }
+  .tl-item { position: relative; padding: 6px 0 14px; }
+  .tl-item::before { content: ''; position: absolute; left: -22px; top: 10px; width: 10px; height: 10px; border-radius: 50%; background: #E5E7EB; border: 2px solid #fff; }
+  .tl-item.warn::before { background: #F59E0B; }
+  .tl-item.ok::before { background: #22C55E; }
+  .tl-item.neg::before { background: #EF4444; }
+  .tl-date { font-size: 11px; color: #6B7684; }
+  .tl-title { font-size: 13px; font-weight: 500; color: #111827; margin-top: 2px; }
+  .tl-sub { font-size: 12px; color: #6B7684; margin-top: 2px; }
+
   /* 준비 중 플레이스홀더 */
   .jf-placeholder { padding: 80px 20px; text-align: center; background: #fff; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 12px; }
   .jf-placeholder-icon { font-size: 40px; margin-bottom: 14px; opacity: 0.4; }
@@ -289,16 +316,16 @@
 
   // 알바생(근무자) 샘플 데이터
   const workers = [
-    { id: 'w001', name: '김서연', phone: '010-1111-2001', warnings: 0, total: 45, noshow: 0, negotiation: false },
-    { id: 'w002', name: '이준호', phone: '010-1111-2002', warnings: 3, total: 12, noshow: 3, negotiation: true },
-    { id: 'w003', name: '박민지', phone: '010-1111-2003', warnings: 2, total: 28, noshow: 1, negotiation: false },
-    { id: 'w004', name: '최예린', phone: '010-1111-2004', warnings: 0, total: 8,  noshow: 0, negotiation: false },
-    { id: 'w005', name: '정다은', phone: '010-1111-2005', warnings: 1, total: 33, noshow: 1, negotiation: false },
-    { id: 'w006', name: '강시우', phone: '010-1111-2006', warnings: 3, total: 7,  noshow: 4, negotiation: true },
-    { id: 'w007', name: '한지민', phone: '010-1111-2007', warnings: 0, total: 62, noshow: 0, negotiation: false },
-    { id: 'w008', name: '오채원', phone: '010-1111-2008', warnings: 0, total: 3,  noshow: 0, negotiation: false },
-    { id: 'w009', name: '송현우', phone: '010-1111-2009', warnings: 2, total: 19, noshow: 2, negotiation: false },
-    { id: 'w010', name: '윤하늘', phone: '010-1111-2010', warnings: 0, total: 51, noshow: 0, negotiation: false },
+    { id: 'w001', name: '김서연', phone: '010-1111-2001', warnings: 0, total: 45, noshow: 0, negotiation: false, points: 54000,  lastWorked: '2026-04-22', joinedAt: '2025-08-14', favParts: ['cj','convention'] },
+    { id: 'w002', name: '이준호', phone: '010-1111-2002', warnings: 3, total: 12, noshow: 3, negotiation: true,  points: 8500,   lastWorked: '2026-03-30', joinedAt: '2025-11-02', favParts: ['cj'] },
+    { id: 'w003', name: '박민지', phone: '010-1111-2003', warnings: 2, total: 28, noshow: 1, negotiation: false, points: 31000,  lastWorked: '2026-04-20', joinedAt: '2025-09-10', favParts: ['lotte'] },
+    { id: 'w004', name: '최예린', phone: '010-1111-2004', warnings: 0, total: 8,  noshow: 0, negotiation: false, points: 12000,  lastWorked: '2026-04-18', joinedAt: '2026-02-01', favParts: ['convention'] },
+    { id: 'w005', name: '정다은', phone: '010-1111-2005', warnings: 1, total: 33, noshow: 1, negotiation: false, points: 47000,  lastWorked: '2026-04-21', joinedAt: '2025-07-22', favParts: ['cj','lotte'] },
+    { id: 'w006', name: '강시우', phone: '010-1111-2006', warnings: 3, total: 7,  noshow: 4, negotiation: true,  points: 3000,   lastWorked: '2026-03-15', joinedAt: '2025-12-18', favParts: ['cj'] },
+    { id: 'w007', name: '한지민', phone: '010-1111-2007', warnings: 0, total: 62, noshow: 0, negotiation: false, points: 132000, lastWorked: '2026-04-23', joinedAt: '2025-04-05', favParts: ['cj','lotte','convention'] },
+    { id: 'w008', name: '오채원', phone: '010-1111-2008', warnings: 0, total: 3,  noshow: 0, negotiation: false, points: 5500,   lastWorked: '2026-04-19', joinedAt: '2026-03-28', favParts: [] },
+    { id: 'w009', name: '송현우', phone: '010-1111-2009', warnings: 2, total: 19, noshow: 2, negotiation: false, points: 28000,  lastWorked: '2026-04-15', joinedAt: '2025-10-11', favParts: ['lotte'] },
+    { id: 'w010', name: '윤하늘', phone: '010-1111-2010', warnings: 0, total: 51, noshow: 0, negotiation: false, points: 89000,  lastWorked: '2026-04-22', joinedAt: '2025-06-30', favParts: ['cj','convention'] },
   ];
   function findWorker(id) { return workers.find(w => w.id === id); }
 
@@ -872,6 +899,240 @@
   }
 
   // ───────────────────────────────────────────────────────
+  // 근무자 관리 페이지
+  // ───────────────────────────────────────────────────────
+  const workerState = {
+    search: '',
+    status: '',      // '' / normal / warn / neg / new / noshow
+    sort: 'recent',  // recent / name / warn / total
+  };
+
+  function renderWorkers() {
+    const q = workerState.search.trim().toLowerCase();
+    const WEEK_AGO = new Date(TODAY); WEEK_AGO.setDate(WEEK_AGO.getDate() - 7);
+    const weekAgoStr = WEEK_AGO.toISOString().slice(0, 10);
+
+    // 필터
+    let list = workers.filter(w => {
+      if (q && !(w.name.toLowerCase().includes(q) || w.phone.includes(q))) return false;
+      if (workerState.status === 'normal' && (w.warnings > 0 || w.negotiation)) return false;
+      if (workerState.status === 'warn'   && !(w.warnings >= 1 && w.warnings < 3)) return false;
+      if (workerState.status === 'neg'    && !w.negotiation) return false;
+      if (workerState.status === 'new'    && w.total > 10) return false;
+      if (workerState.status === 'noshow' && w.noshow === 0) return false;
+      return true;
+    });
+
+    // 정렬
+    const sorters = {
+      recent: (a, b) => b.lastWorked.localeCompare(a.lastWorked),
+      name:   (a, b) => a.name.localeCompare(b.name, 'ko'),
+      warn:   (a, b) => b.warnings - a.warnings || b.noshow - a.noshow,
+      total:  (a, b) => b.total - a.total,
+    };
+    list = list.sort(sorters[workerState.sort]);
+
+    // 메트릭
+    const totalW = workers.length;
+    const activeWeek = workers.filter(w => w.lastWorked >= weekAgoStr).length;
+    const warnHold = workers.filter(w => w.warnings >= 1 && !w.negotiation).length;
+    const negCount = workers.filter(w => w.negotiation).length;
+
+    let html = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">근무자 관리</div>
+          <div class="jf-subtitle">전체 알바생 · 경고 이력 · 포인트 현황</div>
+        </div>
+        <div class="ws-actions">
+          <button onclick="alert('엑셀 업로드: 명단 일괄 등록용 (N12로 이월)')">엑셀 업로드</button>
+          <button onclick="alert('엑셀 다운로드는 추후 구현')">엑셀 다운로드</button>
+        </div>
+      </div>
+
+      <div class="jf-metric-grid">
+        <div class="jf-metric"><div class="jf-metric-label">전체 근무자</div><div class="jf-metric-value">${totalW}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div><div class="jf-metric-hint">등록된 알바생</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">이번 주 활동</div><div class="jf-metric-value">${activeWeek}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div><div class="jf-metric-hint">최근 7일 근무</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">경고 누적</div><div class="jf-metric-value" style="color:${warnHold>0?'#F59E0B':'#111827'};">${warnHold}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div><div class="jf-metric-hint">경고 1~2회 보유</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">협의대상</div><div class="jf-metric-value" style="color:${negCount>0?'#EF4444':'#16A34A'};">${negCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div><div class="jf-metric-hint">해제는 마스터 전용</div></div>
+      </div>
+
+      <div class="jobs-filters">
+        <div class="jf-search"><input type="text" placeholder="이름 · 전화번호 검색" value="${workerState.search}" oninput="window.__wrkSearch(this.value)" /></div>
+        <select onchange="window.__wrkFilter('status', this.value)">
+          <option value="">전체 상태</option>
+          <option value="normal" ${workerState.status==='normal'?'selected':''}>정상</option>
+          <option value="warn"   ${workerState.status==='warn'?'selected':''}>경고 1~2회</option>
+          <option value="neg"    ${workerState.status==='neg'?'selected':''}>협의대상</option>
+          <option value="new"    ${workerState.status==='new'?'selected':''}>신규 (10회 미만)</option>
+          <option value="noshow" ${workerState.status==='noshow'?'selected':''}>No-show 있음</option>
+        </select>
+        <select onchange="window.__wrkFilter('sort', this.value)">
+          <option value="recent" ${workerState.sort==='recent'?'selected':''}>최근 근무순</option>
+          <option value="name"   ${workerState.sort==='name'?'selected':''}>이름순</option>
+          <option value="warn"   ${workerState.sort==='warn'?'selected':''}>경고 많은 순</option>
+          <option value="total"  ${workerState.sort==='total'?'selected':''}>누적 근무순</option>
+        </select>
+        ${(workerState.search || workerState.status) ? `<button onclick="window.__wrkClearFilter()" style="font-size:12px;">필터 초기화</button>` : ''}
+        <div style="margin-left:auto; font-size:12px; color:#6B7684; align-self:center;">${list.length}명 표시</div>
+      </div>
+    `;
+
+    if (list.length === 0) {
+      html += `<div class="jf-placeholder"><div class="jf-placeholder-icon">👤</div><div class="jf-placeholder-title">조건에 맞는 근무자가 없습니다</div><div class="jf-placeholder-desc">검색어나 필터를 변경해주세요.</div></div>`;
+    } else {
+      const gridCols = '1.6fr 1.1fr 0.7fr 0.7fr 0.6fr 0.9fr 0.9fr 0.6fr';
+      html += `
+        <div class="jf-table">
+          <div class="jf-table-head" style="grid-template-columns:${gridCols};">
+            <div>이름</div>
+            <div>전화번호</div>
+            <div>누적 근무</div>
+            <div>경고</div>
+            <div>No-show</div>
+            <div>포인트</div>
+            <div>최근 근무</div>
+            <div></div>
+          </div>
+      `;
+      list.forEach(w => {
+        const warnCls = `warn-${Math.min(w.warnings, 3)}`;
+        const warnText = w.warnings > 0 ? `${w.warnings}회` : '없음';
+        html += `
+          <div class="jf-table-row" style="grid-template-columns:${gridCols};" onclick="window.__wrkDetail('${w.id}')">
+            <div class="worker-name">
+              ${w.name}
+              ${w.negotiation ? '<span class="apv-badge apv-badge-neg" style="font-size:10px; padding:2px 6px;">협의대상</span>' : ''}
+              ${w.total < 10 ? '<span class="apv-badge" style="background:#DBEAFE; color:#1E40AF; font-size:10px; padding:2px 6px;">신규</span>' : ''}
+            </div>
+            <div style="font-family:'SF Mono',Monaco,monospace; font-size:12px; color:#6B7684;">${w.phone}</div>
+            <div><strong>${w.total}</strong><span style="color:#6B7684; font-size:11px;">회</span></div>
+            <div><span class="warn-pill ${warnCls}">${warnText}</span></div>
+            <div style="color:${w.noshow>0?'#EF4444':'#6B7684'};">${w.noshow}</div>
+            <div>${w.points.toLocaleString()}P</div>
+            <div style="color:#6B7684; font-size:12px;">${w.lastWorked}</div>
+            <div style="text-align:right;"><span style="color:#2563EB; font-size:12px;">상세 →</span></div>
+          </div>
+        `;
+      });
+      html += `</div>`;
+    }
+
+    main.innerHTML = html;
+  }
+
+  function renderWorkerDetail(workerId) {
+    const w = findWorker(workerId);
+    if (!w) return;
+
+    // 이 근무자의 최근 신청/근무 이력 (샘플 데이터에서 추출)
+    const myApps = applications.filter(a => a.workerId === workerId);
+
+    // 경고 이력 mock — 실제는 별도 테이블에서 조회
+    const warnHistory = [];
+    if (w.warnings >= 1) warnHistory.push({ date: '2026-03-15', type: 'warn', title: '경고 1회 부여', sub: '무단결근 — CJ대한통운 곤지암 MegaHub / 관리자: 김관리' });
+    if (w.warnings >= 2) warnHistory.push({ date: '2026-02-20', type: 'warn', title: '경고 2회 부여', sub: '12시간 이내 취소 — 컨벤션 L타워 / 관리자: 한담당' });
+    if (w.warnings >= 3) warnHistory.push({ date: '2026-01-28', type: 'neg', title: '경고 3회 누적 → 협의대상 자동 등록', sub: '지각 — 롯데택배 진천 MegaHub / 관리자: 박관리' });
+    if (warnHistory.length === 0) warnHistory.push({ date: w.joinedAt, type: 'ok', title: '가입', sub: '경고 이력 없음 — 모범 근무자' });
+
+    main.innerHTML = `
+      <span class="jf-back" onclick="window.__wrkBack()">← 근무자 목록으로</span>
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">${w.name}
+            ${w.negotiation ? '<span class="apv-badge apv-badge-neg" style="vertical-align:middle; margin-left:8px;">협의대상</span>' : ''}
+          </div>
+          <div class="jf-subtitle">${w.phone} · 가입 ${w.joinedAt}</div>
+        </div>
+        <div class="ws-actions">
+          ${w.negotiation
+            ? '<button class="btn-primary" onclick="window.__wrkNegRelease(\'' + w.id + '\')">협의대상 해제 (마스터)</button>'
+            : '<button onclick="window.__wrkWarnAdd(\'' + w.id + '\')">경고 부여</button>'}
+          <button onclick="alert('알바생 메시지/알림 발송은 추후 구현')">알림 발송</button>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+        <div class="jf-metric"><div class="jf-metric-label">누적 근무</div><div class="jf-metric-value">${w.total}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 회</span></div></div>
+        <div class="jf-metric"><div class="jf-metric-label">경고</div><div class="jf-metric-value" style="color:${w.warnings>0?'#F59E0B':'#111827'};">${w.warnings}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 회</span></div><div class="jf-metric-hint">${w.warnings>=3?'3회 누적 — 협의대상':'3회 누적 시 협의대상'}</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">No-show</div><div class="jf-metric-value" style="color:${w.noshow>0?'#EF4444':'#111827'};">${w.noshow}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 회</span></div></div>
+        <div class="jf-metric"><div class="jf-metric-label">보유 포인트</div><div class="jf-metric-value">${w.points.toLocaleString()}<span style="font-size:13px; color:#6B7684; font-weight:400;"> P</span></div><div class="jf-metric-hint">${w.points>=30000?'출금 가능':'3만P 이상 출금 가능'}</div></div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="jf-panel">
+          <div class="ws-section-title">경고 · 협의대상 이력</div>
+          <div class="tl">
+            ${warnHistory.map(h => `
+              <div class="tl-item ${h.type}">
+                <div class="tl-date">${h.date}</div>
+                <div class="tl-title">${h.title}</div>
+                <div class="tl-sub">${h.sub}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="jf-panel">
+          <div class="ws-section-title">최근 신청 이력 <span style="font-size:11px; color:#6B7684; font-weight:400;">최근 ${myApps.length}건</span></div>
+          ${myApps.length === 0
+            ? '<div style="padding:20px 0; text-align:center; color:#6B7684; font-size:12px;">신청 이력이 없습니다.</div>'
+            : myApps.map(a => {
+                const j = findJob(a.jobId); const s = findSite(j.siteId);
+                const stColor = { pending: '#F59E0B', approved: '#22C55E', rejected: '#EF4444' }[a.status];
+                const stLabel = { pending: '대기 중', approved: '승인', rejected: '거절' }[a.status];
+                return `
+                  <div style="padding: 10px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); font-size: 12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                      <span style="font-weight:500; color:#111827;">${s.site.name}</span>
+                      <span style="color:${stColor}; font-size:11px; font-weight:500;">● ${stLabel}</span>
+                    </div>
+                    <div style="color:#6B7684; margin-top:3px;">${j.date} · ${j.slot} ${j.start}~${j.end}</div>
+                    <div style="color:#9CA3AF; font-size:11px; margin-top:2px;">신청 ${a.appliedAt}${a.rejectReason ? ' · 거절 사유: ' + a.rejectReason : ''}</div>
+                  </div>
+                `;
+              }).join('')}
+        </div>
+
+        <div class="jf-panel" style="grid-column: span 2;">
+          <div class="ws-section-title">즐겨찾기 · 선호 근무지</div>
+          ${w.favParts.length === 0
+            ? '<div style="padding:10px 0; color:#6B7684; font-size:12px;">설정된 즐겨찾기가 없습니다.</div>'
+            : '<div style="display:flex; gap:6px; padding: 4px 0;">' + w.favParts.map(k => `<span class="ws-mini-tag">${worksites[k].name}</span>`).join('') + '</div>'
+          }
+        </div>
+      </div>
+    `;
+  }
+
+  window.__wrkSearch = function(val) { workerState.search = val; renderWorkers(); };
+  window.__wrkFilter = function(key, val) { workerState[key] = val; renderWorkers(); };
+  window.__wrkClearFilter = function() { workerState.search = ''; workerState.status = ''; renderWorkers(); };
+  window.__wrkDetail = function(id) { renderWorkerDetail(id); };
+  window.__wrkBack = function() { renderWorkers(); };
+  window.__wrkWarnAdd = function(id) {
+    const w = findWorker(id); if (!w) return;
+    const reason = prompt(`${w.name} 님에게 경고를 부여합니다.\n사유를 선택/입력하세요:\n- 12시간 이내 취소 / 지각 / 무단결근 / 무응답 / GPS 미검증`);
+    if (!reason) return;
+    w.warnings = Math.min(w.warnings + 1, 3);
+    if (w.warnings >= 3) {
+      w.negotiation = true;
+      alert(`경고가 3회 누적되어 ${w.name} 님이 협의대상으로 자동 등록되었습니다.\n해제는 마스터 권한이 필요합니다.`);
+    } else {
+      alert(`${w.name} 님에게 경고 ${w.warnings}회가 부여되었습니다.\n사유: ${reason}`);
+    }
+    renderWorkerDetail(id);
+  };
+  window.__wrkNegRelease = function(id) {
+    const w = findWorker(id); if (!w) return;
+    if (!confirm(`${w.name} 님의 협의대상 상태를 해제합니다. (마스터 전용)\n경고 카운트도 초기화됩니다. 계속하시겠습니까?`)) return;
+    w.negotiation = false;
+    w.warnings = 0;
+    alert(`${w.name} 님의 협의대상 해제 및 경고 초기화 완료.`);
+    renderWorkerDetail(id);
+  };
+
+  // ───────────────────────────────────────────────────────
   // 신청 승인 페이지
   // ───────────────────────────────────────────────────────
   const apvState = {
@@ -1361,6 +1622,7 @@
     worksite: renderList,
     jobs: () => { jobsState.tab = 'list'; renderJobs(); },
     approval: renderApproval,
+    workers: renderWorkers,
   };
 
   navItems.forEach(item => {
