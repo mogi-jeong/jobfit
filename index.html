@@ -174,6 +174,83 @@
   .btn-approve:hover:not(:disabled) { background: #16A34A !important; }
   .btn-reject { background: #fff !important; color: #EF4444 !important; border-color: #EF4444 !important; }
   .btn-reject:hover:not(:disabled) { background: #FEE2E2 !important; }
+  /* 신청 대기 시간 배지 (N19) */
+  .apv-dwell { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; padding: 1px 6px; border-radius: 4px; font-family: 'SF Mono', Monaco, monospace; margin-left: 6px; background: #F3F4F6; color: #6B7684; font-weight: 500; }
+  .apv-dwell.warn { background: #FEF3C7; color: #92400E; }
+  .apv-dwell.over { background: #FEE2E2; color: #991B1B; }
+  .apv-card.over-limit { border-left: 3px solid #EF4444; background: #FFFBFB; animation: apv-pulse 2s infinite; }
+  @keyframes apv-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } 50% { box-shadow: 0 0 0 3px rgba(239,68,68,0.12); } }
+
+  /* 관제 시스템 — 헤더 툴바 (시계 + 시뮬 시각) */
+  .ctrl-header-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .ctrl-clock { font-family: 'SF Mono', Monaco, monospace; font-size: 13px; color: #6B7684; padding: 6px 10px; background: #F5F7FA; border-radius: 6px; border: 0.5px solid rgba(0,0,0,0.08); }
+  .ctrl-sim-group { display: flex; align-items: center; gap: 6px; background: #EFF6FF; padding: 4px 8px; border-radius: 6px; border: 0.5px solid #BFDBFE; }
+  .ctrl-sim-group input[type="time"] { height: 28px; font-size: 12px; padding: 0 6px; background: #fff; font-family: 'SF Mono', Monaco, monospace; }
+
+  /* 자동 퇴근 배너 (관제 상단) */
+  .auto-ck-banner { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; margin-bottom: 14px; font-size: 13px; }
+  .auto-ck-banner.info { background: #EFF6FF; color: #1E40AF; border: 0.5px solid #BFDBFE; }
+  .auto-ck-banner.alert { background: #FEF3C7; color: #92400E; border: 0.5px solid #FCD34D; animation: pulse-soft 2.2s infinite; }
+  .auto-ck-banner.critical { background: #FEE2E2; color: #991B1B; border: 0.5px solid #FCA5A5; animation: pulse-soft 1.2s infinite; }
+  @keyframes pulse-soft { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } 50% { box-shadow: 0 0 0 5px rgba(239,68,68,0.12); } }
+  .auto-ck-icon { font-size: 20px; flex-shrink: 0; }
+  .auto-ck-text { flex: 1; line-height: 1.6; }
+  .auto-ck-text strong { font-weight: 600; }
+  .auto-ck-meta { font-size: 11px; opacity: 0.8; margin-top: 2px; font-family: 'SF Mono', Monaco, monospace; }
+  .auto-ck-next { font-size: 11px; padding: 4px 10px; background: rgba(255,255,255,0.6); border-radius: 6px; font-family: 'SF Mono', Monaco, monospace; flex-shrink: 0; }
+
+  /* 관제 카드 · 자동 퇴근 확장 상태 */
+  .ctrl-card.ended-pending { border-left: 3px solid #F97316 !important; background: #FFFBEB; }
+  .ctrl-card.ended-critical { border-left: 3px solid #EF4444 !important; background: #FEF2F2; }
+  .ctrl-card-auto { font-size: 11px; margin-top: 6px; padding: 4px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px; font-family: 'SF Mono', Monaco, monospace; }
+  .ctrl-card-auto.pending { background: #FEF3C7; color: #92400E; }
+  .ctrl-card-auto.critical { background: #FEE2E2; color: #991B1B; }
+  .ctrl-card-auto.settled { background: #F3F4F6; color: #6B7684; }
+
+  /* 관제 명단 · 자동 퇴근 배지 */
+  .ctrl-roster-auto { font-size: 11px; padding: 2px 6px; border-radius: 4px; font-family: 'SF Mono', Monaco, monospace; white-space: nowrap; }
+  .ctrl-roster-auto.ok { background: #DCFCE7; color: #166534; }
+  .ctrl-roster-auto.pending { background: #FEF3C7; color: #92400E; }
+  .ctrl-roster-auto.critical { background: #FEE2E2; color: #991B1B; }
+  .ctrl-roster-auto.settled { background: #F3F4F6; color: #6B7684; }
+
+  /* GPS 미검증 퇴근 승인 패널 */
+  .gps-panel { background: #fff; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; border-left: 3px solid #8B5CF6; }
+  .gps-panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 10px; }
+  .gps-panel-title { font-size: 14px; font-weight: 500; color: #111827; display: flex; align-items: center; gap: 6px; }
+  .gps-panel-count { background: #8B5CF6; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+  .gps-panel-link { font-size: 12px; color: #2563EB; cursor: pointer; text-decoration: none; }
+  .gps-panel-link:hover { text-decoration: underline; }
+  .gps-req-row { display: grid; grid-template-columns: 1.2fr 1.5fr 2fr 0.8fr auto; gap: 12px; padding: 12px 8px; align-items: center; border-top: 0.5px solid rgba(0,0,0,0.06); font-size: 13px; }
+  .gps-req-row:first-of-type { border-top: 0.5px solid rgba(0,0,0,0.12); }
+  .gps-req-worker { display: flex; flex-direction: column; gap: 3px; }
+  .gps-req-worker-name { font-weight: 500; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .gps-req-worker-sub { font-size: 11px; color: #6B7684; font-family: 'SF Mono', Monaco, monospace; }
+  .gps-req-job-title { font-weight: 500; font-size: 13px; }
+  .gps-req-job-sub { font-size: 11px; color: #6B7684; margin-top: 2px; }
+  .gps-req-reason { font-size: 12px; color: #374151; line-height: 1.5; background: #F9FAFB; padding: 8px 10px; border-radius: 6px; max-height: 60px; overflow: hidden; text-overflow: ellipsis; }
+  .gps-req-dist { text-align: center; }
+  .gps-req-dist-badge { display: inline-flex; flex-direction: column; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-weight: 500; }
+  .gps-req-dist-badge.low { background: #DCFCE7; color: #166534; }
+  .gps-req-dist-badge.mid { background: #FEF3C7; color: #92400E; }
+  .gps-req-dist-badge.high { background: #FEE2E2; color: #991B1B; }
+  .gps-req-dist-badge strong { font-size: 15px; }
+  .gps-req-dist-badge span { opacity: 0.8; margin-top: 2px; }
+  .gps-req-actions { display: flex; gap: 6px; }
+  .gps-req-actions button { font-size: 12px; height: 32px; padding: 0 12px; }
+  .neg-pill { background: #1F2937; color: #fff; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 500; }
+  .gps-roster-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; padding: 1px 6px; background: #F3E8FF; color: #6B21A8; border-radius: 4px; font-weight: 500; margin-left: 6px; }
+  .ext-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; padding: 1px 6px; background: #CCFBF1; color: #0F766E; border-radius: 4px; font-weight: 500; border: 0.5px solid rgba(20,184,166,0.3); }
+
+  /* GPS 처리 이력 모달 */
+  .gps-hist-tabs { display: flex; gap: 2px; border-bottom: 0.5px solid rgba(0,0,0,0.1); margin-bottom: 14px; }
+  .gps-hist-tab { padding: 8px 14px; cursor: pointer; font-size: 13px; color: #6B7684; border-bottom: 2px solid transparent; margin-bottom: -0.5px; }
+  .gps-hist-tab.active { color: #2563EB; border-bottom-color: #2563EB; font-weight: 500; }
+  .gps-hist-row { padding: 10px 12px; border-bottom: 0.5px solid rgba(0,0,0,0.06); font-size: 12px; display: grid; grid-template-columns: 1fr 1.2fr 1.8fr 0.8fr; gap: 10px; align-items: flex-start; }
+  .gps-hist-row:last-child { border-bottom: none; }
+  .gps-hist-status { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; display: inline-block; }
+  .gps-hist-status.approved { background: #DCFCE7; color: #166534; }
+  .gps-hist-status.denied { background: #FEE2E2; color: #991B1B; }
 
   /* 관제 시스템 */
   .ctrl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
@@ -234,6 +311,107 @@
   .warn-1 { background: #FEF3C7; color: #92400E; }
   .warn-2 { background: #FED7AA; color: #9A3412; }
   .warn-3 { background: #FEE2E2; color: #991B1B; }
+
+  /* 경고 부여 모달 — 사유 radio 리스트 */
+  .warn-reason-list { display: flex; flex-direction: column; gap: 6px; }
+  .warn-reason-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; cursor: pointer; transition: border-color 0.1s, background 0.1s; }
+  .warn-reason-item:hover { background: #F9FAFB; }
+  .warn-reason-item input[type="radio"] { margin-top: 2px; accent-color: #EF4444; }
+  .warn-reason-item:has(input[type="radio"]:checked) { border-color: #EF4444; background: #FEF2F2; }
+  .warn-reason-title { font-size: 13px; font-weight: 500; color: #111827; }
+  .warn-reason-sub { font-size: 11px; color: #6B7684; margin-top: 2px; }
+  .warn-reason-warn { margin-top: 10px; padding: 10px 12px; background: #FEF3C7; border-radius: 6px; font-size: 11px; color: #92400E; line-height: 1.5; }
+
+  /* 모바일 프레임 미리보기 (알바생 앱 팝업/화면 시뮬) */
+  .mobile-preview-wrap { display: flex; gap: 24px; align-items: stretch; padding: 10px 0; }
+  .mobile-frame { flex-shrink: 0; width: 320px; height: 640px; background: #1F2937; border-radius: 36px; padding: 14px 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); position: relative; }
+  .mobile-frame::before { content: ''; position: absolute; top: 18px; left: 50%; transform: translateX(-50%); width: 80px; height: 18px; background: #1F2937; border-radius: 0 0 12px 12px; z-index: 2; }
+  .mobile-screen { background: #F3F4F6; border-radius: 24px; height: 100%; overflow: hidden; position: relative; display: flex; flex-direction: column; }
+  .mobile-status-bar { height: 28px; background: transparent; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; font-size: 10px; color: #111827; font-weight: 500; font-family: 'SF Pro', -apple-system, sans-serif; flex-shrink: 0; }
+  .mobile-status-bar .mp-time { font-weight: 600; }
+  .mobile-status-bar .mp-icons { display: flex; gap: 4px; font-size: 9px; }
+  .mobile-app-header { background: #fff; padding: 10px 16px; border-bottom: 0.5px solid rgba(0,0,0,0.06); flex-shrink: 0; }
+  .mobile-app-header-title { font-size: 14px; font-weight: 600; color: #111827; }
+  .mobile-app-header-sub { font-size: 10px; color: #6B7684; margin-top: 2px; }
+  .mobile-app-body { flex: 1; padding: 12px; overflow-y: auto; background: #F3F4F6; position: relative; }
+  .mobile-home-ind { position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%); width: 100px; height: 4px; background: #1F2937; border-radius: 2px; opacity: 0.25; }
+
+  /* 주휴수당 팝업 (dim + bottom sheet 스타일) */
+  .mp-dim { position: absolute; inset: 0; background: rgba(0,0,0,0.35); display: flex; flex-direction: column; justify-content: flex-end; animation: mp-dim-in 0.2s ease-out; }
+  @keyframes mp-dim-in { from { opacity: 0; } to { opacity: 1; } }
+  .mp-sheet { background: #fff; border-radius: 20px 20px 0 0; padding: 20px 18px 22px; max-height: 85%; overflow-y: auto; animation: mp-sheet-up 0.26s ease-out; }
+  @keyframes mp-sheet-up { from { transform: translateY(40%); } to { transform: translateY(0); } }
+  .mp-handle { width: 38px; height: 4px; background: #D1D5DB; border-radius: 2px; margin: -6px auto 14px; }
+  .mp-hp-icon { display: block; width: 52px; height: 52px; margin: 0 auto 10px; background: #DBEAFE; border-radius: 50%; font-size: 28px; line-height: 52px; text-align: center; }
+  .mp-hp-title { text-align: center; font-size: 15px; font-weight: 600; color: #111827; margin-bottom: 6px; }
+  .mp-hp-subtitle { text-align: center; font-size: 11px; color: #6B7684; margin-bottom: 16px; line-height: 1.5; }
+  .mp-hp-progress { background: #F9FAFB; border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  .mp-hp-dots { display: flex; justify-content: center; gap: 8px; margin-bottom: 10px; }
+  .mp-hp-dot { width: 26px; height: 26px; border-radius: 50%; background: #E5E7EB; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #9CA3AF; font-weight: 500; border: 1.5px solid transparent; }
+  .mp-hp-dot.done { background: #22C55E; color: #fff; }
+  .mp-hp-dot.current { background: #DBEAFE; color: #1E40AF; border-color: #2563EB; }
+  .mp-hp-progress-label { text-align: center; font-size: 11px; color: #374151; line-height: 1.6; }
+  .mp-hp-progress-label strong { color: #111827; font-weight: 600; }
+  .mp-hp-info { background: #EFF6FF; border: 1px solid #BFDBFE; padding: 10px 12px; border-radius: 10px; font-size: 11px; color: #1E40AF; line-height: 1.6; margin-bottom: 14px; }
+  .mp-hp-info strong { color: #1E3A8A; font-weight: 600; }
+  .mp-hp-actions { display: flex; gap: 8px; }
+  .mp-hp-actions button { flex: 1; height: 42px; border-radius: 10px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; }
+  .mp-hp-btn-cancel { background: #F3F4F6; color: #374151; }
+  .mp-hp-btn-ok { background: #2563EB; color: #fff; }
+
+  /* 알바생 앱 미리보기 페이지 전용 */
+  .ap-layout { display: grid; grid-template-columns: 360px 1fr; gap: 24px; }
+  .ap-phone-col { position: sticky; top: 20px; align-self: start; }
+  .ap-tabs { display: flex; gap: 2px; border-bottom: 0.5px solid rgba(0,0,0,0.1); margin-bottom: 16px; flex-wrap: wrap; }
+  .ap-tab { padding: 8px 14px; cursor: pointer; font-size: 12px; color: #6B7684; border-bottom: 2px solid transparent; margin-bottom: -0.5px; user-select: none; display: flex; align-items: center; gap: 6px; }
+  .ap-tab:hover { color: #111827; }
+  .ap-tab.active { color: #2563EB; border-bottom-color: #2563EB; font-weight: 500; }
+  .ap-info-panel { background: #fff; border: 0.5px solid rgba(0,0,0,0.1); border-radius: 12px; padding: 18px; }
+  .ap-info-title { font-size: 15px; font-weight: 500; color: #111827; margin-bottom: 10px; }
+  .ap-info-section { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 0.5px solid rgba(0,0,0,0.06); }
+  .ap-info-section:last-child { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
+  .ap-info-section h4 { font-size: 12px; color: #6B7684; margin-bottom: 8px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+  .ap-info-section p, .ap-info-section ul { font-size: 12px; color: #374151; line-height: 1.7; }
+  .ap-info-section ul { padding-left: 18px; }
+  .ap-info-section li { margin-bottom: 4px; }
+  .ap-info-section code { background: #F1F3F5; padding: 1px 6px; border-radius: 3px; font-family: 'SF Mono', Monaco, monospace; font-size: 11px; }
+
+  /* 알바생 앱 화면 요소 */
+  .app-bottom-nav { background: #fff; border-top: 0.5px solid rgba(0,0,0,0.08); display: grid; grid-template-columns: repeat(5, 1fr); padding: 6px 0 10px; flex-shrink: 0; }
+  .app-bnav-item { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px; font-size: 9px; color: #9CA3AF; cursor: pointer; }
+  .app-bnav-item.active { color: #2563EB; }
+  .app-bnav-icon { font-size: 18px; line-height: 1; }
+
+  .app-card { background: #fff; border-radius: 10px; padding: 12px; margin-bottom: 8px; }
+  .app-card-title { font-size: 12px; font-weight: 600; color: #111827; margin-bottom: 4px; }
+  .app-card-meta { font-size: 10px; color: #6B7684; line-height: 1.5; }
+  .app-chip { display: inline-block; font-size: 9px; padding: 1px 6px; border-radius: 3px; background: #DBEAFE; color: #1E40AF; margin-right: 4px; font-weight: 500; }
+  .app-chip-warn { background: #FEF3C7; color: #92400E; }
+  .app-chip-ok { background: #DCFCE7; color: #166534; }
+  .app-chip-neg { background: #FEE2E2; color: #991B1B; }
+
+  .app-section-title { font-size: 11px; color: #6B7684; margin: 10px 2px 6px; font-weight: 500; }
+  .app-big-point { background: linear-gradient(135deg, #2563EB, #1E40AF); color: #fff; border-radius: 14px; padding: 18px; margin-bottom: 10px; }
+  .app-big-point-label { font-size: 11px; opacity: 0.9; }
+  .app-big-point-value { font-size: 28px; font-weight: 600; margin-top: 4px; }
+  .app-big-point-hint { font-size: 10px; opacity: 0.8; margin-top: 6px; }
+
+  .app-list-row { background: #fff; padding: 10px 12px; margin-bottom: 6px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; }
+  .app-list-row-main { color: #111827; font-weight: 500; }
+  .app-list-row-sub { font-size: 10px; color: #6B7684; margin-top: 2px; }
+  .app-list-row-val { font-weight: 600; color: #111827; font-size: 12px; }
+  .app-list-row-val.plus { color: #2563EB; }
+  .app-list-row-val.minus { color: #EF4444; }
+
+  /* 미리보기 옆 안내 영역 */
+  .mobile-preview-info { flex: 1; padding: 14px 18px; background: #F9FAFB; border-radius: 10px; font-size: 12px; line-height: 1.6; color: #374151; }
+  .mobile-preview-info h4 { font-size: 13px; font-weight: 500; color: #111827; margin-bottom: 8px; }
+  .mobile-preview-info ul { padding-left: 18px; }
+  .mobile-preview-info li { margin-bottom: 4px; }
+  .mobile-preview-info code { background: #E5E7EB; padding: 1px 6px; border-radius: 3px; font-family: 'SF Mono', Monaco, monospace; font-size: 11px; }
+  .preview-scenario-picker { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .preview-scenario-picker button { font-size: 11px; padding: 6px 10px; height: auto; border-radius: 6px; }
+  .preview-scenario-picker button.active { background: #1B3A6B !important; color: #fff !important; border-color: #1B3A6B !important; }
 
   /* 타임라인 (경고 이력 등) */
   .tl { position: relative; padding-left: 16px; border-left: 1.5px solid #E5E7EB; }
@@ -395,12 +573,15 @@
     <div class="jf-nav-item active" data-page="home"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7l6-5 6 5v7a1 1 0 01-1 1H3a1 1 0 01-1-1V7z"/></svg>홈</div>
     <div class="jf-nav-item" data-page="jobs"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="11" rx="1"/><path d="M5 1v3M11 1v3M2 7h12"/></svg>공고 관리</div>
     <div class="jf-nav-item" data-page="approval"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8l3 3 7-7"/></svg>신청 승인 <span data-role="badge" style="margin-left:auto; background:#EF4444; color:#fff; font-size:10px; padding:1px 6px; border-radius:8px;">7</span></div>
+    <div class="jf-nav-item" data-page="waitlistapv"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>대기열 승인 <span data-role="wl-badge" style="margin-left:auto; background:#F59E0B; color:#fff; font-size:10px; padding:1px 6px; border-radius:8px;">0</span></div>
+    <div class="jf-nav-item" data-page="gpsapproval"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5C5.2 1.5 3 3.7 3 6.5c0 3.5 5 8 5 8s5-4.5 5-8c0-2.8-2.2-5-5-5z"/><circle cx="8" cy="6.5" r="1.8"/></svg>퇴근 승인 <span data-role="gps-badge" style="margin-left:auto; background:#8B5CF6; color:#fff; font-size:10px; padding:1px 6px; border-radius:8px;">10</span></div>
     <div class="jf-nav-item" data-page="workers"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/></svg>근무자 관리</div>
-    <div class="jf-nav-item" data-page="control"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg>관제 시스템</div>
     <div class="jf-nav-item" data-page="worksite"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1l6 3v5c0 3.5-3 6-6 6s-6-2.5-6-6V4l6-3z"/></svg>근무지 관리</div>
     <div class="jf-nav-item" data-page="negotiation"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M6 8l1.5 1.5L11 6"/></svg>협의대상</div>
     <div class="jf-nav-item" data-page="points"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v6M6 7h4M6 9h4"/></svg>포인트</div>
     <div class="jf-nav-item" data-page="inquiry"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v9H5l-3 3V3z"/></svg>문의</div>
+    <div class="jf-nav-item" data-page="apppreview"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="1.5" width="8" height="13" rx="1.5"/><path d="M7 12h2"/></svg>앱 미리보기</div>
+    <div class="jf-nav-item" data-page="control"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg>관제 시스템 <span style="margin-left:auto; font-size:9px; opacity:0.6;">⧉</span></div>
     <div class="jf-nav-item" data-page="stats"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 14V2M2 14h12M5 11V7M8 11V4M11 11V9"/></svg>통계 리포트</div>
     <div class="jf-nav-item" data-page="accounts"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="2.5"/><path d="M3 13c0-2.5 2-4 5-4s5 1.5 5 4"/><circle cx="12" cy="4" r="1.5" fill="currentColor"/></svg>관리자 계정</div>
     <div class="jf-user">

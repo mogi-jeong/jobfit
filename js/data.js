@@ -36,11 +36,30 @@ const TODAY = '2026-04-23';
 
 // 공고 샘플 데이터 — 시간대: 주간/야간/새벽/웨딩
 const jobs = [
-  // 진행중 (오늘)
-  { id: 'j001', siteId: 'gonjiam',  date: '2026-04-23', slot: '주간', start: '07:00', end: '15:00', cap: 30, apply: 28, wage: 110000, wageType: '일급', contact: '010-1234-5678', contract: true, safety: true },
-  { id: 'j002', siteId: 'icheon',   date: '2026-04-23', slot: '야간', start: '22:00', end: '06:00', cap: 20, apply: 20, wage: 115000, wageType: '일급', contact: '010-5678-9012', contract: true, safety: true },
-  { id: 'j003', siteId: 'jincheon', date: '2026-04-23', slot: '주간', start: '08:00', end: '17:00', cap: 25, apply: 22, wage: 115000, wageType: '일급', contact: '010-7890-1234', contract: true, safety: false },
-  { id: 'j004', siteId: 'ltower',   date: '2026-04-23', slot: '웨딩', start: '10:00', end: '18:00', cap: 12, apply: 10, wage: 120000, wageType: '일급', contact: '010-0123-4567', contract: true, safety: true },
+  // ───── 오늘 (2026-04-23) 진행중 · 관제 시스템 주요 노출 대상 ─────
+  // 시뮬 시각 15:30 기준: 종료 / 진행중 / 모집중 골고루 분포
+
+  // 오전 일찍 종료된 공고 (effective done @ 15:30)
+  { id: 'j001', siteId: 'gonjiam',   date: '2026-04-23', slot: '주간', start: '07:00', end: '15:00', cap: 30, apply: 28, wage: 110000, wageType: '일급', contact: '010-1234-5678', contract: true, safety: true },
+  { id: 'j021', siteId: 'gonjiam',   date: '2026-04-23', slot: '새벽', start: '04:00', end: '09:00', cap: 20, apply: 19, wage: 112000, wageType: '일급', contact: '010-1234-5678', contract: true, safety: true },
+  { id: 'j022', siteId: 'yongin',    date: '2026-04-23', slot: '주간', start: '06:00', end: '12:00', cap: 18, apply: 16, wage: 105000, wageType: '일급', contact: '010-2345-6789', contract: true, safety: true },
+  { id: 'j023', siteId: 'anseong',   date: '2026-04-23', slot: '주간', start: '09:00', end: '13:00', cap: 15, apply: 13, wage: 105000, wageType: '일급', contact: '010-6789-0123', contract: true, safety: true },
+  { id: 'j024', siteId: 'gunpo_a',   date: '2026-04-23', slot: '주간', start: '08:00', end: '14:00', cap: 20, apply: 18, wage: 100000, wageType: '일급', contact: '010-3456-7890', contract: true, safety: true },
+  { id: 'j031', siteId: 'gunpo_b',   date: '2026-04-23', slot: '새벽', start: '02:00', end: '08:00', cap: 15, apply: 13, wage: 108000, wageType: '일급', contact: '010-4567-8901', contract: true, safety: true },
+
+  // 진행중 (effective progress @ 15:30)
+  { id: 'j003', siteId: 'jincheon',  date: '2026-04-23', slot: '주간', start: '08:00', end: '17:00', cap: 25, apply: 22, wage: 115000, wageType: '일급', contact: '010-7890-1234', contract: true, safety: false },
+  { id: 'j004', siteId: 'ltower',    date: '2026-04-23', slot: '웨딩', start: '10:00', end: '18:00', cap: 12, apply: 10, wage: 120000, wageType: '일급', contact: '010-0123-4567', contract: true, safety: true },
+  { id: 'j025', siteId: 'icheon',    date: '2026-04-23', slot: '주간', start: '13:00', end: '21:00', cap: 22, apply: 18, wage: 108000, wageType: '일급', contact: '010-5678-9012', contract: true, safety: true },
+  { id: 'j026', siteId: 'whills',    date: '2026-04-23', slot: '웨딩', start: '11:00', end: '19:00', cap: 12, apply: 10, wage: 125000, wageType: '일급', contact: '010-1234-0987', contract: true, safety: true },
+  { id: 'j027', siteId: 'gunpo_l',   date: '2026-04-23', slot: '주간', start: '14:00', end: '22:00', cap: 16, apply: 12, wage: 105000, wageType: '일급', contact: '010-9012-3456', contract: true, safety: true },
+  { id: 'j032', siteId: 'namyangju', date: '2026-04-23', slot: '주간', start: '10:00', end: '16:00', cap: 12, apply: 11, wage: 110000, wageType: '일급', contact: '010-8901-2345', contract: true, safety: true },
+
+  // 저녁/야간 예정 (effective open @ 15:30)
+  { id: 'j002', siteId: 'icheon',    date: '2026-04-23', slot: '야간', start: '22:00', end: '06:00', cap: 20, apply: 20, wage: 115000, wageType: '일급', contact: '010-5678-9012', contract: true, safety: true },
+  { id: 'j028', siteId: 'ltower',    date: '2026-04-23', slot: '웨딩', start: '17:00', end: '23:00', cap: 10, apply: 6,  wage: 120000, wageType: '일급', contact: '010-0123-4567', contract: true, safety: true },
+  { id: 'j029', siteId: 'jincheon',  date: '2026-04-23', slot: '야간', start: '18:00', end: '02:00', cap: 20, apply: 14, wage: 118000, wageType: '일급', contact: '010-7890-1234', contract: true, safety: true },
+  { id: 'j030', siteId: 'anseong',   date: '2026-04-23', slot: '야간', start: '21:00', end: '05:00', cap: 18, apply: 10, wage: 110000, wageType: '일급', contact: '010-6789-0123', contract: true, safety: true },
 
   // 모집 중 (내일 이후)
   { id: 'j005', siteId: 'gonjiam',  date: '2026-04-24', slot: '주간', start: '07:00', end: '15:00', cap: 30, apply: 18, wage: 110000, wageType: '일급', contact: '010-1234-5678', contract: true, safety: true },
@@ -241,10 +260,145 @@ const templates = [
 ];
 function findTemplate(id) { return templates.find(t => t.id === id); }
 
+// GPS 미검증 퇴근 승인 요청 — 알바생이 근무지 GPS 폴리곤 밖에서 퇴근 시 사유 제출
+// status: pending (관리자 대기) / approved (포인트 지급) / denied (포인트 미지급)
+// distance: 폴리곤 가장자리로부터 몇 m 벗어났는지
+const gpsRequests = [
+  // 대기 (pending) — 10건 · 테스트용
+  { id: 'gr001', workerId: 'w007', jobId: 'j001', submittedAt: '2026-04-23 15:22', reason: '퇴근 직후 편의점 들르러 이동했는데 GPS 잡히는 순간 이미 영역 밖이었어요. 근무는 정상 완료했습니다.',      distance: 187, status: 'pending' },
+  { id: 'gr002', workerId: 'w022', jobId: 'j002', submittedAt: '2026-04-23 06:12', reason: '근무 종료 후 바로 통근버스 타야 해서 정류장으로 이동했어요. 버스 시간 맞추려고 뛰어갔습니다.',              distance: 342, status: 'pending' },
+  { id: 'gr003', workerId: 'w032', jobId: 'j003', submittedAt: '2026-04-23 17:08', reason: '화장실이 건물 밖에 있어서 잠깐 나갔다가 GPS 영역을 살짝 벗어났어요.',                                       distance: 52,  status: 'pending' },
+  { id: 'gr007', workerId: 'w010', jobId: 'j001', submittedAt: '2026-04-23 15:05', reason: '근무 마치고 흡연 구역이 영역 밖에 있어서 그쪽에서 퇴근 버튼을 눌렀습니다.',                                   distance: 128, status: 'pending' },
+  { id: 'gr008', workerId: 'w016', jobId: 'j002', submittedAt: '2026-04-23 06:30', reason: '새벽에 너무 피곤해서 퇴근을 깜빡했다가 주차장에서 기억나서 눌렀어요. 죄송합니다.',                            distance: 215, status: 'pending' },
+  { id: 'gr009', workerId: 'w029', jobId: 'j003', submittedAt: '2026-04-23 17:14', reason: '물품 정리하느라 늦게 나갔는데 이미 통근버스 탑승하러 가는 길이라 거기서 처리했습니다.',                          distance: 398, status: 'pending' },
+  { id: 'gr010', workerId: 'w035', jobId: 'j004', submittedAt: '2026-04-23 18:05', reason: '웨딩홀 대기실 뒷편에 있는데 건물 구조상 GPS가 튀어요. 매번 그래서 사유 제출합니다.',                            distance: 18,  status: 'pending' },
+  { id: 'gr011', workerId: 'w043', jobId: 'j001', submittedAt: '2026-04-23 15:40', reason: '퇴근하고 동료랑 같이 버스 정류장으로 이동했어요.',                                                        distance: 256, status: 'pending' },
+  { id: 'gr012', workerId: 'w046', jobId: 'j003', submittedAt: '2026-04-23 17:20', reason: '근무 끝나고 화장실 갔다가 퇴근 버튼을 눌렀어요. 실내인데 GPS 영역 밖으로 잡혔네요.',                           distance: 88,  status: 'pending' },
+  { id: 'gr013', workerId: 'w048', jobId: 'j002', submittedAt: '2026-04-23 06:08', reason: '야간 근무 끝나고 피곤해서 바로 통근버스 탔어요. 버스 안에서 퇴근 처리했습니다.',                              distance: 510, status: 'pending' },
+  // 과거 처리 이력
+  { id: 'gr004', workerId: 'w040', jobId: 'j004', submittedAt: '2026-04-22 18:15', reason: '연회장 옆 대기실이 GPS 밖에 있는 것 같아요. 퇴근 시 대기실에서 찍혔습니다.',                                   distance: 23,  status: 'approved', reviewedAt: '2026-04-22 18:24', reviewedBy: '테스트(마스터)', adminNote: '상시 이슈로 확인됨 — 해당 근무지 GPS 영역 조정 필요 (근무지 관리 안건으로 이월)' },
+  { id: 'gr005', workerId: 'w050', jobId: 'j001', submittedAt: '2026-04-20 15:30', reason: '모름',                                                                                                  distance: 820, status: 'denied',   reviewedAt: '2026-04-20 15:45', reviewedBy: '김관리(1등급)', adminNote: '거리 과도 + 사유 불명확 + 협의대상 이력 — 포인트 미지급' },
+  { id: 'gr006', workerId: 'w013', jobId: 'j003', submittedAt: '2026-04-19 17:02', reason: '휴게실이 외부 건물이라 퇴근 버튼 누르니 영역 밖이었습니다.',                                                   distance: 74,  status: 'approved', reviewedAt: '2026-04-19 17:10', reviewedBy: '박관리(1등급)', adminNote: '휴게실 위치 이슈 반복 — 다음 공고부터 영역 재조정' },
+];
+function findGpsReq(id) { return gpsRequests.find(g => g.id === id); }
+
 // 공고 상태 판정: open(모집중) · closed(마감·시작전) · progress(진행중) · done(종료)
+// recruitClosed(수동 구인 완료) 또는 apply+외부 구인 >= cap 이면 closed
 function jobStatus(j) {
   if (j.date < TODAY) return 'done';
   if (j.date === TODAY) return 'progress';
-  return j.apply >= j.cap ? 'closed' : 'open';
+  const ext = Array.isArray(j.externalWorkers) ? j.externalWorkers.length : 0;
+  if (j.recruitClosed || (j.apply + ext) >= j.cap) return 'closed';
+  return 'open';
 }
 const STATUS_LABEL = { open: '모집중', closed: '마감', progress: '진행중', done: '종료' };
+
+// ───────────────────────────────────────────────────────────
+// 공용 헬퍼 — app.js / control.js 양쪽에서 사용
+// ───────────────────────────────────────────────────────────
+
+// 근무지 ID로 파트너사/근무지 찾기
+function findSite(siteId) {
+  for (const key in worksites) {
+    const s = worksites[key].sites.find(s => s.id === siteId);
+    if (s) return { site: s, partner: worksites[key].name, partnerKey: key };
+  }
+  return null;
+}
+
+// HH:MM + m분 → HH:MM (24시간 래핑)
+function addMin(hhmm, m) {
+  const [h, mm] = hhmm.split(':').map(Number);
+  const total = h * 60 + mm + m;
+  return String(Math.floor(total/60) % 24).padStart(2,'0') + ':' + String(total%60).padStart(2,'0');
+}
+
+// 도넛 SVG — segments: [{value, color}]
+function donutSvg(segments, size = 90, thick = 10) {
+  const center = size / 2;
+  const r = (size - thick) / 2;
+  const circ = 2 * Math.PI * r;
+  const total = segments.reduce((s, seg) => s + seg.value, 0);
+  let paths = '';
+  if (total === 0) {
+    paths = `<circle cx="${center}" cy="${center}" r="${r}" fill="none" stroke="#E5E7EB" stroke-width="${thick}"/>`;
+  } else {
+    let offset = 0;
+    paths = `<circle cx="${center}" cy="${center}" r="${r}" fill="none" stroke="#F3F4F6" stroke-width="${thick}"/>`;
+    segments.forEach(seg => {
+      if (seg.value === 0) return;
+      const len = (seg.value / total) * circ;
+      paths += `<circle cx="${center}" cy="${center}" r="${r}" fill="none" stroke="${seg.color}" stroke-width="${thick}"
+        stroke-dasharray="${len.toFixed(2)} ${(circ - len).toFixed(2)}"
+        stroke-dashoffset="${(-offset).toFixed(2)}"
+        transform="rotate(-90 ${center} ${center})"/>`;
+      offset += len;
+    });
+  }
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>`;
+}
+
+// 잡핏 포인트 보상 — 시간대별 (중계 수수료 성격 · 알바비와 별개)
+const POINT_REWARDS = { 주간: 2000, 야간: 2500, 새벽: 3000, 웨딩: 2500 };
+function pointRewardFor(job) {
+  return POINT_REWARDS[job.slot] || 2000;
+}
+
+// 출결 → 도넛 segments + 중앙 텍스트
+function attendanceDonut(sum, size = 90, thick = 10) {
+  const segments = [
+    { value: sum.출근, color: '#22C55E' },
+    { value: sum.지각, color: '#F59E0B' },
+    { value: sum.결근, color: '#EF4444' },
+    { value: sum.대기, color: '#D1D5DB' },
+  ];
+  const attended = sum.출근 + sum.지각 + sum.결근;
+  let centerHtml;
+  if (attended === 0) {
+    centerHtml = `<div class="ctrl-donut-pct">${sum.대기}</div><div class="ctrl-donut-label">대기 명</div>`;
+  } else {
+    const rate = Math.round((sum.출근 + sum.지각) / attended * 100);
+    centerHtml = `<div class="ctrl-donut-pct">${rate}%</div><div class="ctrl-donut-label">출근율</div>`;
+  }
+  return `
+    <div class="ctrl-donut-wrap" style="width:${size}px; height:${size}px;">
+      ${donutSvg(segments, size, thick)}
+      <div class="ctrl-donut-center">${centerHtml}</div>
+    </div>
+  `;
+}
+
+// 결정적 출결 시뮬레이션 — 공고 상태에 따라 분포 조정
+function getAttendance(jobId) {
+  const job = findJob(jobId); if (!job) return [];
+  const st = jobStatus(job);
+  const seed = [...jobId].reduce((s, c) => s + c.charCodeAt(0), 0);
+  const actualCount = Math.min(job.apply, workers.length);
+  const shuffled = [...workers].sort((a, b) =>
+    ((seed + a.id.charCodeAt(3)) % 100) - ((seed + b.id.charCodeAt(3)) % 100)
+  );
+  const picked = shuffled.slice(0, actualCount);
+
+  return picked.map((w, i) => {
+    const r = (seed + i * 7) % 100;
+    if (st === 'open' || st === 'closed') {
+      return { worker: w, status: '대기', checkin: null, checkout: null };
+    }
+    if (st === 'progress') {
+      if (r < 70) return { worker: w, status: '출근', checkin: job.start, checkout: null };
+      if (r < 90) return { worker: w, status: '지각', checkin: addMin(job.start, 8 + (r % 20)), checkout: null };
+      return { worker: w, status: '결근', checkin: null, checkout: null };
+    }
+    // done
+    if (r < 85) return { worker: w, status: '출근', checkin: job.start, checkout: job.end };
+    if (r < 95) return { worker: w, status: '지각', checkin: addMin(job.start, 5 + (r % 15)), checkout: job.end };
+    return { worker: w, status: '결근', checkin: null, checkout: null };
+  });
+}
+
+function attendanceSummary(jobId) {
+  const list = getAttendance(jobId);
+  const sum = { 출근: 0, 지각: 0, 결근: 0, 대기: 0 };
+  list.forEach(a => sum[a.status]++);
+  return sum;
+}
