@@ -1435,6 +1435,47 @@
             `).join('')}
         </div>
       </div>
+
+      <div class="jf-panel" style="margin-top: 14px; border-left: 3px solid #8B5CF6;">
+        <div class="ws-section-title">
+          <span>🎬 데모 가이드 <span style="font-size:11px; color:#6B7684; font-weight:400;">개발자 인계용 · 시연 흐름</span></span>
+          <span style="font-size:11px; color:#6B7684;">기준일 ${TODAY} 고정</span>
+        </div>
+        <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+          <div style="padding:12px 14px; background:#F0FDFA; border-radius:8px; font-size:12px; line-height:1.7;">
+            <div style="font-weight:500; color:#0F766E; margin-bottom:4px;">⏰ 관제 시뮬 시각 추천</div>
+            <div style="color:#374151;">
+              <code style="background:#fff; padding:1px 5px; border-radius:3px; font-size:11px;">09:00</code> 새벽 종료·오전 진행·모집 多<br>
+              <code style="background:#fff; padding:1px 5px; border-radius:3px; font-size:11px;">15:30</code> 종료/진행/모집 균등 (기본 데모)<br>
+              <code style="background:#fff; padding:1px 5px; border-radius:3px; font-size:11px;">22:30</code> 야간 시작 직후 진행 多
+            </div>
+          </div>
+          <div style="padding:12px 14px; background:#F0F9FF; border-radius:8px; font-size:12px; line-height:1.7;">
+            <div style="font-weight:500; color:#1E40AF; margin-bottom:4px;">📋 핵심 테스트 흐름</div>
+            <div style="color:#374151;">
+              1. 공고 상세 → 외부 구인 +1 → 관제 카드 반영<br>
+              2. 신청 승인에서 거절 사유 모달<br>
+              3. 퇴근 승인에서 GPS 승인 (포인트 자동 지급)<br>
+              4. 관제에서 구인 완료 → 공고 마감 전환
+            </div>
+          </div>
+          <div style="padding:12px 14px; background:#FEF3C7; border-radius:8px; font-size:12px; line-height:1.7;">
+            <div style="font-weight:500; color:#92400E; margin-bottom:4px;">🔒 권한 시뮬 (관제 창)</div>
+            <div style="color:#374151;">
+              상단 드롭다운에서 <strong>박담당(2급)</strong> 선택 →<br>
+              담당 근무지 (용인·군포_l) 만 보이는지 확인
+            </div>
+          </div>
+          <div style="padding:12px 14px; background:#F3E8FF; border-radius:8px; font-size:12px; line-height:1.7;">
+            <div style="font-weight:500; color:#6B21A8; margin-bottom:4px;">📊 데이터 풍부도</div>
+            <div style="color:#374151; font-family:'SF Mono',Monaco,monospace; font-size:11px;">
+              공고 ${jobs.length}건 · 신청 ${applications.length.toLocaleString()}건<br>
+              포인트 ${pointTxs.length}트랜잭션 · GPS ${gpsRequests.length}건<br>
+              문의 ${inquiries.length}건 · 워커 ${workers.length}명 · 관리자 ${admins.length}명
+            </div>
+          </div>
+        </div>
+      </div>
     `;
 
     main.innerHTML = html;

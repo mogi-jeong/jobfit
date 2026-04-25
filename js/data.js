@@ -557,3 +557,239 @@ function canWithdraw(workerPoints, requestedAmount) {
   if (requestedAmount > workerPoints) return { ok: false, reason: '보유 포인트 초과' };
   return { ok: true };
 }
+
+// ───────────────────────────────────────────────────────────
+// 자동 시뮬 데이터 생성 — deterministic (seed 기반, 새로고침해도 동일)
+// 프로토타입 데이터 풍부화 · 공고/포인트/GPS 등 확장 시뮬
+// ───────────────────────────────────────────────────────────
+
+function _seedFromString(s) {
+  return [...s].reduce((acc, c) => acc + c.charCodeAt(0), 0);
+}
+function _shuffleDeterministic(arr, seed) {
+  return arr.slice().sort((a, b) =>
+    ((seed + (a.id ? a.id.charCodeAt(3) : 0)) % 100) -
+    ((seed + (b.id ? b.id.charCodeAt(3) : 0)) % 100)
+  );
+}
+function _addDays(dateStr, n) {
+  const d = new Date(dateStr); d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// 1A. 모든 공고의 apply 카운트만큼 신청 record 자동 채움
+// 기존 applications (10건) 은 신청 승인 페이지 테스트 용도라 그대로 보존
+function _seedApplicationsForJobs() {
+  const startId = applications.length + 1;
+  let nextNum = startId;
+  for (const j of jobs) {
+    const existing = applications.filter(a => a.jobId === j.id).length;
+    const need = Math.max(0, j.apply - existing);
+    if (need === 0) continue;
+
+    const seed = _seedFromString(j.id);
+    const usedWorkerIds = new Set(applications.filter(a => a.jobId === j.id).map(a => a.workerId));
+    const candidates = _shuffleDeterministic(workers, seed)
+      .filter(w => !w.negotiation && !usedWorkerIds.has(w.id))
+      .slice(0, need);
+
+    candidates.forEach((w, i) => {
+      // 신청 시각: 근무 1~7일 전, 결정적 분산
+      const daysBefore = ((seed + i * 11) % 7) + 1;
+      const appliedDate = _addDays(j.date, -daysBefore);
+      const hh = ((seed + i * 17) % 14) + 8;          // 08~21
+      const mm = ((seed + i * 7) % 60);
+      const appliedAt = appliedDate + ' ' + String(hh).padStart(2,'0') + ':' + String(mm).padStart(2,'0');
+      // 상태: 과거(done) / 오늘(progress) 공고는 모두 approved
+      // 미래 공고는 대부분 approved (자동승인) + 일부 pending/rejected 분산은 이미 별도 테스트용
+      const status = 'approved';
+      const reason = ((seed + i) % 10 === 0) ? 'urgent' : 'normal';
+      const processedAt = appliedAt;  // 자동 승인이므로 동시
+      applications.push({
+        id: 'a' + String(nextNum++).padStart(3, '0'),
+        workerId: w.id,
+        jobId: j.id,
+        appliedAt,
+        status,
+        reason,
+        processedAt,
+        processedBy: '자동',
+      });
+    });
+  }
+}
+
+// 1B. pointTxs 확장 — 워커별 출금 이력 1년치 시뮬
+function _seedPointTxs() {
+  let nextNum = pointTxs.length + 1;
+  workers.forEach(w => {
+    if (w.total < 5) return; // 신규 워커는 출금 이력 없음
+    const seed = _seedFromString(w.id);
+    // 출금 횟수: total/8 + 0~2 (베테랑일수록 많음)
+    const numWd = Math.min(8, Math.max(1, Math.floor(w.total / 10) + (seed % 3)));
+    const banks = ['국민은행','신한은행','우리은행','카카오뱅크','농협'];
+    for (let i = 0; i < numWd; i++) {
+      const monthsAgo = i + 1;
+      const reqD = new Date(TODAY); reqD.setMonth(reqD.getMonth() - monthsAgo); reqD.setDate(((seed + i * 5) % 27) + 1);
+      const procD = new Date(reqD); procD.setDate(procD.getDate() + 1);
+      const amount = ((seed + i) % 4 === 0) ? 50000 : ((seed + i) % 4 === 1 ? 40000 : 30000);
+      const isFailed = ((seed + i * 13) % 25 === 0);  // 약 4% failed
+      pointTxs.push({
+        id: 'p' + String(nextNum++).padStart(4, '0'),
+        workerId: w.id,
+        type: 'withdraw',
+        status: isFailed ? 'failed' : 'done',
+        amount,
+        bank: banks[(seed + i) % banks.length],
+        account: '110-' + String((seed * 7 + i * 31) % 1000).padStart(3,'0') + '-' + String((seed * 13 + i * 47) % 1000000).padStart(6,'0'),
+        requestedAt: reqD.toISOString().slice(0,10) + ' ' + String((seed + i) % 24).padStart(2,'0') + ':00',
+        processedAt: procD.toISOString().slice(0,10) + ' 11:00',
+        processedBy: '테스트(마스터)',
+        ...(isFailed ? { failReason: '계좌번호 오류' } : {}),
+      });
+    }
+    // 단순 변심 차감 (워커당 ~10% 확률로 1건)
+    if ((seed % 10) === 0) {
+      const dD = new Date(TODAY); dD.setDate(dD.getDate() - (seed % 60));
+      pointTxs.push({
+        id: 'p' + String(nextNum++).padStart(4, '0'),
+        workerId: w.id,
+        type: 'deduct',
+        status: 'done',
+        amount: -POLICY.POINT_CANCEL_DEDUCT,
+        reason: '단순 변심 취소 자동 차감',
+        requestedAt: dD.toISOString().slice(0,10) + ' ' + String(seed % 24).padStart(2,'0') + ':30',
+        processedBy: '시스템',
+      });
+    }
+  });
+}
+
+// 1B(2). gpsRequests 확장 — 과거 처리 이력 추가
+function _seedGpsRequests() {
+  let nextNum = gpsRequests.length + 1;
+  const reasons = [
+    '근무 종료 후 통근버스 정류장으로 이동',
+    '화장실 다녀오는 길에 영역 이탈',
+    '휴게실이 외부 건물이라 영역 밖에서 퇴근 처리',
+    '동료와 함께 식당 이동 후 퇴근',
+    '주차장에서 짐 챙기다가 영역 벗어남',
+    '근무 종료 직후 편의점 들렀습니다',
+    'GPS 신호 약함 — 건물 안에서 퇴근 시도',
+    '비가 많이 와서 처마 밑으로 이동',
+  ];
+  // 과거 처리된 GPS 요청 추가 (월별 5~8건)
+  for (let m = 1; m <= 6; m++) {
+    const monthCount = 5 + (m % 4);
+    for (let i = 0; i < monthCount; i++) {
+      const seed = m * 100 + i;
+      const w = workers[(seed * 7) % workers.length];
+      // 과거 done 공고에 매핑
+      const pastJobs = jobs.filter(j => j.date < TODAY);
+      if (pastJobs.length === 0) continue;
+      const j = pastJobs[(seed * 13) % pastJobs.length];
+      const subD = new Date(TODAY); subD.setMonth(subD.getMonth() - m); subD.setDate(((seed * 11) % 27) + 1);
+      const submittedAt = subD.toISOString().slice(0,10) + ' ' + String((seed % 12) + 8).padStart(2,'0') + ':' + String((seed * 3) % 60).padStart(2,'0');
+      const status = (seed % 5 === 0) ? 'denied' : 'approved';
+      const distance = (seed * 17) % 600 + 20;
+      const reviewedD = new Date(subD); reviewedD.setMinutes(reviewedD.getMinutes() + 15 + (seed % 60));
+      gpsRequests.push({
+        id: 'gr' + String(nextNum++).padStart(3, '0'),
+        workerId: w.id,
+        jobId: j.id,
+        submittedAt,
+        reason: reasons[seed % reasons.length],
+        distance,
+        status,
+        reviewedAt: reviewedD.toISOString().slice(0,10) + ' ' + String(reviewedD.getHours()).padStart(2,'0') + ':' + String(reviewedD.getMinutes()).padStart(2,'0'),
+        reviewedBy: (seed % 3 === 0) ? '김관리(1등급)' : '테스트(마스터)',
+        adminNote: status === 'denied' ? '거리 과도 또는 사유 불명확' : '정상 사유로 인정',
+      });
+    }
+  }
+}
+
+// 1B(3). inquiries 확장
+function _seedInquiries() {
+  let nextNum = inquiries.length + 1;
+  const cats = ['account','point','attendance','bug','etc'];
+  const titles = {
+    account:    ['카카오 로그인 안 돼요','전화번호 변경 어떻게 하나요','계정 통합 가능한가요','회원 탈퇴 절차'],
+    point:      ['출금 신청했는데 안 들어와요','포인트 차감이 잘못된 것 같아요','출금 한도가 어떻게 되나요','보유 포인트가 0이 됐어요'],
+    attendance: ['지각 처리 이의 제기','GPS 안 잡혀서 출근 못 했어요','퇴근 시간 잘못 기록됨','휴게 시간 출결 처리'],
+    bug:        ['앱이 자꾸 튕겨요','공고 신청 버튼이 회색으로 안 눌려요','지도 안 보임','알림이 안 와요'],
+    etc:        ['통근버스 노선 문의','근무복 어디서 받나요','수입 신고 어떻게','사용 후기 작성 가능한가요'],
+  };
+  for (let i = 0; i < 24; i++) {
+    const seed = i * 13 + 7;
+    const w = workers[seed % workers.length];
+    const cat = cats[seed % cats.length];
+    const titleArr = titles[cat];
+    const title = titleArr[seed % titleArr.length];
+    const daysAgo = (seed * 3) % 90 + 1;
+    const subD = new Date(TODAY); subD.setDate(subD.getDate() - daysAgo);
+    const status = (i % 3 === 0) ? 'pending' : 'answered';
+    const isUrgent = (i % 7 === 0 && status === 'pending');
+    const submittedAt = subD.toISOString().slice(0,10) + ' ' + String((seed % 14) + 9).padStart(2,'0') + ':' + String((seed * 7) % 60).padStart(2,'0');
+    const baseObj = {
+      id: 'q' + String(nextNum++).padStart(3, '0'),
+      workerId: w.id,
+      category: cat,
+      title,
+      body: title + ' — 자세한 내용 문의드립니다.',
+      submittedAt,
+      status,
+      ...(isUrgent ? { urgent: true } : {}),
+    };
+    if (status === 'answered') {
+      const ansD = new Date(subD); ansD.setHours(ansD.getHours() + (seed % 24) + 2);
+      baseObj.answer = '안녕하세요 잡핏 운영팀입니다. 문의주신 사항 확인했고 ' + (cat === 'point' ? '포인트는 정상 처리되었습니다' : cat === 'bug' ? '해당 버그는 다음 업데이트에 반영 예정입니다' : '아래와 같이 안내드립니다') + '. 추가 문의는 답글 부탁드립니다.';
+      baseObj.answeredAt = ansD.toISOString().slice(0,10) + ' ' + String(ansD.getHours()).padStart(2,'0') + ':' + String(ansD.getMinutes()).padStart(2,'0');
+      baseObj.answeredBy = (seed % 3 === 0) ? '김관리(1등급)' : '테스트(마스터)';
+    }
+    inquiries.push(baseObj);
+  }
+}
+
+// 1C. 과거 12개월 공고 자동 생성 (통계 리포트용)
+function _seedHistoricalJobs() {
+  let nextNum = jobs.length + 1;
+  const allSites = Object.values(worksites).flatMap(p => p.sites);
+  const slots = ['주간','야간','새벽','웨딩'];
+  const slotTimes = { 주간: ['07:00','15:00'], 야간: ['22:00','06:00'], 새벽: ['04:00','12:00'], 웨딩: ['10:00','18:00'] };
+  // 지난 12개월 동안 매월 8~12건
+  for (let m = 1; m <= 12; m++) {
+    const monthCount = 8 + (m % 5);
+    for (let i = 0; i < monthCount; i++) {
+      const seed = m * 100 + i * 7;
+      const site = allSites[seed % allSites.length];
+      const slot = (site.id === 'ltower' || site.id === 'whills') ? '웨딩' : slots[seed % 3];
+      const [start, end] = slotTimes[slot];
+      const baseD = new Date(TODAY); baseD.setMonth(baseD.getMonth() - m); baseD.setDate(((seed * 11) % 27) + 1);
+      const date = baseD.toISOString().slice(0,10);
+      const cap = 10 + (seed % 25);
+      const apply = Math.max(1, cap - (seed % 5)); // 대부분 거의 채워짐
+      jobs.push({
+        id: 'jh' + String(nextNum++).padStart(3, '0'),
+        siteId: site.id,
+        date, slot, start, end,
+        cap, apply,
+        wage: site.wage,
+        wageType: '일급',
+        contact: site.contact,
+        contract: true,
+        safety: true,
+      });
+    }
+  }
+}
+
+// 모든 시뮬 데이터 생성 (data.js 로드 직후 1회 실행)
+function seedFakeData() {
+  _seedHistoricalJobs();      // 과거 공고 먼저 (applications 시뮬에 포함되도록)
+  _seedApplicationsForJobs(); // 모든 공고에 신청 record 채움
+  _seedPointTxs();            // 워커별 1년치 출금 이력
+  _seedGpsRequests();         // 과거 GPS 요청 처리 이력
+  _seedInquiries();           // 다양한 카테고리 문의
+}
+seedFakeData();
