@@ -734,11 +734,17 @@
   };
   window.__inqEdit = function(id) {
     const it = findInquiry(id); if (!it) return;
-    const newAnswer = prompt('답변을 수정하세요:', it.answer);
-    if (newAnswer === null) return;
-    it.answer = newAnswer.trim();
-    it.answeredAt = TODAY + ' ' + new Date().toTimeString().slice(0,5);
-    renderInquiryDetail(id);
+    promptModal({
+      title: '문의 답변 수정',
+      subtitle: esc(it.title || ''),
+      fields: [{ key: 'answer', label: '답변', type: 'textarea', required: true, value: it.answer, placeholder: '답변 내용을 입력하세요' }],
+      submitLabel: '저장',
+      onSubmit: (vals) => {
+        it.answer = vals.answer;
+        it.answeredAt = nowStamp();
+        renderInquiryDetail(id);
+      },
+    });
   };
   window.__inqReopen = function(id) {
     const it = findInquiry(id); if (!it) return;
@@ -1482,7 +1488,8 @@
     if (endM > 24 * 60 && now < startM) nowAdj = now + 24 * 60;
     return nowAdj - endM;
   }
-  const AUTO_CK_LIMIT_MIN = 6 * 60;
+  // 자동 퇴근 한도 — POLICY.AUTO_CHECKOUT_MIN 참조 (로컬 alias)
+  const AUTO_CK_LIMIT_MIN = POLICY.AUTO_CHECKOUT_MIN;
   function ctrlWorkerAutoStatus(j, a) {
     if (a.status === '결근' || a.status === '대기') return { state: 'skip', label: '-' };
     if (a.checkout) return { state: 'done', label: a.checkout };
@@ -1559,7 +1566,7 @@
             <div class="gps-req-job-title">${site.site.name} <span style="font-size:11px; color:#6B7684; font-weight:400;">${site.partner}</span></div>
             <div class="gps-req-job-sub">${j.date} · ${j.slot} ${j.start}~${j.end} · 제출 ${g.submittedAt}</div>
           </div>
-          <div class="gps-req-reason" title="${g.reason.replace(/"/g,'&quot;')}">${g.reason}</div>
+          <div class="gps-req-reason" title="${esc(g.reason)}">${esc(g.reason)}</div>
           <div class="gps-req-dist">
             <div class="gps-req-dist-badge ${sev.cls}"><strong>${g.distance}m</strong><span>영역 밖 · ${sev.label}</span></div>
           </div>
@@ -1673,45 +1680,118 @@
     setTimeout(() => window.__jobsDetail(jobId), 50);
   };
 
+  // ─── Generic Prompt Modal — prompt() 대체 ────────────────
+  // fields: [{key, label, type='text'|'textarea'|'select', required, placeholder, options?, value?, hint?}]
+  // onSubmit(values) — return false 면 닫지 않음
+  function promptModal({ title, subtitle, fields, onSubmit, submitLabel='확인', cancelLabel='취소', danger=false }) {
+    document.querySelectorAll('.jf-modal-overlay.prompt-modal').forEach(el => el.remove());
+    const overlay = document.createElement('div');
+    overlay.className = 'jf-modal-overlay prompt-modal';
+    const fieldsHtml = fields.map((f, i) => {
+      const id = 'pm-field-' + i;
+      const reqMark = f.required ? '<span class="req">*</span>' : '';
+      let input;
+      if (f.type === 'textarea') {
+        input = `<textarea id="${id}" rows="3" placeholder="${esc(f.placeholder||'')}" style="width:100%; padding:8px 10px; border:0.5px solid rgba(0,0,0,0.15); border-radius:6px; font-family:inherit; resize:vertical;">${esc(f.value||'')}</textarea>`;
+      } else if (f.type === 'select') {
+        input = `<select id="${id}" style="max-width:280px;">${(f.options||[]).map(o => `<option value="${esc(o.value)}" ${o.value===f.value?'selected':''}>${esc(o.label)}</option>`).join('')}</select>`;
+      } else {
+        input = `<input type="${f.type||'text'}" id="${id}" value="${esc(f.value||'')}" placeholder="${esc(f.placeholder||'')}" style="max-width:380px; width:100%;">`;
+      }
+      return `
+        <div class="jf-form-row top" style="grid-template-columns: 100px 1fr; padding: 8px 0;">
+          <div class="jf-form-label">${esc(f.label)}${reqMark}</div>
+          <div>
+            ${input}
+            ${f.hint ? `<div style="font-size:11px; color:#6B7684; margin-top:4px;">${esc(f.hint)}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+    overlay.innerHTML = `
+      <div class="jf-modal" style="max-width: 520px;" onclick="event.stopPropagation()">
+        <div class="jf-modal-head">
+          <div class="jf-modal-title">${esc(title)}</div>
+          <button class="jf-modal-close" onclick="this.closest('.jf-modal-overlay').remove()">×</button>
+        </div>
+        <div class="jf-modal-body">
+          ${subtitle ? `<div style="font-size:12px; color:#6B7684; margin-bottom:14px; line-height:1.6;">${subtitle}</div>` : ''}
+          ${fieldsHtml}
+          <div style="display:flex; gap:8px; margin-top:18px; padding-top:14px; border-top:0.5px solid rgba(0,0,0,0.08); justify-content:flex-end;">
+            <button data-pm-cancel>${esc(cancelLabel)}</button>
+            <button class="${danger?'btn-reject':'btn-primary'}" data-pm-submit>${esc(submitLabel)}</button>
+          </div>
+        </div>
+      </div>
+    `;
+    function getValues() {
+      const vals = {};
+      fields.forEach((f, i) => {
+        const el = document.getElementById('pm-field-' + i);
+        vals[f.key] = el ? el.value.trim() : '';
+      });
+      return vals;
+    }
+    overlay.querySelector('[data-pm-cancel]').addEventListener('click', () => overlay.remove());
+    overlay.querySelector('[data-pm-submit]').addEventListener('click', () => {
+      const vals = getValues();
+      // 필수 검증
+      for (let i = 0; i < fields.length; i++) {
+        const f = fields[i];
+        if (f.required && !vals[f.key]) {
+          alert((f.label || '필수') + ' 항목을 입력해주세요.');
+          return;
+        }
+      }
+      const result = onSubmit(vals);
+      if (result !== false) overlay.remove();
+    });
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    setTimeout(() => document.getElementById('pm-field-0')?.focus(), 50);
+  }
+
+  // GPS 승인/반려 모달 (helper 사용)
+  function showGpsReviewModal(action, g, w, j) {
+    const reward = pointRewardFor(j);
+    const isApprove = action === 'approve';
+    promptModal({
+      title: isApprove ? `✓ GPS 미검증 퇴근 승인` : `✗ GPS 미검증 퇴근 반려`,
+      subtitle: `<strong>${esc(w.name)}</strong> · ${esc(findSite(j.siteId)?.site.name || '')} · ${j.date} ${j.slot}<br>` +
+                (isApprove
+                  ? `잡핏 포인트 <strong>${reward.toLocaleString()}P</strong> 지급 예정`
+                  : `포인트 미지급 · 퇴근 자체는 기록으로 남음`),
+      fields: [
+        { key: 'note', label: isApprove ? '메모' : '반려 사유', type: 'textarea',
+          required: !isApprove, placeholder: isApprove ? '승인 근거나 후속 조치 (선택)' : '필수 — 알바생에게 통보됨' },
+      ],
+      submitLabel: isApprove ? `승인 (${reward.toLocaleString()}P 지급)` : '반려',
+      danger: !isApprove,
+      onSubmit: (vals) => {
+        if (isApprove) {
+          const r = approveGpsRequest(g.id, vals.note, '테스트(마스터)');
+          if (r) { refreshAfterGpsChange(); alert(`✓ ${r.worker.name} 님에게 ${r.reward.toLocaleString()}P 지급되었습니다.\n(보유 ${r.worker.points.toLocaleString()}P)`); }
+        } else {
+          denyGpsRequest(g.id, vals.note, '테스트(마스터)');
+          refreshAfterGpsChange();
+          alert(`${w.name} 님의 GPS 미검증 퇴근이 반려되었습니다.\n사유: ${vals.note}\n포인트 지급 없음.`);
+        }
+      },
+    });
+  }
+
   // GPS 승인 — 포인트 지급 + 상태 기록
   window.__ctrlGpsApprove = function(id) {
     const g = findGpsReq(id); if (!g || g.status !== 'pending') return;
     const w = findWorker(g.workerId); const j = findJob(g.jobId);
     if (!w || !j) return;
-    const reward = pointRewardFor(j);
-    const note = prompt(`${w.name} 님의 GPS 미검증 퇴근을 승인합니다.\n잡핏 포인트 ${reward.toLocaleString()}P 지급 예정.\n\n메모(선택) — 승인 근거나 후속 조치:`);
-    if (note === null) return;
-    g.status = 'approved';
-    g.reviewedAt = TODAY + ' ' + ctrlSimNowStr();
-    g.reviewedBy = '테스트(마스터)';
-    g.adminNote = note.trim();
-    w.points += reward;
-    pointTxs.unshift({
-      id: 'p-gps-' + Date.now(),
-      workerId: w.id,
-      type: 'reward',
-      status: 'done',
-      amount: reward,
-      reason: `GPS 미검증 퇴근 승인 — ${findSite(j.siteId).site.name} ${j.date} ${j.slot}`,
-      requestedAt: g.reviewedAt,
-      processedBy: g.reviewedBy,
-    });
-    refreshAfterGpsChange();
-    alert(`✓ ${w.name} 님에게 ${reward.toLocaleString()}P 지급되었습니다.\n(보유 ${w.points.toLocaleString()}P)`);
+    showGpsReviewModal('approve', g, w, j);
   };
   window.__ctrlGpsDeny = function(id) {
     const g = findGpsReq(id); if (!g || g.status !== 'pending') return;
     const w = findWorker(g.workerId); const j = findJob(g.jobId);
     if (!w || !j) return;
-    const note = prompt(`${w.name} 님의 GPS 미검증 퇴근을 반려합니다.\n포인트 미지급 · 퇴근 자체는 기록으로 남음.\n\n반려 사유 (필수):`);
-    if (note === null) return;
-    if (!note.trim()) { alert('반려 사유는 필수입니다.'); return; }
-    g.status = 'denied';
-    g.reviewedAt = TODAY + ' ' + ctrlSimNowStr();
-    g.reviewedBy = '테스트(마스터)';
-    g.adminNote = note.trim();
-    refreshAfterGpsChange();
-    alert(`${w.name} 님의 GPS 미검증 퇴근이 반려되었습니다.\n사유: ${note.trim()}\n포인트 지급 없음.`);
+    showGpsReviewModal('deny', g, w, j);
   };
 
   // GPS 상태 변경 후 현재 페이지를 판단하여 적절히 재렌더 + 뱃지 갱신
@@ -1744,8 +1824,8 @@
                 <div style="color:#6B7684; font-size:11px; margin-top:2px;">영역 밖 ${g.distance}m · 제출 ${g.submittedAt}</div>
               </div>
               <div>
-                <div style="color:#374151; line-height:1.5;">${g.reason}</div>
-                ${g.adminNote ? `<div style="margin-top:6px; padding:6px 8px; background:#F9FAFB; border-radius:4px; color:#6B7684; font-size:11px; line-height:1.5;">관리자 메모: ${g.adminNote}</div>` : ''}
+                <div style="color:#374151; line-height:1.5;">${esc(g.reason)}</div>
+                ${g.adminNote ? `<div style="margin-top:6px; padding:6px 8px; background:#F9FAFB; border-radius:4px; color:#6B7684; font-size:11px; line-height:1.5;">관리자 메모: ${esc(g.adminNote)}</div>` : ''}
               </div>
               <div style="text-align:right;">
                 <div style="color:#111827; font-size:11px;">${g.reviewedBy || '-'}</div>
@@ -1986,14 +2066,21 @@
   window.__ptFail = function(id) {
     const t = findTx(id); if (!t) return;
     const w = findWorker(t.workerId);
-    const reason = prompt(`${w.name} 님의 출금 처리 실패 사유를 입력하세요:\n(예: 계좌번호 오류, 은행 점검 중 등)`);
-    if (!reason) return;
-    t.status = 'failed';
-    t.processedAt = TODAY + ' ' + new Date().toTimeString().slice(0,5);
-    t.processedBy = '테스트(마스터)';
-    t.failReason = reason;
-    alert(`출금 실패 로그 저장됨. 알바생에게 알림 발송.\n포인트는 차감되지 않음. 재요청을 기다려주세요.`);
-    renderPoints();
+    promptModal({
+      title: '출금 처리 실패 기록',
+      subtitle: `<strong>${esc(w.name)}</strong> · ${t.amount.toLocaleString()}P · ${esc(t.bank || '')} ${esc(t.account || '')}`,
+      fields: [{ key: 'reason', label: '실패 사유', type: 'textarea', required: true, placeholder: '예: 계좌번호 오류, 은행 점검 중 등', hint: '알바생에게 알림 발송됨 · 포인트는 차감 안 됨' }],
+      submitLabel: '실패 처리',
+      danger: true,
+      onSubmit: (vals) => {
+        t.status = 'failed';
+        t.processedAt = nowStamp();
+        t.processedBy = '테스트(마스터)';
+        t.failReason = vals.reason;
+        alert('출금 실패 로그 저장됨. 알바생에게 알림 발송.\n포인트는 차감되지 않음. 재요청을 기다려주세요.');
+        renderPoints();
+      },
+    });
   };
 
   // ───────────────────────────────────────────────────────
@@ -2114,31 +2201,38 @@
   window.__negFilter = function(key, val) { negState[key] = val; renderNegotiation(); };
   window.__negClearFilter = function() { negState.search = ''; negState.reason = ''; renderNegotiation(); };
   window.__negAdd = function() {
-    const phone = prompt('협의대상으로 등록할 전화번호를 입력하세요:\n(예: 010-0000-0000)');
-    if (!phone) return;
-    const reason = prompt('등록 사유를 입력하세요:');
-    if (!reason) return;
-    const id = 'n' + String(negotiations.length + 1).padStart(3, '0');
-    // 기존 근무자 매칭 확인
-    const matched = workers.find(w => w.phone === phone);
-    if (matched) {
-      matched.negotiation = true;
-      matched.warnings = Math.max(matched.warnings, 3);
-    }
-    negotiations.push({
-      id,
-      phone,
-      name: matched ? matched.name : '(수동 등록 · 번호만)',
-      registeredAt: TODAY,
-      reason: 'manual',
-      sub: reason,
-      lastSite: matched ? '(근무자 이력 참조)' : '-',
-      lastDate: matched ? matched.lastWorked : '-',
-      workerId: matched ? matched.id : null,
-      registeredBy: '테스트(마스터)',
+    promptModal({
+      title: '협의대상 수동 등록',
+      subtitle: '전화번호로 등록 · 기존 근무자와 자동 매칭됩니다 · 해제는 마스터 전용',
+      fields: [
+        { key: 'phone',  label: '전화번호', type: 'tel',      required: true, placeholder: '010-0000-0000' },
+        { key: 'reason', label: '등록 사유', type: 'textarea', required: true, placeholder: '예: 무단결근 반복, 외부 신고 접수 등' },
+      ],
+      submitLabel: '등록',
+      onSubmit: (vals) => {
+        const phone = vals.phone;
+        const reason = vals.reason;
+        const id = 'n' + String(negotiations.length + 1).padStart(3, '0');
+        const matched = workers.find(w => w.phone === phone);
+        if (matched) {
+          matched.negotiation = true;
+          matched.warnings = Math.max(matched.warnings, POLICY.WARN_LIMIT);
+        }
+        negotiations.push({
+          id, phone,
+          name: matched ? matched.name : '(수동 등록 · 번호만)',
+          registeredAt: TODAY,
+          reason: 'manual',
+          sub: reason,
+          lastSite: matched ? '(근무자 이력 참조)' : '-',
+          lastDate: matched ? matched.lastWorked : '-',
+          workerId: matched ? matched.id : null,
+          registeredBy: '테스트(마스터)',
+        });
+        alert('협의대상 등록 완료.\n전화번호: ' + phone + '\n' + (matched ? '기존 근무자 ' + matched.name + ' 님과 자동 매칭됨.' : '미가입 전화번호로 등록됨.'));
+        renderNegotiation();
+      },
     });
-    alert(`협의대상 등록 완료.\n전화번호: ${phone}\n${matched ? '기존 근무자 ' + matched.name + ' 님과 자동 매칭됨.' : '미가입 전화번호로 등록됨.'}`);
-    renderNegotiation();
   };
   window.__negRelease = function(id) {
     const n = findNeg(id); if (!n) return;
@@ -2468,22 +2562,11 @@
     const siteId = document.getElementById('warnSiteId')?.value || '';
     const memo = (document.getElementById('warnMemo')?.value || '').trim();
 
-    w.warnings = Math.min(w.warnings + 1, 3);
-    if (!w.warnLog) w.warnLog = [];
-    w.warnLog.unshift({
-      date: TODAY,
-      reason,
-      memo,
-      siteId,
-      count: w.warnings,
-      by: '마스터(테스트)',
-    });
-
+    const result = addWorkerWarning(id, reason, siteId, memo, '마스터(테스트)');
     document.querySelector('.jf-modal-overlay.warn-add')?.remove();
 
-    if (w.warnings >= 3) {
-      w.negotiation = true;
-      alert(`⚠ 경고 3회 누적 — ${w.name} 님이 협의대상으로 자동 등록되었습니다.\n사유: ${reason}\n해제는 마스터 권한이 필요합니다.`);
+    if (result?.escalated) {
+      alert(`⚠ 경고 ${POLICY.WARN_LIMIT}회 누적 — ${w.name} 님이 협의대상으로 자동 등록되었습니다.\n사유: ${reason}\n해제는 마스터 권한이 필요합니다.`);
     } else {
       alert(`${w.name} 님에게 경고 ${w.warnings}회가 부여되었습니다.\n사유: ${reason}`);
     }
@@ -2492,8 +2575,7 @@
   window.__wrkNegRelease = function(id) {
     const w = findWorker(id); if (!w) return;
     if (!confirm(`${w.name} 님의 협의대상 상태를 해제합니다. (마스터 전용)\n경고 카운트도 초기화됩니다. 계속하시겠습니까?`)) return;
-    w.negotiation = false;
-    w.warnings = 0;
+    releaseNegotiation(id);
     alert(`${w.name} 님의 협의대상 해제 및 경고 초기화 완료.`);
     renderWorkerDetail(id);
   };
@@ -2682,7 +2764,8 @@
 
   // N19 — 신청 대기 시간 계산 (대기 6시간 초과 시 경고)
   // simulated now = TODAY + 실제 wall-clock 시·분
-  const APV_DWELL_LIMIT_MIN = 6 * 60;
+  // 신청 승인 6h 초과 — POLICY.APPROVAL_LIMIT_MIN 참조
+  const APV_DWELL_LIMIT_MIN = POLICY.APPROVAL_LIMIT_MIN;
   function appDwell(a) {
     const parts = (a.appliedAt || '').split(' ');
     if (parts.length < 2) return { totalMin: 0, over: false, h: 0, m: 0, futureData: true };
@@ -2868,15 +2951,23 @@
   };
   window.__apvReject = function(appId) {
     const a = findApp(appId); if (!a) return;
-    const w = findWorker(a.workerId);
-    const reason = prompt(`${w.name} 님의 신청을 거절합니다.\n거절 사유를 입력하세요 (알바생에게 알림 발송):`);
-    if (!reason) return; // 취소 또는 빈 값
-    a.status = 'rejected';
-    a.processedAt = TODAY + ' ' + new Date().toTimeString().slice(0,5);
-    a.processedBy = '테스트(마스터)';
-    a.rejectReason = reason;
-    updateApprovalBadge();
-    renderApproval();
+    const w = findWorker(a.workerId); const j = findJob(a.jobId);
+    const site = j ? findSite(j.siteId) : null;
+    promptModal({
+      title: '신청 거절',
+      subtitle: `<strong>${esc(w.name)}</strong> · ${site ? esc(site.site.name) : ''} ${j ? j.date+' '+j.slot : ''}`,
+      fields: [{ key: 'reason', label: '거절 사유', type: 'textarea', required: true, placeholder: '알바생에게 알림으로 발송됩니다', hint: '예: 협의대상 이력 / 주 4일 초과 / 시간대 중복 등' }],
+      submitLabel: '거절',
+      danger: true,
+      onSubmit: (vals) => {
+        a.status = 'rejected';
+        a.processedAt = nowStamp();
+        a.processedBy = '테스트(마스터)';
+        a.rejectReason = vals.reason;
+        updateApprovalBadge();
+        renderApproval();
+      },
+    });
   };
 
   // ───────────────────────────────────────────────────────
@@ -3671,9 +3762,9 @@
                 </div>
                 ${ext.map(ex => `
                   <div style="display:grid; grid-template-columns: 1.1fr 1fr 1.4fr 0.9fr auto; gap:10px; padding:10px 12px; align-items:center; font-size:13px; border-bottom:0.5px solid rgba(0,0,0,0.06);">
-                    <div style="font-weight:500;">${ex.name}</div>
-                    <div style="font-family:'SF Mono',Monaco,monospace; font-size:12px; color:#6B7684;">${ex.phone}</div>
-                    <div style="font-size:11px; color:#6B7684;">${ex.note || '-'}</div>
+                    <div style="font-weight:500;">${esc(ex.name)}</div>
+                    <div style="font-family:'SF Mono',Monaco,monospace; font-size:12px; color:#6B7684;">${esc(ex.phone)}</div>
+                    <div style="font-size:11px; color:#6B7684;">${ex.note ? esc(ex.note) : '-'}</div>
                     <div>
                       <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; padding:4px 10px; background:${ex.attended?'#DCFCE7':'#F3F4F6'}; color:${ex.attended?'#166534':'#6B7684'}; border-radius:6px; font-weight:500;">
                         <input type="checkbox" ${ex.attended?'checked':''} onchange="window.__extToggleAttended('${j.id}','${ex.id}')" style="accent-color:#22C55E;">
@@ -3780,8 +3871,8 @@
               <div class="ctrl-roster-row" style="background: #F0FDFA;">
                 <div><span class="ctrl-roster-dot" style="background:${ex.attended ? '#22C55E' : '#D1D5DB'};"></span></div>
                 <div>
-                  <div style="font-weight:500;">${ex.name}<span class="ext-badge" style="margin-left:6px;">🏷 외부</span></div>
-                  <div style="font-size:11px; color:#6B7684; font-family:'SF Mono',Monaco,monospace;">${ex.phone}</div>
+                  <div style="font-weight:500;">${esc(ex.name)}<span class="ext-badge" style="margin-left:6px;">🏷 외부</span></div>
+                  <div style="font-size:11px; color:#6B7684; font-family:'SF Mono',Monaco,monospace;">${esc(ex.phone)}</div>
                 </div>
                 <div style="font-size:12px; color:#D1D5DB;">-</div>
                 <div style="font-size:12px; color:#D1D5DB;">-</div>
@@ -4504,27 +4595,36 @@
 
   window.__tplFilter = function(val) { tplState.filter = val; renderJobsTemplate(); };
   window.__tplUpload = function() {
-    const name = prompt('템플릿 이름을 입력하세요:'); if (!name) return;
-    const type = prompt('유형을 입력하세요 (contract 또는 safety):');
-    if (!type || !['contract','safety'].includes(type)) { alert('contract 또는 safety 여야 합니다.'); return; }
-    const partner = prompt('적용 파트너사 키 (쉼표 구분, 예: cj,lotte — 전체 적용은 cj,lotte,convention):');
-    if (!partner) return;
-    const partnerKeys = partner.split(',').map(s => s.trim()).filter(k => worksites[k]);
-    if (partnerKeys.length === 0) { alert('유효한 파트너사 키를 입력해주세요.'); return; }
-    const id = 't' + String(templates.length + 1).padStart(3, '0');
-    templates.push({
-      id, type, name,
-      partnerKeys,
-      siteIds: [],
-      version: 'v1.0',
-      uploadedAt: TODAY,
-      fileName: name.replace(/\s+/g, '_').toLowerCase() + '_v10.pdf',
-      fileSize: Math.floor(Math.random() * 2000) + 'KB',
-      inUse: 0,
-      uploadedBy: '테스트(마스터)',
+    const partnerOpts = Object.keys(worksites).map(k => ({ value: k, label: worksites[k].name }));
+    promptModal({
+      title: '+ 새 템플릿 업로드',
+      subtitle: '실제 앱에서는 PDF 파일 드래그 앤 드롭 업로드 UI 제공',
+      fields: [
+        { key: 'name', label: '이름', type: 'text', required: true, placeholder: '예: CJ 안성 신규 안전교육 v1' },
+        { key: 'type', label: '유형', type: 'select', required: true, value: 'contract',
+          options: [{value:'contract',label:'근로계약서'},{value:'safety',label:'안전교육'}] },
+        { key: 'partner', label: '파트너사', type: 'text', required: true,
+          placeholder: 'cj,lotte (쉼표 구분)', hint: '복수 적용 시 쉼표로 · 사용 가능: ' + Object.keys(worksites).join(', ') },
+      ],
+      submitLabel: '업로드',
+      onSubmit: (vals) => {
+        const partnerKeys = vals.partner.split(',').map(s => s.trim()).filter(k => worksites[k]);
+        if (partnerKeys.length === 0) { alert('유효한 파트너사 키를 입력해주세요.'); return false; }
+        const id = 't' + String(templates.length + 1).padStart(3, '0');
+        templates.push({
+          id, type: vals.type, name: vals.name,
+          partnerKeys, siteIds: [],
+          version: 'v1.0',
+          uploadedAt: TODAY,
+          fileName: vals.name.replace(/\s+/g, '_').toLowerCase() + '_v10.pdf',
+          fileSize: Math.floor(Math.random() * 2000) + 'KB',
+          inUse: 0,
+          uploadedBy: '테스트(마스터)',
+        });
+        alert('템플릿 "' + vals.name + '" 업로드 완료.\n\n(실제 앱에서는 PDF 파일 드래그 앤 드롭 업로드 UI 제공)');
+        renderJobsTemplate();
+      },
     });
-    alert(`템플릿 "${name}" 업로드 완료.\n\n(실제 앱에서는 PDF 파일 드래그 앤 드롭 업로드 UI 제공)`);
-    renderJobsTemplate();
   };
   window.__tplPreview = function(id) {
     const t = findTemplate(id); if (!t) return;
@@ -4658,33 +4758,21 @@
     const note  = (document.getElementById('ext-note')?.value || '').trim();
     if (!name)  { alert('이름을 입력하세요.'); return; }
     if (!phone) { alert('전화번호를 입력하세요.'); return; }
-    // 전화번호 간단 검증
     if (!/^[\d\-\s]{9,}$/.test(phone)) { alert('전화번호 형식을 확인하세요.'); return; }
-    if (!Array.isArray(j.externalWorkers)) j.externalWorkers = [];
-    j.externalWorkers.push({
-      id: 'ex_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-      name, phone, note,
-      attended: false,
-      addedBy: '테스트(마스터)',
-      addedAt: TODAY + ' ' + new Date().toTimeString().slice(0, 5),
-    });
+    addExternalWorker(j.id, name, phone, note, '테스트(마스터)');
     document.querySelector('.jf-modal-overlay.ext-add')?.remove();
     renderJobDetail(j.id);
   };
 
   window.__extToggleAttended = function(jobId, extId) {
-    const j = findJob(jobId); if (!j || !j.externalWorkers) return;
-    const ex = j.externalWorkers.find(e => e.id === extId); if (!ex) return;
-    ex.attended = !ex.attended;
-    renderJobDetail(j.id);
+    if (toggleExternalAttended(jobId, extId)) renderJobDetail(jobId);
   };
 
   window.__extRemove = function(jobId, extId) {
     const j = findJob(jobId); if (!j || !j.externalWorkers) return;
     const ex = j.externalWorkers.find(e => e.id === extId); if (!ex) return;
     if (!confirm(`${ex.name} 님을 외부 구인 인원에서 삭제합니다.\n출결 기록도 함께 사라집니다.`)) return;
-    j.externalWorkers = j.externalWorkers.filter(e => e.id !== extId);
-    renderJobDetail(j.id);
+    if (removeExternalWorker(jobId, extId)) renderJobDetail(jobId);
   };
 
   // 수동 구인 완료 취소 — 공고를 다시 모집중으로 되돌림
@@ -4692,7 +4780,7 @@
     const j = findJob(jobId); if (!j) return;
     const site = findSite(j.siteId);
     if (!confirm(`${site.site.name} 공고의 수동 구인 완료를 취소하고 모집중 상태로 되돌립니다.\n\n계속하시겠습니까?`)) return;
-    j.recruitClosed = false;
+    setRecruitClosed(jobId, false);
     renderJobDetail(j.id);
   };
   window.__jobEdit = function(id) { renderJobEdit(id); };
@@ -6058,7 +6146,7 @@
         <div class="app-big-point">
           <div class="app-big-point-label">보유 포인트</div>
           <div class="app-big-point-value">${w.points.toLocaleString()} P</div>
-          <div class="app-big-point-hint">${w.points >= 30000 ? '✓ 출금 가능' : `3만P 달성까지 ${(30000 - w.points).toLocaleString()}P 남음`}</div>
+          <div class="app-big-point-hint">${w.points >= POLICY.POINT_MIN_WITHDRAW ? '✓ 출금 가능' : `3만P 달성까지 ${(POLICY.POINT_MIN_WITHDRAW - w.points).toLocaleString()}P 남음`}</div>
         </div>
         <div class="app-section-title">📍 근처 추천 공고</div>
         ${nearbyHtml || '<div class="app-card" style="text-align:center; color:#9CA3AF; font-size:11px;">추천 공고가 없습니다</div>'}
@@ -6210,7 +6298,7 @@
           <div class="app-big-point-hint">이번 달 적립 ${thisMonthEarned > 0 ? '+' : ''}${thisMonthEarned.toLocaleString()}P</div>
         </div>
         <div style="display:flex; gap:8px; margin-bottom:12px;">
-          <button style="flex:1; background:${w.points >= 30000 ? '#2563EB' : '#E5E7EB'}; color:${w.points >= 30000 ? '#fff' : '#9CA3AF'}; border:none; border-radius:8px; padding:10px; font-size:11px; font-weight:500;">${w.points >= 30000 ? '💸 출금 신청' : '출금 가능 조건 미달'}</button>
+          <button style="flex:1; background:${w.points >= POLICY.POINT_MIN_WITHDRAW ? '#2563EB' : '#E5E7EB'}; color:${w.points >= POLICY.POINT_MIN_WITHDRAW ? '#fff' : '#9CA3AF'}; border:none; border-radius:8px; padding:10px; font-size:11px; font-weight:500;">${w.points >= POLICY.POINT_MIN_WITHDRAW ? '💸 출금 신청' : '출금 가능 조건 미달'}</button>
           <button style="background:#fff; color:#374151; border:0.5px solid rgba(0,0,0,0.12); border-radius:8px; padding:10px 14px; font-size:11px;">⚙</button>
         </div>
         <div class="app-section-title">최근 내역</div>

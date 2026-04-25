@@ -34,6 +34,27 @@ const worksites = {
 // 오늘 기준(개발 중): 2026-04-23
 const TODAY = '2026-04-23';
 
+// 잡핏 운영 정책 상수 — 매직 넘버 통합
+// 정책 변경 시 여기만 수정하면 전체 시스템 반영
+const POLICY = {
+  // 포인트
+  POINT_MIN_WITHDRAW:    30000,   // 출금 가능 최저 보유 포인트
+  POINT_WITHDRAW_UNIT:   10000,   // 출금 단위
+  POINT_DAILY_MAX:      100000,   // 1일 최대 출금
+  POINT_CANCEL_DEDUCT:    1000,   // 단순 변심 취소 자동 차감
+  // 시간 (분 단위)
+  AUTO_CHECKOUT_MIN:    6 * 60,   // 종료 + 6시간 자동 퇴근
+  APPROVAL_LIMIT_MIN:   6 * 60,   // 신청 승인 6시간 초과 경고 (N19)
+  URGENT_RECRUIT_MIN:  12 * 60,   // 시작 12시간 내 미충원 → 긴급
+  CANCEL_FREE_MIN:     12 * 60,   // 시작 12시간 전까지 자유 취소
+  // 경고
+  WARN_LIMIT:                3,   // 경고 N회 누적 → 협의대상
+  // 대기열
+  WL_OFFER_FAR_MIN:    2 * 60,    // 24h 전 자리 제안 수락 시간
+  WL_OFFER_NEAR_MIN:        30,   // 24h 이내 자리 제안 수락 시간
+  WL_FACTOR:                 2,   // 대기열 상한 = cap × 이 값
+};
+
 // 공고 샘플 데이터 — 시간대: 주간/야간/새벽/웨딩
 const jobs = [
   // ───── 오늘 (2026-04-23) 진행중 · 관제 시스템 주요 노출 대상 ─────
@@ -283,13 +304,21 @@ const gpsRequests = [
 function findGpsReq(id) { return gpsRequests.find(g => g.id === id); }
 
 // 공고 상태 판정: open(모집중) · closed(마감·시작전) · progress(진행중) · done(종료)
-// recruitClosed(수동 구인 완료) 또는 apply+외부 구인 >= cap 이면 closed
+// recruitClosed(수동 구인 완료) 또는 apply+외부 구인 >= cap 이면 모집 마감
+// 오늘 공고는 "근무 진행" 의미 우선 → progress 유지하되, 마감 표시는 jobMarketStatus 로 별도 조회
 function jobStatus(j) {
   if (j.date < TODAY) return 'done';
-  if (j.date === TODAY) return 'progress';
   const ext = Array.isArray(j.externalWorkers) ? j.externalWorkers.length : 0;
-  if (j.recruitClosed || (j.apply + ext) >= j.cap) return 'closed';
+  const filled = j.apply + ext;
+  if (j.date === TODAY) return 'progress';
+  if (j.recruitClosed || filled >= j.cap) return 'closed';
   return 'open';
+}
+
+// 모집 채워짐 여부 (오늘 공고 포함) — 공고 list / 관제에서 "구인 마감" 표시용
+function jobIsRecruitFilled(j) {
+  const ext = Array.isArray(j.externalWorkers) ? j.externalWorkers.length : 0;
+  return j.recruitClosed || (j.apply + ext) >= j.cap;
 }
 const STATUS_LABEL = { open: '모집중', closed: '마감', progress: '진행중', done: '종료' };
 
@@ -401,4 +430,130 @@ function attendanceSummary(jobId) {
   const sum = { 출근: 0, 지각: 0, 결근: 0, 대기: 0 };
   list.forEach(a => sum[a.status]++);
   return sum;
+}
+
+// ───────────────────────────────────────────────────────────
+// 데이터 mutation 헬퍼 — Supabase 전환 시 이 함수들만 await api.update(...) 로 교체
+// ───────────────────────────────────────────────────────────
+
+function nowStamp() {
+  const d = new Date();
+  return TODAY + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+function uid(prefix) {
+  return prefix + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+}
+
+// HTML 이스케이프 — 사용자 입력(메모/사유 등)을 innerHTML 에 삽입할 때 XSS 방지
+// admin 1인 운영 prototype에선 위험 낮지만, Supabase 연동 후 알바생 입력이 들어오면 필수
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])
+  );
+}
+
+// GPS 미검증 퇴근 승인/반려 + 포인트 트랜잭션 + 워커 보유 포인트 가산
+function approveGpsRequest(gpsId, adminNote, by) {
+  const g = findGpsReq(gpsId); if (!g || g.status !== 'pending') return null;
+  const w = findWorker(g.workerId); const j = findJob(g.jobId);
+  if (!w || !j) return null;
+  const reward = pointRewardFor(j);
+  g.status = 'approved';
+  g.reviewedAt = nowStamp();
+  g.reviewedBy = by || '시스템';
+  g.adminNote = adminNote || '';
+  w.points += reward;
+  pointTxs.unshift({
+    id: uid('p-gps'),
+    workerId: w.id,
+    type: 'reward',
+    status: 'done',
+    amount: reward,
+    reason: 'GPS 미검증 퇴근 승인 — ' + (findSite(j.siteId)?.site.name || '') + ' ' + j.date + ' ' + j.slot,
+    requestedAt: g.reviewedAt,
+    processedBy: g.reviewedBy,
+  });
+  return { worker: w, job: j, reward };
+}
+function denyGpsRequest(gpsId, reason, by) {
+  const g = findGpsReq(gpsId); if (!g || g.status !== 'pending') return null;
+  g.status = 'denied';
+  g.reviewedAt = nowStamp();
+  g.reviewedBy = by || '시스템';
+  g.adminNote = reason || '';
+  return g;
+}
+
+// 외부 구인 인원 (앱 외부에서 직접 모집)
+function addExternalWorker(jobId, name, phone, note, by) {
+  const j = findJob(jobId); if (!j) return null;
+  if (!Array.isArray(j.externalWorkers)) j.externalWorkers = [];
+  const ex = {
+    id: uid('ex'),
+    name: String(name).trim(),
+    phone: String(phone).trim(),
+    note: String(note || '').trim(),
+    attended: false,
+    addedBy: by || '시스템',
+    addedAt: nowStamp(),
+  };
+  j.externalWorkers.push(ex);
+  return ex;
+}
+function removeExternalWorker(jobId, extId) {
+  const j = findJob(jobId); if (!j || !Array.isArray(j.externalWorkers)) return false;
+  const before = j.externalWorkers.length;
+  j.externalWorkers = j.externalWorkers.filter(e => e.id !== extId);
+  return j.externalWorkers.length < before;
+}
+function toggleExternalAttended(jobId, extId) {
+  const j = findJob(jobId); if (!j || !Array.isArray(j.externalWorkers)) return null;
+  const ex = j.externalWorkers.find(e => e.id === extId);
+  if (!ex) return null;
+  ex.attended = !ex.attended;
+  return ex;
+}
+
+// 수동 구인 완료
+function setRecruitClosed(jobId, value) {
+  const j = findJob(jobId); if (!j) return false;
+  j.recruitClosed = !!value;
+  return true;
+}
+
+// 워커 경고 부여 (3회 누적 → 협의대상 자동 등록)
+function addWorkerWarning(workerId, reason, siteId, memo, by) {
+  const w = findWorker(workerId); if (!w) return null;
+  if (w.negotiation) return { error: '이미 협의대상 상태' };
+  w.warnings = Math.min(w.warnings + 1, POLICY.WARN_LIMIT);
+  if (!Array.isArray(w.warnLog)) w.warnLog = [];
+  w.warnLog.unshift({
+    date: TODAY,
+    reason,
+    memo: memo || '',
+    siteId: siteId || '',
+    count: w.warnings,
+    by: by || '시스템',
+  });
+  let escalated = false;
+  if (w.warnings >= POLICY.WARN_LIMIT) {
+    w.negotiation = true;
+    escalated = true;
+  }
+  return { worker: w, escalated };
+}
+function releaseNegotiation(workerId) {
+  const w = findWorker(workerId); if (!w) return null;
+  w.negotiation = false;
+  w.warnings = 0;
+  return w;
+}
+
+// 정책상 출금 가능 여부 — 보유 포인트 + 단위 + 일 한도 체크
+function canWithdraw(workerPoints, requestedAmount) {
+  if (workerPoints < POLICY.POINT_MIN_WITHDRAW) return { ok: false, reason: '보유 포인트가 ' + POLICY.POINT_MIN_WITHDRAW.toLocaleString() + 'P 미만' };
+  if (requestedAmount % POLICY.POINT_WITHDRAW_UNIT !== 0) return { ok: false, reason: POLICY.POINT_WITHDRAW_UNIT.toLocaleString() + 'P 단위로 출금 가능' };
+  if (requestedAmount > POLICY.POINT_DAILY_MAX) return { ok: false, reason: '1일 최대 ' + POLICY.POINT_DAILY_MAX.toLocaleString() + 'P' };
+  if (requestedAmount > workerPoints) return { ok: false, reason: '보유 포인트 초과' };
+  return { ok: true };
 }

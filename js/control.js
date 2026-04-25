@@ -324,7 +324,7 @@
     if (effApply(j) >= j.cap) return false;      // 외부 구인 포함하여 다 참
     if (j.recruitClosed) return false;            // 수동 구인완료 처리됨
     const rem = minutesUntilStartRaw(j);
-    return rem > 0 && rem <= 12 * 60;             // 12h 이내
+    return rem > 0 && rem <= POLICY.URGENT_RECRUIT_MIN; // 12h 이내
   }
 
   // ─── 메인 보드 ───────────────────────────────────────────
@@ -436,7 +436,7 @@
     const j = findJob(jobId); if (!j) return;
     const site = findSite(j.siteId);
     if (!confirm(`${site.site.name} (${j.slot} ${j.start}~${j.end}) 공고를 구인 완료로 처리합니다.\n\n미충원 ${Math.max(0, j.cap - j.apply)}명은 관리자가 개별 연락으로 채운 상태로 간주됩니다.\n긴급 경고가 사라집니다.`)) return;
-    j.recruitClosed = true;
+    setRecruitClosed(jobId, true);
     render();
   };
 
