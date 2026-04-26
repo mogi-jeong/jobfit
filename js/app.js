@@ -768,6 +768,153 @@
     admin2:  'background:#F3F4F6; color:#374151;',
   };
 
+  // ───────────────────────────────────────────────────────
+  // 감사로그(Audit Log) 페이지 — 마스터 전용
+  // ───────────────────────────────────────────────────────
+  const auditState = {
+    search:   '',
+    category: '',  // '' / application / warning / negotiation / gps / point / job / site / admin / notification / external
+    range:    '7d', // 7d / 30d / 90d / all
+  };
+
+  function renderAuditLog() {
+    const q = auditState.search.trim().toLowerCase();
+    const today = new Date(TODAY);
+    const cutoff = (() => {
+      if (auditState.range === 'all') return null;
+      const days = { '7d': 7, '30d': 30, '90d': 90 }[auditState.range] || 7;
+      const d = new Date(today); d.setDate(d.getDate() - days + 1);
+      return d.toISOString().slice(0, 10);
+    })();
+
+    const filtered = auditLogs.filter(log => {
+      if (auditState.category && log.category !== auditState.category) return false;
+      if (cutoff && log.at.slice(0, 10) < cutoff) return false;
+      if (q) {
+        const blob = (log.target + ' ' + log.summary + ' ' + log.by).toLowerCase();
+        if (!blob.includes(q)) return false;
+      }
+      return true;
+    });
+
+    // 카테고리별 카운트 (현재 기간 + 검색어 기준 — 카테고리 필터는 미적용)
+    const baseList = auditLogs.filter(log => {
+      if (cutoff && log.at.slice(0, 10) < cutoff) return false;
+      if (q) {
+        const blob = (log.target + ' ' + log.summary + ' ' + log.by).toLowerCase();
+        if (!blob.includes(q)) return false;
+      }
+      return true;
+    });
+    const catCounts = {};
+    baseList.forEach(l => { catCounts[l.category] = (catCounts[l.category] || 0) + 1; });
+
+    const rangeBtns = [
+      { v: '7d',  label: '최근 7일'  },
+      { v: '30d', label: '최근 30일' },
+      { v: '90d', label: '최근 90일' },
+      { v: 'all', label: '전체'       },
+    ].map(r => `<button class="login-role-btn ${auditState.range===r.v?'active':''}" onclick="window.__audSet('range','${r.v}')">${r.label}</button>`).join('');
+
+    const catChips = [
+      { v: '', label: '전체' },
+      ...Object.keys(AUDIT_CATEGORIES).map(k => ({ v: k, label: AUDIT_CATEGORIES[k].label })),
+    ].map(c => {
+      const active = auditState.category === c.v;
+      const count = c.v ? (catCounts[c.v] || 0) : baseList.length;
+      const meta = c.v ? AUDIT_CATEGORIES[c.v] : null;
+      return `<button class="login-role-btn ${active?'active':''}" onclick="window.__audSet('category','${c.v}')" style="height:30px; font-size:12px; padding:0 12px; ${active?'':'border-color:rgba(0,0,0,0.12);'}">${meta?meta.icon+' ':''}${c.label} <span style="opacity:0.6; font-weight:400;">${count}</span></button>`;
+    }).join('');
+
+    let html = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">감사로그</div>
+          <div class="jf-subtitle">관리자 액션 통합 추적 · 마스터 전용 · 분쟁 시 근거 자료</div>
+        </div>
+        <div class="ws-actions">
+          <button onclick="showExcelModal('audit')">엑셀 다운로드</button>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:8px; margin-bottom:14px; align-items:center; flex-wrap:wrap;">
+        <div class="jf-search" style="flex:0 0 280px;">
+          <input type="text" placeholder="대상/요약/관리자 검색" value="${esc(auditState.search)}" oninput="window.__audSearch(this.value)" />
+        </div>
+        <div style="display:inline-flex; gap:4px; border:0.5px solid rgba(0,0,0,0.12); border-radius:8px; padding:3px;">
+          ${rangeBtns}
+        </div>
+        ${(auditState.search || auditState.category || auditState.range !== '7d') ? `<button onclick="window.__audClear()" style="font-size:12px;">초기화</button>` : ''}
+        <span style="margin-left:auto; font-size:12px; color:#6B7684;">${filtered.length}건 (전체 ${auditLogs.length}건)</span>
+      </div>
+
+      <div style="display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap;">${catChips}</div>
+    `;
+
+    if (filtered.length === 0) {
+      html += `<div class="jf-placeholder"><div class="jf-placeholder-icon">📋</div><div class="jf-placeholder-title">조건에 맞는 로그가 없습니다</div><div class="jf-placeholder-desc">기간이나 카테고리를 변경해보세요.</div></div>`;
+    } else {
+      // 날짜별 그룹핑
+      const byDate = {};
+      filtered.forEach(log => {
+        const d = log.at.slice(0, 10);
+        if (!byDate[d]) byDate[d] = [];
+        byDate[d].push(log);
+      });
+      const dates = Object.keys(byDate).sort().reverse();
+
+      dates.forEach(d => {
+        const items = byDate[d];
+        const label = d === TODAY ? '오늘' : d === addDays(TODAY, -1) ? '어제' : d;
+        html += `
+          <div style="margin-bottom: 18px;">
+            <div style="font-size:12px; color:#6B7684; font-weight:500; margin-bottom:8px; padding-left:4px;">
+              📅 ${label} <span style="color:#9CA3AF; font-weight:400; margin-left:6px;">${d} · ${items.length}건</span>
+            </div>
+            <div class="jf-panel" style="padding: 0;">
+              ${items.map((log, i) => {
+                const meta = AUDIT_CATEGORIES[log.category] || { label: log.category, icon: '·', color: '#6B7684' };
+                const time = log.at.slice(11);
+                const roleLabel = ROLE_LABEL[log.byRole] || log.byRole;
+                const roleStyle = ROLE_STYLE[log.byRole] || ROLE_STYLE.admin2;
+                const isLast = i === items.length - 1;
+                return `
+                  <div style="display:grid; grid-template-columns: 56px 130px 1fr 160px; gap: 14px; padding: 14px 18px; align-items:center; ${isLast?'':'border-bottom:0.5px solid rgba(0,0,0,0.05);'}">
+                    <div style="font-family:'SF Mono',Monaco,monospace; font-size:12px; color:#6B7684;">${time}</div>
+                    <div>
+                      <span style="display:inline-flex; align-items:center; gap:5px; font-size:11px; padding:3px 8px; border-radius:4px; background:${meta.color}1A; color:${meta.color}; font-weight:500;">
+                        ${meta.icon} ${meta.label}
+                      </span>
+                    </div>
+                    <div style="min-width:0;">
+                      <div style="font-size:13px; color:#111827; font-weight:500;">${esc(log.target)}</div>
+                      ${log.summary ? `<div style="font-size:12px; color:#6B7684; margin-top:2px; line-height:1.5;">${esc(log.summary)}</div>` : ''}
+                    </div>
+                    <div style="text-align:right;">
+                      <div style="font-size:12px; color:#111827; font-weight:500;">${esc(log.by)}</div>
+                      <span style="display:inline-block; margin-top:2px; padding:1px 6px; border-radius:3px; font-size:10px; ${roleStyle}">${roleLabel}</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    main.innerHTML = html;
+  }
+
+  function addDays(dateStr, n) {
+    const d = new Date(dateStr); d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
+
+  window.__audSearch = function(val) { auditState.search = val; renderAuditLog(); };
+  window.__audSet = function(key, val) { auditState[key] = val; renderAuditLog(); };
+  window.__audClear = function() { auditState.search = ''; auditState.category = ''; auditState.range = '7d'; renderAuditLog(); };
+
   // N6 — 강제 업데이트 / 점검 모드 (시스템 설정)
   // 마스터 전용 · 알바생 앱 진입 시 차단/공지
   const systemSettings = {
@@ -1194,6 +1341,12 @@
       sites: [...f.sites], active: true,
       lastLogin: '-', joinedAt: TODAY, createdBy: '테스트(마스터)',
     });
+    logAudit({
+      category: 'admin', action: 'create',
+      target: f.name + ' (' + ROLE_LABEL[f.role] + ')',
+      targetId: id,
+      summary: f.role === 'admin2' ? '담당 근무지 ' + f.sites.length + '곳 배정' : '전 근무지 권한',
+    });
     alert(`${f.name} (${ROLE_LABEL[f.role]}) 관리자 추가 완료.${f.role === 'admin2' ? `\n담당 근무지 ${f.sites.length}곳 배정됨.` : ''}`);
     document.querySelectorAll('.jf-modal-overlay.admin-add').forEach(el => el.remove());
     renderAdmins();
@@ -1202,6 +1355,12 @@
     const a = findAdmin(id); if (!a) return;
     if (!confirm(`${a.name} 님 계정을 ${a.active ? '비활성화' : '활성화'}하시겠습니까?`)) return;
     a.active = !a.active;
+    logAudit({
+      category: 'admin', action: 'toggle',
+      target: a.name + ' (' + ROLE_LABEL[a.role] + ')',
+      targetId: id,
+      summary: '계정 ' + (a.active ? '활성화' : '비활성화'),
+    });
     renderAdminDetail(id);
   };
   window.__admDelete = function(id) {
@@ -1209,6 +1368,12 @@
     if (a.role === 'master') { alert('마스터 계정은 삭제할 수 없습니다.'); return; }
     if (!confirm(`${a.name} 님 계정을 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?`)) return;
     const idx = admins.indexOf(a); if (idx >= 0) admins.splice(idx, 1);
+    logAudit({
+      category: 'admin', action: 'delete',
+      target: a.name + ' (' + ROLE_LABEL[a.role] + ')',
+      targetId: id,
+      summary: '계정 영구 삭제',
+    });
     alert('계정 삭제 완료.');
     renderAdmins();
   };
@@ -1221,6 +1386,104 @@
   // ───────────────────────────────────────────────────────
   // 홈 대시보드
   // ───────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────
+  // 이상감지 — 운영 인사이트
+  // 결근률 급증 / 협의대상 급증 / 출금 실패 다발 / 미충원 임박 / 응답 지연
+  // ───────────────────────────────────────────────────────
+  function computeAnomalies() {
+    const out = [];
+    const dayOffset = (n) => {
+      const d = new Date(TODAY); d.setDate(d.getDate() + n);
+      return d.toISOString().slice(0, 10);
+    };
+    const sevenDaysAgo  = dayOffset(-6);   // 최근 7일 (오늘 포함)
+    const thirtyDaysAgo = dayOffset(-29);  // 최근 30일
+
+    // 1. 근무지별 결근률 급증 (최근 7일 vs 그 이전 23일)
+    const aggregate = (arr) => {
+      let attended = 0, absent = 0;
+      arr.forEach(j => {
+        const sum = attendanceSummary(j.id);
+        attended += sum.출근 + sum.지각 + sum.결근;
+        absent += sum.결근;
+      });
+      return attended > 0 ? { rate: absent / attended, n: attended } : null;
+    };
+    Object.values(worksites).flatMap(p => p.sites).forEach(site => {
+      const recent = jobs.filter(j => j.siteId === site.id && j.date >= sevenDaysAgo && j.date <= TODAY && jobStatus(j) !== 'open');
+      const past   = jobs.filter(j => j.siteId === site.id && j.date >= thirtyDaysAgo && j.date < sevenDaysAgo);
+      const r = aggregate(recent);
+      const p = aggregate(past);
+      if (r && p && r.n >= 5 && r.rate >= 0.10 && r.rate >= p.rate * 1.5 && (r.rate - p.rate) >= 0.04) {
+        out.push({
+          severity: 'high', icon: '📉', title: '결근률 급증',
+          text: `<strong>${site.name}</strong> 최근 7일 결근률 <strong>${(r.rate*100).toFixed(0)}%</strong> · 이전 ${(p.rate*100).toFixed(0)}%`,
+          hint: `샘플 ${r.n}건 · 출결 검토 필요`,
+          action: '관제 →', goto: 'control',
+        });
+      }
+    });
+
+    // 2. 협의대상 등록 급증 (최근 7일 신규 ≥ 3)
+    const recentNeg = negotiations.filter(n => n.registeredAt && n.registeredAt >= sevenDaysAgo);
+    if (recentNeg.length >= 3) {
+      out.push({
+        severity: 'mid', icon: '🚫', title: '협의대상 급증',
+        text: `최근 7일 신규 협의대상 <strong>${recentNeg.length}명</strong>`,
+        hint: '경고 부여 기준/사유 점검 권장',
+        action: '협의대상 →', goto: 'negotiation',
+      });
+    }
+
+    // 3. 출금 실패 다발 (최근 30일 ≥ 2건)
+    const recentFail = pointTxs.filter(t => t.status === 'failed' && t.processedAt && t.processedAt.slice(0,10) >= thirtyDaysAgo);
+    if (recentFail.length >= 2) {
+      const total = recentFail.reduce((s, t) => s + t.amount, 0);
+      out.push({
+        severity: 'mid', icon: '💸', title: '출금 실패 다발',
+        text: `최근 30일 실패 <strong>${recentFail.length}건</strong> · 합계 ${total.toLocaleString()}P`,
+        hint: '계좌번호 검증/안내 강화 필요',
+        action: '포인트 →', goto: 'points',
+      });
+    }
+
+    // 4. 시작 임박 미충원 공고 (3일 이내 시작 · 충원률 < 60%)
+    const horizon = dayOffset(3);
+    const undersold = jobs.filter(j => j.date >= TODAY && j.date <= horizon && (j.apply / j.cap) < 0.6 && jobStatus(j) !== 'done');
+    if (undersold.length > 0) {
+      out.push({
+        severity: 'high', icon: '⚠', title: '미충원 임박 공고',
+        text: `<strong>${undersold.length}건</strong> · 시작 3일 이내 충원률 60% 미만`,
+        hint: '긴급 구인 알림/외부 구인 검토',
+        action: '공고 →', goto: 'jobs',
+      });
+    }
+
+    // 5. 응답 지연 신청 (6h 이상 미처리 — 정책 위반)
+    // TODAY 기준의 "현재 시각" — appDwell 와 동일 로직
+    const nowD = new Date();
+    const [ty, tm, td] = TODAY.split('-').map(Number);
+    const nowMs = new Date(ty, tm - 1, td, nowD.getHours(), nowD.getMinutes()).getTime();
+    const overdue = applications.filter(a => {
+      if (a.status !== 'pending' || !a.appliedAt) return false;
+      const parts = a.appliedAt.split(' ');
+      if (parts.length < 2) return false;
+      const appliedMs = new Date(parts[0] + 'T' + parts[1] + ':00').getTime();
+      const dwellMin = (nowMs - appliedMs) / 60000;
+      return dwellMin > POLICY.APPROVAL_LIMIT_MIN;
+    });
+    if (overdue.length > 0) {
+      out.push({
+        severity: 'high', icon: '⏱', title: '응답 지연 신청',
+        text: `<strong>${overdue.length}건</strong>의 신청이 ${POLICY.APPROVAL_LIMIT_MIN/60}시간 초과 미처리`,
+        hint: 'SLA 위반 — 즉시 검토',
+        action: '신청 승인 →', goto: 'approval',
+      });
+    }
+
+    return out;
+  }
+
   function renderHome() {
     // 집계
     const todayStr = TODAY;
@@ -1309,6 +1572,9 @@
     if (wlPendingCount > 0) alerts.push({ type: 'warn', text: `대기열 수락 대기 중 ${wlPendingCount}명 — 타이머 진행 중`, goto: 'jobs-waitlist' });
     if (reopenedJobs > 0) alerts.push({ type: 'warn', text: `REOPENED 공고 ${reopenedJobs}건 — 대기열 소진 후 재모집 상태`, goto: 'jobs-waitlist' });
 
+    // 이상감지 — 최근 7일 운영 인사이트
+    const anomalies = computeAnomalies();
+
     let html = `
       <div class="jf-header">
         <div>
@@ -1328,6 +1594,35 @@
           <span style="font-size:12px; opacity:0.7;">바로가기 →</span>
         </div>`
       ).join('') : ''}
+
+      ${anomalies.length > 0 ? `
+        <div class="jf-panel" style="margin-bottom: 14px; padding: 14px 16px; border-left: 3px solid #EF4444; background: linear-gradient(180deg, #FFFBFB 0%, #fff 60%);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <div style="font-size:13px; font-weight:500; color:#991B1B; display:flex; align-items:center; gap:6px;">
+              🚨 이상감지 <span style="font-size:11px; color:#6B7684; font-weight:400;">최근 7~30일 운영 인사이트 · ${anomalies.length}건</span>
+            </div>
+            <a href="javascript:void(0)" onclick="window.__navGoto('audit')" style="font-size:11px; color:#2563EB; text-decoration:none;">감사로그 →</a>
+          </div>
+          <div style="display:grid; grid-template-columns: repeat(${Math.min(anomalies.length, 3)}, 1fr); gap: 10px;">
+            ${anomalies.slice(0, 6).map(an => {
+              const sevColor = an.severity === 'high' ? '#EF4444' : '#F59E0B';
+              const sevBg    = an.severity === 'high' ? '#FEE2E2' : '#FEF3C7';
+              return `
+                <div onclick="window.__navGoto('${an.goto}')" style="cursor:pointer; padding:12px 14px; background:${sevBg}; border-radius:8px; border:0.5px solid ${sevColor}40; transition:transform 0.1s;" onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform='translateY(0)'">
+                  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:4px;">
+                    <div style="font-size:12px; font-weight:500; color:${sevColor}; display:flex; align-items:center; gap:5px;">
+                      ${an.icon} ${an.title}
+                    </div>
+                    <span style="font-size:10px; color:${sevColor}; opacity:0.8;">${an.action}</span>
+                  </div>
+                  <div style="font-size:12px; color:#374151; line-height:1.5;">${an.text}</div>
+                  <div style="font-size:10px; color:#6B7684; margin-top:4px;">${an.hint}</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      ` : ''}
 
       <div class="jf-metric-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 12px;">
         <div class="jf-metric" style="cursor:pointer;" onclick="window.__openControlBoard()">
@@ -2101,6 +2396,12 @@
     t.processedAt = TODAY + ' ' + new Date().toTimeString().slice(0,5);
     t.processedBy = '테스트(마스터)';
     w.points = Math.max(w.points - t.amount, 0);
+    logAudit({
+      category: 'point', action: 'done',
+      target: w.name,
+      targetId: id,
+      summary: t.amount.toLocaleString() + 'P 출금 완료 — ' + (t.bank || '') + ' ' + (t.account || ''),
+    });
     alert(`${w.name} 님 출금 ${t.amount.toLocaleString()}P 처리 완료.`);
     renderPoints();
   };
@@ -2118,6 +2419,12 @@
         t.processedAt = nowStamp();
         t.processedBy = '테스트(마스터)';
         t.failReason = vals.reason;
+        logAudit({
+          category: 'point', action: 'failed',
+          target: w.name,
+          targetId: id,
+          summary: t.amount.toLocaleString() + 'P 실패 — ' + vals.reason,
+        });
         alert('출금 실패 로그 저장됨. 알바생에게 알림 발송.\n포인트는 차감되지 않음. 재요청을 기다려주세요.');
         renderPoints();
       },
@@ -2270,6 +2577,12 @@
           workerId: matched ? matched.id : null,
           registeredBy: '테스트(마스터)',
         });
+        logAudit({
+          category: 'negotiation', action: 'manual',
+          target: matched ? matched.name : phone,
+          targetId: id,
+          summary: '수동 등록 — ' + reason + (matched ? '' : ' (미가입 번호)'),
+        });
         alert('협의대상 등록 완료.\n전화번호: ' + phone + '\n' + (matched ? '기존 근무자 ' + matched.name + ' 님과 자동 매칭됨.' : '미가입 전화번호로 등록됨.'));
         renderNegotiation();
       },
@@ -2284,6 +2597,12 @@
     }
     const idx = negotiations.indexOf(n);
     if (idx >= 0) negotiations.splice(idx, 1);
+    logAudit({
+      category: 'negotiation', action: 'release',
+      target: n.name,
+      targetId: id,
+      summary: '협의대상 해제 (마스터 권한) · 전화번호 ' + n.phone,
+    });
     alert(`${n.name} 님의 협의대상 해제 완료.`);
     renderNegotiation();
   };
@@ -2982,11 +3301,18 @@
     const a = findApp(appId); if (!a) return;
     const w = findWorker(a.workerId);
     const j = findJob(a.jobId);
-    if (!confirm(`${w.name} (${w.phone}) 님의 신청을 승인하시겠습니까?\n\n근무지: ${findSite(j.siteId).site.name}\n일시: ${j.date} ${j.slot} ${j.start}~${j.end}`)) return;
+    const site = findSite(j.siteId);
+    if (!confirm(`${w.name} (${w.phone}) 님의 신청을 승인하시겠습니까?\n\n근무지: ${site.site.name}\n일시: ${j.date} ${j.slot} ${j.start}~${j.end}`)) return;
     a.status = 'approved';
     a.processedAt = TODAY + ' ' + new Date().toTimeString().slice(0,5);
     a.processedBy = '테스트(마스터)';
     j.apply = Math.min(j.apply + 1, j.cap); // 공고 모집인원 업데이트
+    logAudit({
+      category: 'application', action: 'approve',
+      target: w.name + ' / ' + site.site.name + ' ' + j.date + ' ' + j.slot,
+      targetId: appId,
+      summary: a.reason ? '플래그: ' + a.reason : '정상 승인',
+    });
     updateApprovalBadge();
     renderApproval();
   };
@@ -3005,6 +3331,12 @@
         a.processedAt = nowStamp();
         a.processedBy = '테스트(마스터)';
         a.rejectReason = vals.reason;
+        logAudit({
+          category: 'application', action: 'reject',
+          target: w.name + (site ? ' / ' + site.site.name + ' ' + j.date + ' ' + j.slot : ''),
+          targetId: appId,
+          summary: '사유: ' + vals.reason,
+        });
         updateApprovalBadge();
         renderApproval();
       },
@@ -4051,6 +4383,13 @@
 
     // 기존 공고 객체에 변경사항 반영
     Object.assign(j, d);
+    const site = findSite(j.siteId);
+    logAudit({
+      category: 'job', action: 'edit',
+      target: (site?.site.name || '') + ' ' + j.date + ' ' + j.slot,
+      targetId: j.id,
+      summary: '모집 ' + j.cap + '명 · ' + j.wage.toLocaleString() + '원' + (j.apply > 0 ? ' · 확정 ' + j.apply + '명에게 변경 알림 발송' : ''),
+    });
     const changeNotify = j.apply > 0 ? '\n\n확정 알바생 ' + j.apply + '명에게 변경 알림이 발송되었습니다.' : '';
     alert('공고 수정 완료.' + changeNotify);
     jobEditState.jobId = null; jobEditState.draft = null;
@@ -4065,6 +4404,13 @@
     const tomorrow = new Date(TODAY); tomorrow.setDate(tomorrow.getDate() + 1);
     const newDate = tomorrow.toISOString().slice(0, 10);
     jobs.push({ ...j, id: newId, date: newDate, apply: 0 });
+    const site = findSite(j.siteId);
+    logAudit({
+      category: 'job', action: 'duplicate',
+      target: (site?.site.name || '') + ' ' + newDate + ' ' + j.slot,
+      targetId: newId,
+      summary: '원본 ' + jobId + ' → ' + newId + ' (' + newDate + ')',
+    });
     alert(`공고 복제 완료 (${newId}, 날짜: ${newDate})\n필요시 수정 탭에서 편집해주세요.`);
     renderJobDetail(newId);
   };
@@ -4072,6 +4418,13 @@
     const j = findJob(jobId); if (!j) return;
     if (!confirm('이 공고를 삭제합니다. 신청자가 있는 경우 거절 알림이 발송됩니다. 계속하시겠습니까?')) return;
     const idx = jobs.indexOf(j); if (idx >= 0) jobs.splice(idx, 1);
+    const site = findSite(j.siteId);
+    logAudit({
+      category: 'job', action: 'delete',
+      target: (site?.site.name || '') + ' ' + j.date + ' ' + j.slot,
+      targetId: jobId,
+      summary: '모집 ' + j.cap + '명 · 신청 ' + j.apply + '명 · 삭제 시점에 자동 거절 알림 발송',
+    });
     alert('공고 삭제 완료.');
     jobsState.tab = 'list';
     renderJobs();
@@ -4533,6 +4886,12 @@
           date, slot: s.slot, start: s.start, end: s.end,
           cap: s.cap, apply: 0, wage: s.wage, wageType: s.wageType,
           contact: f.contact, contract: f.useContract, safety: f.useSafety,
+        });
+        logAudit({
+          category: 'job', action: 'create',
+          target: site.site.name + ' ' + date + ' ' + s.slot,
+          targetId: newId,
+          summary: '모집 ' + s.cap + '명 · ' + s.wage.toLocaleString() + '원 · ' + s.start + '~' + s.end + (f.useContract?' · 계약서':'') + (f.useSafety?' · 안전교육':''),
         });
         created++;
       });
@@ -6754,6 +7113,18 @@
         { name: '담당자',      desc: '010-XXXX-XXXX', required: true },
       ],
     },
+    audit: {
+      title: '감사로그 엑셀 다운로드',
+      filename: 'jobfit_audit_logs.xlsx',
+      columns: [
+        { name: '일시',     desc: 'YYYY-MM-DD HH:MM', required: false },
+        { name: '카테고리', desc: '신청/경고/협의대상/GPS/포인트/공고 등', required: false },
+        { name: '액션',     desc: 'approve/reject/add/release 등', required: false },
+        { name: '대상',     desc: '근무자명 / 공고 정보', required: false },
+        { name: '요약',     desc: '사유/변경사항', required: false },
+        { name: '처리자',   desc: '관리자 이름 + 등급', required: false },
+      ],
+    },
   };
 
   const excelState = { context: 'workers', mode: 'download', uploading: false, progress: 0 };
@@ -7010,14 +7381,21 @@
     if (n.scheduled && !n.scheduleAt) { alert('예약 시간을 선택해주세요'); return; }
 
     let count = 0;
-    if (n.groupMode === 'specific') count = n.targets.length;
-    if (n.groupMode === 'all_workers') count = workers.length;
-    if (n.groupMode === 'warn') count = workers.filter(w => w.warnings >= 1 && !w.negotiation).length;
-    if (n.groupMode === 'negotiation') count = workers.filter(w => w.negotiation).length;
-    if (n.groupMode === 'all_admins') count = admins.filter(a => a.active).length;
+    let groupLabel = '';
+    if (n.groupMode === 'specific')    { count = n.targets.length;                                         groupLabel = '지정 ' + count + '명'; }
+    if (n.groupMode === 'all_workers') { count = workers.length;                                            groupLabel = '전체 근무자 ' + count + '명'; }
+    if (n.groupMode === 'warn')        { count = workers.filter(w => w.warnings >= 1 && !w.negotiation).length; groupLabel = '경고 보유 ' + count + '명'; }
+    if (n.groupMode === 'negotiation') { count = workers.filter(w => w.negotiation).length;                groupLabel = '협의대상 ' + count + '명'; }
+    if (n.groupMode === 'all_admins')  { count = admins.filter(a => a.active).length;                      groupLabel = '관리자 ' + count + '명'; }
 
+    const typeLabel = ({service:'서비스',marketing:'마케팅',urgent:'긴급 구인'})[n.notifType];
     const action = n.scheduled ? `예약 등록 (${n.scheduleAt})` : '즉시 발송';
-    alert(`알림 ${action}\n\n유형: ${({service:'서비스',marketing:'마케팅',urgent:'긴급 구인'})[n.notifType]}\n대상: ${count}명\n제목: ${n.title}`);
+    logAudit({
+      category: 'notification', action: n.scheduled ? 'schedule' : 'send',
+      target: groupLabel,
+      summary: typeLabel + ' · ' + n.title + (n.scheduled ? ' · 예약 ' + n.scheduleAt : ''),
+    });
+    alert(`알림 ${action}\n\n유형: ${typeLabel}\n대상: ${count}명\n제목: ${n.title}`);
     document.querySelectorAll('.jf-modal-overlay.notif').forEach(el => el.remove());
   };
 
@@ -7176,6 +7554,7 @@
     inquiry: renderInquiries,
     stats: renderStats,
     apppreview: renderAppPreview,
+    audit: renderAuditLog,
   };
 
   navItems.forEach(item => {
@@ -7195,7 +7574,7 @@
   });
 
   function pageNameFor(page) {
-    const names = { home: '홈', jobs: '공고 관리', approval: '신청 승인', waitlistapv: '대기열 승인', gpsapproval: '퇴근 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정', stats: '통계 리포트', apppreview: '앱 미리보기' };
+    const names = { home: '홈', jobs: '공고 관리', approval: '신청 승인', waitlistapv: '대기열 승인', gpsapproval: '퇴근 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정', stats: '통계 리포트', apppreview: '앱 미리보기', audit: '감사로그' };
     return names[page] || '';
   }
 

@@ -452,6 +452,47 @@ function esc(s) {
   );
 }
 
+// ───────────────────────────────────────────────────────────
+// 활동/감사 로그 (Audit Log) — 누가/언제/무엇을 처리했는지 통합 추적
+// 권한 3단계 검증 + 분쟁 시 근거 + 운영 회고용
+// ───────────────────────────────────────────────────────────
+
+// 액션 카테고리 → 표시 메타 (라벨/아이콘/컬러)
+const AUDIT_CATEGORIES = {
+  application: { label: '신청 처리',   icon: '✓',  color: '#22C55E' },
+  warning:     { label: '경고 부여',   icon: '⚠',  color: '#F59E0B' },
+  negotiation: { label: '협의대상',    icon: '🚫', color: '#EF4444' },
+  gps:         { label: 'GPS 퇴근 승인', icon: '📍', color: '#8B5CF6' },
+  point:       { label: '포인트 처리', icon: '💰', color: '#2563EB' },
+  job:         { label: '공고',        icon: '📋', color: '#1E40AF' },
+  site:        { label: '근무지',      icon: '🏢', color: '#0F766E' },
+  admin:       { label: '관리자 계정', icon: '👤', color: '#6B21A8' },
+  notification:{ label: '알림 발송',   icon: '📣', color: '#0891B2' },
+  external:    { label: '외부 구인',   icon: '➕', color: '#0F766E' },
+};
+
+// 감사로그 메인 배열 — 새 항목은 unshift (최신순)
+let auditLogs = [];
+
+// 로그 기록 — 모든 mutation 헬퍼/핸들러에서 호출
+// { category, action, target, targetId?, summary?, by?, byRole? }
+function logAudit(entry) {
+  if (!entry || !entry.category) return null;
+  const log = {
+    id: uid('aud'),
+    at: nowStamp(),
+    category:  entry.category,
+    action:    entry.action || '',
+    target:    entry.target || '',
+    targetId:  entry.targetId || '',
+    summary:   entry.summary || '',
+    by:        entry.by || '테스트(마스터)',
+    byRole:    entry.byRole || 'master',
+  };
+  auditLogs.unshift(log);
+  return log;
+}
+
 // GPS 미검증 퇴근 승인/반려 + 포인트 트랜잭션 + 워커 보유 포인트 가산
 function approveGpsRequest(gpsId, adminNote, by) {
   const g = findGpsReq(gpsId); if (!g || g.status !== 'pending') return null;
@@ -473,14 +514,31 @@ function approveGpsRequest(gpsId, adminNote, by) {
     requestedAt: g.reviewedAt,
     processedBy: g.reviewedBy,
   });
+  logAudit({
+    category: 'gps', action: 'approve',
+    target: w.name + ' / ' + (findSite(j.siteId)?.site.name || '') + ' ' + j.date + ' ' + j.slot,
+    targetId: gpsId,
+    summary: (g.distance ? '거리 ' + g.distance + 'm · ' : '') + (adminNote || '') + ' (포인트 ' + reward.toLocaleString() + 'P 지급)',
+    by: g.reviewedBy,
+  });
   return { worker: w, job: j, reward };
 }
 function denyGpsRequest(gpsId, reason, by) {
   const g = findGpsReq(gpsId); if (!g || g.status !== 'pending') return null;
+  const w = findWorker(g.workerId); const j = findJob(g.jobId);
   g.status = 'denied';
   g.reviewedAt = nowStamp();
   g.reviewedBy = by || '시스템';
   g.adminNote = reason || '';
+  if (w && j) {
+    logAudit({
+      category: 'gps', action: 'deny',
+      target: w.name + ' / ' + (findSite(j.siteId)?.site.name || '') + ' ' + j.date + ' ' + j.slot,
+      targetId: gpsId,
+      summary: (g.distance ? '거리 ' + g.distance + 'm · ' : '') + (reason || ''),
+      by: g.reviewedBy,
+    });
+  }
   return g;
 }
 
@@ -498,13 +556,32 @@ function addExternalWorker(jobId, name, phone, note, by) {
     addedAt: nowStamp(),
   };
   j.externalWorkers.push(ex);
+  const site = findSite(j.siteId);
+  logAudit({
+    category: 'external', action: 'add',
+    target: ex.name + ' / ' + (site?.site.name || '') + ' ' + j.date + ' ' + j.slot,
+    targetId: jobId,
+    summary: ex.phone + (ex.note ? ' · ' + ex.note : ''),
+    by: by || '테스트(마스터)',
+  });
   return ex;
 }
 function removeExternalWorker(jobId, extId) {
   const j = findJob(jobId); if (!j || !Array.isArray(j.externalWorkers)) return false;
+  const removed = j.externalWorkers.find(e => e.id === extId);
   const before = j.externalWorkers.length;
   j.externalWorkers = j.externalWorkers.filter(e => e.id !== extId);
-  return j.externalWorkers.length < before;
+  const ok = j.externalWorkers.length < before;
+  if (ok && removed) {
+    const site = findSite(j.siteId);
+    logAudit({
+      category: 'external', action: 'remove',
+      target: removed.name + ' / ' + (site?.site.name || '') + ' ' + j.date + ' ' + j.slot,
+      targetId: jobId,
+      summary: removed.phone,
+    });
+  }
+  return ok;
 }
 function toggleExternalAttended(jobId, extId) {
   const j = findJob(jobId); if (!j || !Array.isArray(j.externalWorkers)) return null;
@@ -540,12 +617,35 @@ function addWorkerWarning(workerId, reason, siteId, memo, by) {
     w.negotiation = true;
     escalated = true;
   }
+  const siteName = siteId ? (findSite(siteId)?.site.name || '') : '';
+  logAudit({
+    category: 'warning', action: 'add',
+    target: w.name + (siteName ? ' / ' + siteName : ''),
+    targetId: workerId,
+    summary: '사유: ' + reason + ' · 누적 ' + w.warnings + '/' + POLICY.WARN_LIMIT + (escalated ? ' (협의대상 자동 등록)' : '') + (memo ? ' · ' + memo : ''),
+    by: by || '테스트(마스터)',
+  });
+  if (escalated) {
+    logAudit({
+      category: 'negotiation', action: 'auto',
+      target: w.name,
+      targetId: workerId,
+      summary: '경고 ' + POLICY.WARN_LIMIT + '회 누적 — 자동 협의대상 등록',
+      by: by || '테스트(마스터)',
+    });
+  }
   return { worker: w, escalated };
 }
 function releaseNegotiation(workerId) {
   const w = findWorker(workerId); if (!w) return null;
   w.negotiation = false;
   w.warnings = 0;
+  logAudit({
+    category: 'negotiation', action: 'release',
+    target: w.name,
+    targetId: workerId,
+    summary: '협의대상 해제 (마스터 권한)',
+  });
   return w;
 }
 
@@ -784,6 +884,86 @@ function _seedHistoricalJobs() {
   }
 }
 
+// 1D. 감사로그 시드 — 과거 90일 액션 30+건 골고루 분포
+function _seedAuditLogs() {
+  const allSites = Object.values(worksites).flatMap(p => p.sites);
+  const actors = [
+    { name: '테스트(마스터)',   role: 'master' },
+    { name: '김관리(1등급)',    role: 'admin1' },
+    { name: '박관리(1등급)',    role: 'admin1' },
+    { name: '최관리(1등급)',    role: 'admin1' },
+    { name: '이담당(2등급)',    role: 'admin2' },
+    { name: '정담당(2등급)',    role: 'admin2' },
+    { name: '한담당(2등급)',    role: 'admin2' },
+  ];
+  const seedActions = [
+    // 신청 처리
+    { c: 'application', a: 'approve', tFn: (s,w) => w.name + ' / ' + s.name, sm: '12h 이내 신청 — 직접 검토 후 승인' },
+    { c: 'application', a: 'approve', tFn: (s,w) => w.name + ' / ' + s.name, sm: '협의대상 이력 검토 후 승인' },
+    { c: 'application', a: 'reject',  tFn: (s,w) => w.name + ' / ' + s.name, sm: '주 4일 초과 — 다음 주 근무 권고' },
+    { c: 'application', a: 'reject',  tFn: (s,w) => w.name + ' / ' + s.name, sm: '시간대 중복 신청' },
+    // 경고
+    { c: 'warning', a: 'add', tFn: (s,w) => w.name + ' / ' + s.name, sm: '사유: 무단결근 · 누적 1/3' },
+    { c: 'warning', a: 'add', tFn: (s,w) => w.name + ' / ' + s.name, sm: '사유: 12h 이내 취소 · 누적 2/3' },
+    { c: 'warning', a: 'add', tFn: (s,w) => w.name + ' / ' + s.name, sm: '사유: 지각 · 누적 1/3' },
+    // 협의대상
+    { c: 'negotiation', a: 'auto',     tFn: (s,w) => w.name, sm: '경고 3회 누적 — 자동 협의대상 등록' },
+    { c: 'negotiation', a: 'manual',   tFn: (s,w) => w.name, sm: '수동 등록 — 무단결근 패턴 확인' },
+    { c: 'negotiation', a: 'release',  tFn: (s,w) => w.name, sm: '협의대상 해제 (마스터 권한)' },
+    // GPS
+    { c: 'gps', a: 'approve', tFn: (s,w,j) => w.name + ' / ' + s.name + ' ' + j.date, sm: '거리 45m · 휴게실 위치 인정 (포인트 2,500P 지급)' },
+    { c: 'gps', a: 'approve', tFn: (s,w,j) => w.name + ' / ' + s.name + ' ' + j.date, sm: '거리 78m · 사유 인정 (포인트 2,000P 지급)' },
+    { c: 'gps', a: 'deny',    tFn: (s,w,j) => w.name + ' / ' + s.name + ' ' + j.date, sm: '거리 820m · 사유 불명확 — 포인트 미지급' },
+    // 포인트
+    { c: 'point', a: 'done',     tFn: (s,w) => w.name, sm: '50,000P 출금 완료 — 국민은행' },
+    { c: 'point', a: 'done',     tFn: (s,w) => w.name, sm: '30,000P 출금 완료 — 농협' },
+    { c: 'point', a: 'failed',   tFn: (s,w) => w.name, sm: '20,000P 실패 — 계좌번호 오류' },
+    { c: 'point', a: 'deduct',   tFn: (s,w) => w.name, sm: '1,000P 차감 — 단순 변심 취소 (정책 자동)' },
+    // 공고
+    { c: 'job', a: 'create',    tFn: (s,w,j) => s.name + ' ' + j.date + ' ' + j.slot, sm: '모집 ' + 20 + '명 · ' + 110000 + '원' },
+    { c: 'job', a: 'edit',      tFn: (s,w,j) => s.name + ' ' + j.date + ' ' + j.slot, sm: '담당자 전화번호 변경' },
+    { c: 'job', a: 'duplicate', tFn: (s,w,j) => s.name + ' ' + j.date + ' ' + j.slot, sm: '복제 등록' },
+    // 외부 구인
+    { c: 'external', a: 'add',  tFn: (s,w,j) => '김외부 / ' + s.name + ' ' + j.date, sm: '010-1111-2222 · 본사 직접 모집' },
+    // 알림
+    { c: 'notification', a: 'send', tFn: () => '전체 근무자', sm: '서비스 공지 · 야간 제한 준수' },
+    { c: 'notification', a: 'send', tFn: () => '협의대상 5명', sm: '긴급 구인 · 곤지암 4/24 새벽' },
+    // 관리자
+    { c: 'admin', a: 'create', tFn: () => '신규관리자(2등급)', sm: '담당 근무지: 군포_a, 군포_b' },
+    { c: 'admin', a: 'toggle', tFn: () => '구담당(2등급)', sm: '계정 비활성화' },
+    // 근무지
+    { c: 'site', a: 'edit_gps', tFn: (s) => s.name, sm: 'GPS 영역 재설정 — ' + 5 + '꼭짓점' },
+  ];
+
+  for (let i = 0; i < 38; i++) {
+    const seed = i * 17 + 11;
+    const tpl = seedActions[seed % seedActions.length];
+    const actor = actors[seed % actors.length];
+    const site = allSites[seed % allSites.length];
+    const w = workers[seed % workers.length];
+    const j = jobs[seed % jobs.length];
+    const daysAgo = (seed * 2) % 60 + 1;
+    const d = new Date(TODAY);
+    d.setDate(d.getDate() - daysAgo);
+    d.setHours((seed % 12) + 8, (seed * 7) % 60, 0, 0);
+    const at = d.toISOString().slice(0,10) + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    const target = tpl.tFn(site, w, j);
+    auditLogs.push({
+      id: 'aud_seed_' + i,
+      at,
+      category: tpl.c,
+      action:   tpl.a,
+      target,
+      targetId: '',
+      summary:  tpl.sm,
+      by:       actor.name,
+      byRole:   actor.role,
+    });
+  }
+  // 최신순 정렬
+  auditLogs.sort((a, b) => b.at.localeCompare(a.at));
+}
+
 // 모든 시뮬 데이터 생성 (data.js 로드 직후 1회 실행)
 function seedFakeData() {
   _seedHistoricalJobs();      // 과거 공고 먼저 (applications 시뮬에 포함되도록)
@@ -791,5 +971,6 @@ function seedFakeData() {
   _seedPointTxs();            // 워커별 1년치 출금 이력
   _seedGpsRequests();         // 과거 GPS 요청 처리 이력
   _seedInquiries();           // 다양한 카테고리 문의
+  _seedAuditLogs();           // 과거 감사 로그
 }
 seedFakeData();
