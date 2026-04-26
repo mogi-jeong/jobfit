@@ -31,6 +31,201 @@ const worksites = {
   }
 };
 
+// ───────────────────────────────────────────────────────────
+// 통근버스 노선 시드 — 근무지별 노선/정거장/시간표
+// 데이터 모델: busRoutesBySite[siteId] = [{ id, name, weekdays, cycleMinutes, departures, stops:[{order,name,lat,lng,offsetMin}], memo }]
+// 실 시간표 수령 후 교체 예정 — 현재는 시연용 임의 좌표/시각
+//
+// offsetMin 패턴: stop의 시각 = departureTime + offsetMin
+//   → 차수가 6번 돌든 N번 돌든 departures 배열만 바꾸면 모든 정거장 시각 자동 계산
+// ───────────────────────────────────────────────────────────
+const busRoutesBySite = {
+  // CJ 곤지암 — 노선 2개 (강남 출발 / 잠실 출발)
+  gonjiam: [
+    { id: 'br_gonjiam_a', name: 'A노선 (강남↔곤지암)', weekdays: ['MON','TUE','WED','THU','FRI'], cycleMinutes: 240,
+      departures: ['04:00','08:00','12:00','16:00','20:00','00:00'], memo: '명절·악천후 시 시간 변경 가능 (공지사항 확인)',
+      stops: [
+        { order: 1, name: '강남역 7번 출구',   lat: 37.4979, lng: 127.0276, offsetMin:   0 },
+        { order: 2, name: '잠실역 1번 출구',   lat: 37.5133, lng: 127.1000, offsetMin:  30 },
+        { order: 3, name: '천호역 5번 출구',   lat: 37.5384, lng: 127.1238, offsetMin:  60 },
+        { order: 4, name: '강일역',             lat: 37.5572, lng: 127.1762, offsetMin:  90 },
+        { order: 5, name: '하남 미사역',        lat: 37.5631, lng: 127.1934, offsetMin: 120 },
+        { order: 6, name: '광주 시청',          lat: 37.4290, lng: 127.2553, offsetMin: 150 },
+        { order: 7, name: '도척면 입구',        lat: 37.3580, lng: 127.2520, offsetMin: 180 },
+        { order: 8, name: '진우리 마을회관',    lat: 37.3590, lng: 127.2585, offsetMin: 210 },
+        { order: 9, name: '곤지암 MegaHub',     lat: 37.3575, lng: 127.2600, offsetMin: 240 },
+      ] },
+    { id: 'br_gonjiam_b', name: 'B노선 (사당↔곤지암)', weekdays: ['MON','TUE','WED','THU','FRI','SAT'], cycleMinutes: 240,
+      departures: ['05:00','09:00','13:00','17:00','21:00','01:00'], memo: '주말 토요일 운행 / 일요일 휴무',
+      stops: [
+        { order: 1, name: '사당역 4번 출구',   lat: 37.4769, lng: 126.9816, offsetMin:   0 },
+        { order: 2, name: '양재역 8번 출구',   lat: 37.4843, lng: 127.0344, offsetMin:  25 },
+        { order: 3, name: '수서역',             lat: 37.4866, lng: 127.1019, offsetMin:  55 },
+        { order: 4, name: '복정역',             lat: 37.4691, lng: 127.1265, offsetMin:  85 },
+        { order: 5, name: '경기광주역',         lat: 37.3938, lng: 127.2580, offsetMin: 145 },
+        { order: 6, name: '광주 시청',          lat: 37.4290, lng: 127.2553, offsetMin: 175 },
+        { order: 7, name: '도척면 입구',        lat: 37.3580, lng: 127.2520, offsetMin: 205 },
+        { order: 8, name: '곤지암 MegaHub',     lat: 37.3575, lng: 127.2600, offsetMin: 240 },
+      ] },
+  ],
+  // CJ 용인
+  yongin: [
+    { id: 'br_yongin_a', name: '수원역↔용인 Hub', weekdays: ['MON','TUE','WED','THU','FRI'], cycleMinutes: 240,
+      departures: ['04:30','08:30','12:30','16:30','20:30','00:30'], memo: '',
+      stops: [
+        { order: 1, name: '수원역 6번 출구',   lat: 37.2657, lng: 127.0017, offsetMin:   0 },
+        { order: 2, name: '영통역',             lat: 37.2509, lng: 127.0746, offsetMin:  30 },
+        { order: 3, name: '용인 시청',          lat: 37.2412, lng: 127.1776, offsetMin:  90 },
+        { order: 4, name: '처인구청',           lat: 37.2348, lng: 127.2002, offsetMin: 120 },
+        { order: 5, name: '백암면 입구',        lat: 37.1450, lng: 127.2550, offsetMin: 165 },
+        { order: 6, name: '양지면 사거리',      lat: 37.2530, lng: 127.0420, offsetMin: 195 },
+        { order: 7, name: '양지면 IC',          lat: 37.2614, lng: 127.0322, offsetMin: 220 },
+        { order: 8, name: '용인 Hub',           lat: 37.2636, lng: 127.0286, offsetMin: 240 },
+      ] },
+  ],
+  // CJ 군포_a
+  gunpo_a: [
+    { id: 'br_gunpoA_a', name: '안양역↔군포 Hub_A', weekdays: ['MON','TUE','WED','THU','FRI'], cycleMinutes: 240,
+      departures: ['04:00','08:00','12:00','16:00','20:00','00:00'], memo: '',
+      stops: [
+        { order: 1, name: '안양역 1번 출구',   lat: 37.4039, lng: 126.9226, offsetMin:   0 },
+        { order: 2, name: '명학역',             lat: 37.3893, lng: 126.9376, offsetMin:  30 },
+        { order: 3, name: '금정역 4번 출구',   lat: 37.3722, lng: 126.9444, offsetMin:  60 },
+        { order: 4, name: '산본역',             lat: 37.3582, lng: 126.9326, offsetMin:  90 },
+        { order: 5, name: '대야미역',           lat: 37.3270, lng: 126.9173, offsetMin: 130 },
+        { order: 6, name: '반월역',             lat: 37.3145, lng: 126.8843, offsetMin: 165 },
+        { order: 7, name: '군포 부곡지구 입구', lat: 37.3530, lng: 126.9370, offsetMin: 210 },
+        { order: 8, name: '군포 Hub_A',         lat: 37.3547, lng: 126.9386, offsetMin: 240 },
+      ] },
+  ],
+  // CJ 이천
+  icheon: [
+    { id: 'br_icheon_a', name: '강남↔이천 MpHub', weekdays: ['MON','TUE','WED','THU','FRI'], cycleMinutes: 240,
+      departures: ['04:00','08:00','12:00','16:00','20:00','00:00'], memo: '한파·폭설 시 일시 운행 중단',
+      stops: [
+        { order: 1, name: '강남역 11번 출구',  lat: 37.4979, lng: 127.0290, offsetMin:   0 },
+        { order: 2, name: '잠실 환승센터',     lat: 37.5133, lng: 127.1000, offsetMin:  30 },
+        { order: 3, name: '하남 검단산역',     lat: 37.5454, lng: 127.1947, offsetMin:  65 },
+        { order: 4, name: '광주 시청',          lat: 37.4290, lng: 127.2553, offsetMin: 105 },
+        { order: 5, name: '곤지암 IC',          lat: 37.3540, lng: 127.2700, offsetMin: 135 },
+        { order: 6, name: '이천 시외터미널',   lat: 37.2716, lng: 127.4419, offsetMin: 180 },
+        { order: 7, name: '부발읍 사거리',      lat: 37.2884, lng: 127.4602, offsetMin: 210 },
+        { order: 8, name: '이천 MpHub',         lat: 37.2896, lng: 127.4682, offsetMin: 240 },
+      ] },
+  ],
+  // CJ 안성
+  anseong: [
+    { id: 'br_anseong_a', name: '천안↔안성 MpHub', weekdays: ['MON','TUE','WED','THU','FRI'], cycleMinutes: 240,
+      departures: ['04:30','08:30','12:30','16:30','20:30','00:30'], memo: '',
+      stops: [
+        { order: 1, name: '천안역 동부광장',   lat: 36.8094, lng: 127.1469, offsetMin:   0 },
+        { order: 2, name: '두정역',             lat: 36.8316, lng: 127.1450, offsetMin:  30 },
+        { order: 3, name: '직산역',             lat: 36.8770, lng: 127.1480, offsetMin:  60 },
+        { order: 4, name: '성환역',             lat: 36.9145, lng: 127.1340, offsetMin:  85 },
+        { order: 5, name: '평택대학교',         lat: 36.9893, lng: 127.0827, offsetMin: 120 },
+        { order: 6, name: '평택 안중읍',        lat: 36.9520, lng: 126.9530, offsetMin: 165 },
+        { order: 7, name: '공도 IC',            lat: 36.9985, lng: 127.1820, offsetMin: 210 },
+        { order: 8, name: '안성 MpHub',         lat: 37.0072, lng: 127.1875, offsetMin: 240 },
+      ] },
+  ],
+  // 롯데 진천
+  jincheon: [
+    { id: 'br_jincheon_a', name: '청주↔진천 MegaHub', weekdays: ['MON','TUE','WED','THU','FRI'], cycleMinutes: 240,
+      departures: ['04:00','08:00','12:00','16:00','20:00','00:00'], memo: '',
+      stops: [
+        { order: 1, name: '청주역 광장',       lat: 36.6308, lng: 127.4486, offsetMin:   0 },
+        { order: 2, name: '오송역',             lat: 36.6195, lng: 127.3247, offsetMin:  30 },
+        { order: 3, name: '오창 IC',            lat: 36.7156, lng: 127.4319, offsetMin:  65 },
+        { order: 4, name: '증평 IC',            lat: 36.7778, lng: 127.5811, offsetMin: 105 },
+        { order: 5, name: '진천 시청',          lat: 36.8554, lng: 127.4360, offsetMin: 145 },
+        { order: 6, name: '문백면 입구',        lat: 36.9000, lng: 127.4400, offsetMin: 180 },
+        { order: 7, name: '이월면 주민센터',   lat: 36.9050, lng: 127.4310, offsetMin: 210 },
+        { order: 8, name: '진천 MegaHub',       lat: 36.9078, lng: 127.4322, offsetMin: 240 },
+      ] },
+  ],
+  // 롯데 군포
+  gunpo_l: [
+    { id: 'br_gunpoL_a', name: '사당↔군포 Hub', weekdays: ['MON','TUE','WED','THU','FRI'], cycleMinutes: 240,
+      departures: ['05:00','09:00','13:00','17:00','21:00','01:00'], memo: '',
+      stops: [
+        { order: 1, name: '사당역 6번 출구',   lat: 37.4769, lng: 126.9816, offsetMin:   0 },
+        { order: 2, name: '관악역',             lat: 37.4471, lng: 126.9249, offsetMin:  35 },
+        { order: 3, name: '안양역',             lat: 37.4039, lng: 126.9226, offsetMin:  65 },
+        { order: 4, name: '명학역',             lat: 37.3893, lng: 126.9376, offsetMin:  90 },
+        { order: 5, name: '금정역',             lat: 37.3722, lng: 126.9444, offsetMin: 120 },
+        { order: 6, name: '의왕역',             lat: 37.3437, lng: 126.9683, offsetMin: 165 },
+        { order: 7, name: '군포 당정동 입구',   lat: 37.3478, lng: 126.9420, offsetMin: 210 },
+        { order: 8, name: '군포 Hub',           lat: 37.3489, lng: 126.9428, offsetMin: 240 },
+      ] },
+  ],
+};
+
+// 헬퍼 — 근무지별 노선 조회
+function getBusRoutes(siteId) {
+  return busRoutesBySite[siteId] || [];
+}
+
+// 정거장 도착 시각 계산: '04:00' + 30분 → '04:30'
+function busStopArriveTime(departureTime, offsetMin) {
+  const [h, m] = departureTime.split(':').map(Number);
+  const total = (h * 60 + m + offsetMin) % (24 * 60);
+  return String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
+}
+
+// 두 좌표 간 직선 거리 (m) — Haversine
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+}
+
+// 알바생 위치 기반 추천 — 가장 가까운 정거장 + 근무에 맞는 차수
+// jobStartHHMM: 공고 시작 시각 ('07:00')
+// arriveBufferMin: 도착 버퍼 (기본 15분 일찍 도착)
+function recommendBusForWorker(workerLat, workerLng, siteId, jobStartHHMM, arriveBufferMin = 15) {
+  const routes = getBusRoutes(siteId);
+  if (routes.length === 0) return null;
+  const [jh, jm] = jobStartHHMM.split(':').map(Number);
+  const arriveDeadlineMin = jh * 60 + jm - arriveBufferMin;
+
+  const candidates = [];
+  routes.forEach(route => {
+    if (!route.stops || route.stops.length === 0) return;
+    const lastStop = route.stops[route.stops.length - 1];
+    // 가장 가까운 정거장 (마지막 = 근무지 도착 정거장 제외)
+    const usableStops = route.stops.slice(0, -1);
+    const nearestStop = usableStops
+      .map(s => ({ ...s, distanceM: haversineMeters(workerLat, workerLng, s.lat, s.lng) }))
+      .sort((a, b) => a.distanceM - b.distanceM)[0];
+    if (!nearestStop) return;
+    // 도착 마감 이전 가장 늦은(=효율적) 차수 찾기 — 분 단위 정수로 정렬
+    const lastArriveOffset = lastStop.offsetMin;
+    const validDepartures = route.departures
+      .map(dep => {
+        const [dh, dm] = dep.split(':').map(Number);
+        return { dep, mins: dh * 60 + dm };
+      })
+      .filter(d => (d.mins + lastArriveOffset) <= arriveDeadlineMin)
+      .sort((a, b) => a.mins - b.mins);
+    if (validDepartures.length === 0) return;
+    const bestDeparture = validDepartures[validDepartures.length - 1].dep;
+    const [dh, dm] = bestDeparture.split(':').map(Number);
+    const stopBoardMin = dh * 60 + dm + nearestStop.offsetMin;
+    const stopBoardTime = String(Math.floor(stopBoardMin / 60) % 24).padStart(2,'0') + ':' + String(stopBoardMin % 60).padStart(2,'0');
+    const siteArrive = busStopArriveTime(bestDeparture, lastArriveOffset);
+    candidates.push({
+      route, nearestStop, bestDeparture, stopBoardTime, siteArriveTime: siteArrive,
+      bufferMin: arriveDeadlineMin - (dh * 60 + dm + lastArriveOffset) + arriveBufferMin,
+    });
+  });
+  if (candidates.length === 0) return null;
+  // 가장 짧은 도보거리 + 합리적 버퍼
+  return candidates.sort((a, b) => a.nearestStop.distanceM - b.nearestStop.distanceM)[0];
+}
+
 // 오늘 기준(개발 중): 2026-04-23
 const TODAY = '2026-04-23';
 

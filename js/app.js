@@ -201,6 +201,66 @@
             ${found.partnerKey==='convention' ? `<div class="ws-info-row"><div class="ws-info-label">지하철 가이드</div><div class="ws-info-val"><a onclick="window.__wsSubwayGuide(\'${s.id}\')" style="color:#2563EB; cursor:pointer; text-decoration:underline;">경로 안내 보기</a> <span style="font-size:11px; color:#6B7684;">(N17 이월)</span></div></div>` : ''}
           </div>
 
+          ${s.bus ? `
+          <div class="jf-panel" style="margin-bottom: 12px; border-left: 3px solid #14B8A6;">
+            <div class="ws-section-title">
+              <span>🚌 통근버스 노선 <span style="font-size:11px; color:#6B7684; font-weight:400;">${getBusRoutes(s.id).length}개 노선</span></span>
+              <span style="font-size:11px; color:#6B7684;">(시간표 수령 후 편집 예정)</span>
+            </div>
+            ${(() => {
+              const routes = getBusRoutes(s.id);
+              if (routes.length === 0) {
+                return '<div style="padding:14px; background:#F9FAFB; border-radius:6px; font-size:12px; color:#6B7684; text-align:center;">⏳ 통근버스 시간표 수령 대기 중<br><span style="font-size:11px;">파트너사로부터 정거장 위치·시간표를 받으면 입력됩니다</span></div>';
+              }
+              const WD_LABELS = { MON:'월', TUE:'화', WED:'수', THU:'목', FRI:'금', SAT:'토', SUN:'일' };
+              return routes.map((rt, idx) => `
+                <div style="border:0.5px solid rgba(0,0,0,0.08); border-radius:8px; padding:12px; margin-bottom:${idx===routes.length-1?0:8}px; background:#fff;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <div style="font-size:13px; font-weight:600; color:#0F766E;">${esc(rt.name)}</div>
+                    <span style="font-size:10px; color:#6B7684; padding:2px 6px; background:#F0FDFA; border-radius:3px;">한 바퀴 ${rt.cycleMinutes}분</span>
+                  </div>
+                  <div style="display:grid; grid-template-columns: 70px 1fr; gap:4px 10px; font-size:11px; color:#374151; margin-bottom:8px;">
+                    <div style="color:#6B7684;">운행 요일</div>
+                    <div>${rt.weekdays.map(w => WD_LABELS[w] || w).join(' · ')}</div>
+                    <div style="color:#6B7684;">일일 운행</div>
+                    <div style="font-family:'SF Mono',Monaco,monospace;">${rt.departures.join(' · ')} <span style="color:#6B7684;">(${rt.departures.length}회)</span></div>
+                    <div style="color:#6B7684;">정거장</div>
+                    <div>${rt.stops.length}개</div>
+                  </div>
+                  <details style="border-top:0.5px solid rgba(0,0,0,0.06); padding-top:8px;">
+                    <summary style="font-size:11px; color:#2563EB; cursor:pointer; user-select:none;">📍 정거장 + 시각 보기</summary>
+                    <div style="margin-top:8px;">
+                      ${rt.stops.map(stop => `
+                        <div style="display:grid; grid-template-columns: 22px 1fr 60px; gap:8px; padding:5px 0; border-bottom:0.5px dashed rgba(0,0,0,0.05); font-size:11px; align-items:center;">
+                          <div style="text-align:center; color:#6B7684; font-weight:600;">${stop.order}</div>
+                          <div>
+                            <div style="color:#111827; font-weight:500;">${esc(stop.name)}</div>
+                            <div style="color:#9CA3AF; font-family:'SF Mono',Monaco,monospace; font-size:10px; margin-top:1px;">${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}</div>
+                          </div>
+                          <div style="text-align:right; color:#0F766E; font-family:'SF Mono',Monaco,monospace; font-weight:500;" title="첫 출발 + ${stop.offsetMin}분">+${stop.offsetMin}분</div>
+                        </div>
+                      `).join('')}
+                      <div style="margin-top:8px; padding:6px 8px; background:#F0FDFA; border-radius:4px; font-size:10px; color:#0F766E; line-height:1.5;">
+                        💡 각 정거장 도착 시각 = 첫 정거장 출발 시각 + offset<br>
+                        예: ${rt.departures[0]} 차수 → 마지막 정거장 도착 ${(() => {
+                          const [h, m] = rt.departures[0].split(':').map(Number);
+                          const lastOffset = rt.stops[rt.stops.length-1].offsetMin;
+                          const total = (h*60 + m + lastOffset) % (24*60);
+                          return String(Math.floor(total/60)).padStart(2,'0') + ':' + String(total%60).padStart(2,'0');
+                        })()}
+                      </div>
+                    </div>
+                  </details>
+                  ${rt.memo ? `<div style="margin-top:8px; padding:6px 8px; background:#FEF3C7; border-radius:4px; font-size:11px; color:#92400E;">⚠ ${esc(rt.memo)}</div>` : ''}
+                </div>
+              `).join('');
+            })()}
+            <div style="margin-top:10px; padding:8px 10px; background:#F9FAFB; border-radius:6px; font-size:11px; color:#6B7684; line-height:1.5;">
+              💡 알바생은 공고 상세에서 [🚌 통근버스 가이드]를 통해 현재 위치 기반 추천 노선·차수를 확인합니다.
+            </div>
+          </div>
+          ` : ''}
+
           <div class="jf-panel">
             <div class="ws-section-title">이력 & 통계</div>
             <div class="ws-stat-row">
@@ -7713,8 +7773,10 @@
   // 디자인 레퍼런스 용도 — 실제 Flutter 앱 재구현 시 이 흐름을 기반으로
   // ───────────────────────────────────────────────────────
   const appPreviewState = {
-    tab: 'home',      // home / jobs / mywork / points / profile
+    tab: 'home',      // home / jobs / mywork / points / profile / busguide
     workerId: 'w007', // 시뮬 알바생: 한지민 (근무 이력 풍부, 62회, 132,000P)
+    busguideJobId: null,  // 가이드 화면에서 보여줄 공고 ID
+    busguideOrigin: { name: '강남역 11번 출구 (현재 위치 시뮬)', lat: 37.4979, lng: 127.0276 },  // 알바생 위치 시뮬
   };
 
   function renderAppPreview() {
@@ -7802,12 +7864,139 @@
 
   function renderPhoneScreen(w) {
     const t = appPreviewState.tab;
-    if (t === 'home')    return renderApHome(w);
-    if (t === 'jobs')    return renderApJobs(w);
-    if (t === 'mywork')  return renderApMyWork(w);
-    if (t === 'points')  return renderApPoints(w);
-    if (t === 'profile') return renderApProfile(w);
+    if (t === 'home')     return renderApHome(w);
+    if (t === 'jobs')     return renderApJobs(w);
+    if (t === 'mywork')   return renderApMyWork(w);
+    if (t === 'points')   return renderApPoints(w);
+    if (t === 'profile')  return renderApProfile(w);
+    if (t === 'busguide') return renderApBusGuide(w);
     return renderApHome(w);
+  }
+
+  // ─── 통근버스 가이드 화면 (알바생 앱 미리보기) ───
+  function renderApBusGuide(w) {
+    const jobId = appPreviewState.busguideJobId;
+    const j = jobId ? findJob(jobId) : null;
+    const site = j ? findSite(j.siteId) : null;
+    const origin = appPreviewState.busguideOrigin;
+
+    if (!j || !site) {
+      return `
+        ${phoneStatusBar()}
+        <div class="mobile-app-header">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:18px; cursor:pointer;" onclick="window.__apTab('mywork')">←</span>
+            <div>
+              <div class="mobile-app-header-title">통근버스 가이드</div>
+              <div class="mobile-app-header-sub">공고를 선택해주세요</div>
+            </div>
+          </div>
+        </div>
+        <div class="mobile-app-body">
+          <div class="app-card" style="text-align:center; color:#9CA3AF; font-size:11px;">[내 근무] 탭에서 통근버스 운영 공고의<br>[🚌 가이드] 버튼을 눌러주세요</div>
+        </div>
+        ${phoneBottomNav('mywork')}
+      `;
+    }
+
+    const routes = getBusRoutes(site.site.id);
+    const rec = recommendBusForWorker(origin.lat, origin.lng, site.site.id, j.start, 15);
+    const reward = pointRewardFor(j);
+
+    let body = '';
+
+    // 헤더 카드 (공고 정보)
+    body += `
+      <div class="app-card" style="background:linear-gradient(135deg,#0F766E,#14B8A6); color:#fff; border-radius:14px;">
+        <div style="font-size:11px; opacity:0.85;">${esc(site.partner)}</div>
+        <div style="font-size:14px; font-weight:600; margin-top:2px;">${esc(site.site.name)}</div>
+        <div style="font-size:11px; opacity:0.95; margin-top:6px;">📅 ${j.date} · ${j.slot} ${j.start}~${j.end}</div>
+        <div style="font-size:11px; opacity:0.85; margin-top:2px;">💰 ${j.wage.toLocaleString()}원 · 잡핏 +${reward.toLocaleString()}P</div>
+      </div>
+    `;
+
+    // 현재 위치 카드
+    body += `
+      <div class="app-card" style="margin-top:8px;">
+        <div style="font-size:10px; color:#6B7684; margin-bottom:3px;">📍 현재 위치 (시뮬)</div>
+        <div style="font-size:12px; font-weight:500; color:#111827;">${esc(origin.name)}</div>
+      </div>
+    `;
+
+    // 추천 카드
+    if (rec) {
+      const stopArrive = busStopArriveTime(rec.bestDeparture, rec.nearestStop.offsetMin);
+      body += `
+        <div class="app-card" style="margin-top:8px; border:1.5px solid #14B8A6;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="font-size:11px; color:#0F766E; font-weight:600;">⭐ 추천 차수</div>
+            <span style="font-size:9px; padding:2px 6px; background:#F0FDFA; color:#0F766E; border-radius:3px;">${esc(rec.route.name)}</span>
+          </div>
+          <div style="background:#F0FDFA; border-radius:8px; padding:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div style="font-size:10px; color:#6B7684;">탑승</div>
+                <div style="font-size:14px; font-weight:600; color:#0F766E; font-family:'SF Mono',Monaco,monospace;">${stopArrive}</div>
+                <div style="font-size:10px; color:#374151; margin-top:2px;">${esc(rec.nearestStop.name)}</div>
+                <div style="font-size:9px; color:#9CA3AF;">도보 거리 약 ${rec.nearestStop.distanceM}m</div>
+              </div>
+              <div style="font-size:18px; color:#14B8A6;">→</div>
+              <div style="text-align:right;">
+                <div style="font-size:10px; color:#6B7684;">근무지 도착</div>
+                <div style="font-size:14px; font-weight:600; color:#111827; font-family:'SF Mono',Monaco,monospace;">${rec.siteArriveTime}</div>
+                <div style="font-size:10px; color:#374151; margin-top:2px;">${esc(site.site.name)}</div>
+                <div style="font-size:9px; color:#16A34A;">근무 ${rec.bufferMin}분 전 도착</div>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex; gap:6px; margin-top:8px;">
+            <button style="flex:1; background:#2563EB; color:#fff; border:none; border-radius:6px; padding:8px; font-size:11px; font-weight:500;">🗺 정류장까지 길찾기</button>
+            <button style="flex:1; background:#F3F4F6; color:#374151; border:none; border-radius:6px; padding:8px; font-size:11px;">📋 시간표</button>
+          </div>
+        </div>
+      `;
+    } else {
+      body += `
+        <div class="app-card" style="margin-top:8px; background:#FEF2F2; border:1px solid #FCA5A5;">
+          <div style="font-size:11px; color:#991B1B; font-weight:600; margin-bottom:3px;">⚠ 추천 가능한 차수가 없습니다</div>
+          <div style="font-size:10px; color:#7F1D1D;">근무 시작 시각이 너무 이른 시간이거나 운행 시간 외입니다. 다른 교통수단을 이용해주세요.</div>
+        </div>
+      `;
+    }
+
+    // 다른 차수 / 노선
+    body += `<div class="app-section-title" style="margin-top:12px;">전체 시간표 (${routes.length}개 노선)</div>`;
+    routes.forEach(rt => {
+      const isRecommended = rec && rec.route.id === rt.id;
+      body += `
+        <div class="app-card" style="margin-bottom:6px; ${isRecommended ? 'border-left:3px solid #14B8A6;' : ''}">
+          <div style="font-size:11px; font-weight:600; color:#111827;">${esc(rt.name)} ${isRecommended ? '<span style="font-size:9px; color:#0F766E;">⭐</span>' : ''}</div>
+          <div style="font-size:9px; color:#6B7684; margin-top:2px;">한 바퀴 ${rt.cycleMinutes}분 · ${rt.departures.length}회 운행</div>
+          <div style="font-family:'SF Mono',Monaco,monospace; font-size:10px; color:#374151; margin-top:4px;">출발: ${rt.departures.join(' / ')}</div>
+        </div>
+      `;
+    });
+
+    body += `
+      <div style="margin-top:10px; padding:8px 10px; background:#F0F9FF; border-radius:6px; font-size:9px; color:#1E40AF; line-height:1.5;">
+        💡 시뮬 데이터입니다. 실제 시간표는 파트너사 제공 시간표 수령 후 반영 예정입니다.
+      </div>
+    `;
+
+    return `
+      ${phoneStatusBar()}
+      <div class="mobile-app-header" style="background:linear-gradient(180deg,#fff,#F0FDFA); border-bottom:0.5px solid #99F6E4;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:18px; cursor:pointer;" onclick="window.__apTab('mywork')">←</span>
+          <div>
+            <div class="mobile-app-header-title">🚌 통근버스 가이드</div>
+            <div class="mobile-app-header-sub">현재 위치 기반 추천 차수</div>
+          </div>
+        </div>
+      </div>
+      <div class="mobile-app-body">${body}</div>
+      ${phoneBottomNav('mywork')}
+    `;
   }
 
   // ─── 앱 미리보기 데이터 계산 헬퍼 ──────────────────────────
@@ -7995,6 +8184,7 @@
           const subLine = a.status === 'pending'
             ? '12h 이내 신청 · 관리자 검토 중'
             : `${a.site.site.bus ? '통근버스 운영' : '통근버스 없음'} · 담당: ${a.job.contact || '-'}`;
+          const hasBus = a.site.site.bus && getBusRoutes(a.site.site.id).length > 0;
           return `
             <div class="app-card" style="border-left:3px solid ${borderColor};">
               <div class="app-card-title">${a.site.site.name}</div>
@@ -8003,8 +8193,9 @@
                 ${a.job.date} · ${a.job.slot} ${a.job.start}~${a.job.end}<br>
                 ${subLine}
               </div>
-              <div style="display:flex; gap:6px; margin-top:8px;">
+              <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
                 ${a.status === 'approved' ? '<button style="flex:1; background:#F3F4F6; color:#374151; border:none; border-radius:6px; padding:6px; font-size:10px;">계약서</button>' : ''}
+                ${hasBus && a.status !== 'rejected' ? `<button style="flex:1; background:#F0FDFA; color:#0F766E; border:0.5px solid #14B8A6; border-radius:6px; padding:6px; font-size:10px; font-weight:500;" onclick="window.__apOpenBusGuide('${a.job.id}')">🚌 가이드</button>` : ''}
                 ${cancelReject(a.status)}
                 ${a.status === 'pending' ? '<button style="flex:1; background:#F3F4F6; color:#374151; border:none; border-radius:6px; padding:6px; font-size:10px;">신청 취소</button>' : ''}
               </div>
@@ -8260,6 +8451,11 @@
 
   window.__apTab = function(tab) { appPreviewState.tab = tab; renderAppPreview(); };
   window.__apSet = function(key, val) { appPreviewState[key] = val; renderAppPreview(); };
+  window.__apOpenBusGuide = function(jobId) {
+    appPreviewState.busguideJobId = jobId;
+    appPreviewState.tab = 'busguide';
+    renderAppPreview();
+  };
 
   // ───────────────────────────────────────────────────────
   // 모바일 관리자 뷰 (현장 2등급 관리자 — 폰으로 처리)
