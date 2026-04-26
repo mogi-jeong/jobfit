@@ -579,6 +579,25 @@
   .form-slot-row input, .form-slot-row select { height: 34px; font-size: 12px; padding: 0 8px; }
   .form-slot-head { font-size: 11px; color: #6B7684; font-weight: 500; padding-bottom: 4px; }
 
+  /* 알림 발송 미리보기 (잠금화면 알림 카드) */
+  .npn-frame { width: 280px; flex-shrink: 0; background: linear-gradient(155deg, #4F46E5 0%, #1E40AF 50%, #1E1B4B 100%); border-radius: 24px; padding: 18px 12px 14px; box-shadow: 0 12px 36px rgba(0,0,0,0.18); align-self: flex-start; min-height: 460px; position: relative; overflow: hidden; }
+  .npn-frame::before { content: ''; position: absolute; top: 14px; left: 50%; transform: translateX(-50%); width: 70px; height: 14px; background: rgba(0,0,0,0.4); border-radius: 0 0 10px 10px; z-index: 2; }
+  .npn-time { color: #fff; text-align: center; font-size: 38px; font-weight: 200; letter-spacing: -1px; margin-top: 30px; }
+  .npn-date { color: rgba(255,255,255,0.85); text-align: center; font-size: 11px; margin-top: 2px; margin-bottom: 22px; }
+  .npn-card { background: rgba(255,255,255,0.92); backdrop-filter: blur(20px); border-radius: 14px; padding: 11px 12px; margin: 0 4px 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); animation: npn-in 0.3s ease-out; }
+  @keyframes npn-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+  .npn-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .npn-icon { width: 18px; height: 18px; background: linear-gradient(135deg, #2563EB, #1E40AF); border-radius: 5px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+  .npn-app { font-size: 10px; color: #6B7280; font-weight: 500; flex: 1; text-transform: uppercase; letter-spacing: 0.5px; }
+  .npn-when { font-size: 10px; color: #6B7280; }
+  .npn-title { font-size: 12px; font-weight: 600; color: #111827; line-height: 1.3; word-wrap: break-word; }
+  .npn-body { font-size: 11px; color: #374151; line-height: 1.4; margin-top: 2px; word-wrap: break-word; }
+  .npn-blocked { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3); border-radius: 12px; padding: 14px; margin: 0 6px; color: #FCA5A5; font-size: 11px; text-align: center; line-height: 1.5; }
+  .npn-blocked b { color: #FECACA; display: block; font-size: 12px; margin-bottom: 4px; }
+  .npn-empty { color: rgba(255,255,255,0.55); text-align: center; font-size: 11px; padding: 20px 14px; }
+  .npn-info-block { margin: 8px 6px 0; padding: 8px 10px; background: rgba(255,255,255,0.08); border-radius: 8px; color: rgba(255,255,255,0.85); font-size: 10px; line-height: 1.5; }
+  .npn-info-block strong { color: #fff; }
+
   /* 글로벌 검색 (Cmd+K / Ctrl+K) */
   .gs-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: flex-start; justify-content: center; z-index: 10000; padding: 100px 20px 20px; animation: gs-fade 0.12s ease-out; }
   @keyframes gs-fade { from { opacity: 0; } to { opacity: 1; } }
@@ -635,6 +654,7 @@
     <div class="jf-nav-item" data-page="points"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v6M6 7h4M6 9h4"/></svg>포인트</div>
     <div class="jf-nav-item" data-page="inquiry"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v9H5l-3 3V3z"/></svg>문의</div>
     <div class="jf-nav-item" data-page="apppreview"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="1.5" width="8" height="13" rx="1.5"/><path d="M7 12h2"/></svg>앱 미리보기</div>
+    <div class="jf-nav-item" data-page="mobileadmin"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="1.5" width="8" height="13" rx="1.5"/><circle cx="8" cy="6" r="1.5"/><path d="M5.5 10c0-1.4 1.1-2.5 2.5-2.5s2.5 1.1 2.5 2.5"/></svg>모바일 관리자</div>
     <div class="jf-nav-item" data-page="control"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg>관제 시스템 <span style="margin-left:auto; font-size:9px; opacity:0.6;">⧉</span></div>
     <div class="jf-nav-item" data-page="stats"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 14V2M2 14h12M5 11V7M8 11V4M11 11V9"/></svg>통계 리포트</div>
     <div class="jf-nav-item" data-page="accounts"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="2.5"/><path d="M3 13c0-2.5 2-4 5-4s5 1.5 5 4"/><circle cx="12" cy="4" r="1.5" fill="currentColor"/></svg>관리자 계정</div>

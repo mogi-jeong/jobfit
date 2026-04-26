@@ -649,6 +649,30 @@ function releaseNegotiation(workerId) {
   return w;
 }
 
+// 알바생 성실도 점수 (0~100) — 출근/지각/결근/경고/협의대상 종합
+// 신청 승인 시 우선순위 판단 보조 + 근무자 관리 시각화
+function workerScore(w) {
+  if (!w) return { score: null, label: '-', color: '#9CA3AF', tier: 'unknown' };
+  if (w.negotiation) return { score: 0, label: '협의대상', color: '#EF4444', tier: 'neg' };
+  if ((w.total || 0) < 3) return { score: null, label: '신규', color: '#1E40AF', tier: 'new' };
+  let s = 100;
+  // 경고 감점
+  if (w.warnings === 1)      s -= 15;
+  else if (w.warnings === 2) s -= 30;
+  else if (w.warnings >= 3)  s -= 50;
+  // No-show 비율 감점 (최대 -30)
+  const noshowRatio = w.total > 0 ? (w.noshow || 0) / w.total : 0;
+  s -= Math.min(30, Math.round(noshowRatio * 100));
+  s = Math.max(0, Math.min(100, s));
+  let color, tier;
+  if (s >= 90)      { color = '#16A34A'; tier = 'A'; }
+  else if (s >= 75) { color = '#22C55E'; tier = 'B'; }
+  else if (s >= 60) { color = '#F59E0B'; tier = 'C'; }
+  else if (s >= 40) { color = '#EA580C'; tier = 'D'; }
+  else              { color = '#EF4444'; tier = 'E'; }
+  return { score: s, label: s + '점', color, tier };
+}
+
 // 정책상 출금 가능 여부 — 보유 포인트 + 단위 + 일 한도 체크
 function canWithdraw(workerPoints, requestedAmount) {
   if (workerPoints < POLICY.POINT_MIN_WITHDRAW) return { ok: false, reason: '보유 포인트가 ' + POLICY.POINT_MIN_WITHDRAW.toLocaleString() + 'P 미만' };

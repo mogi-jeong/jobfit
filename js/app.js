@@ -2638,8 +2638,16 @@
       name:   (a, b) => a.name.localeCompare(b.name, 'ko'),
       warn:   (a, b) => b.warnings - a.warnings || b.noshow - a.noshow,
       total:  (a, b) => b.total - a.total,
+      score:  (a, b) => {
+        const sa = workerScore(a).score, sb = workerScore(b).score;
+        // null(신규)는 뒤로
+        if (sa == null && sb == null) return 0;
+        if (sa == null) return 1;
+        if (sb == null) return -1;
+        return sb - sa;
+      },
     };
-    list = list.sort(sorters[workerState.sort]);
+    list = list.sort(sorters[workerState.sort] || sorters.recent);
 
     // 메트릭
     const totalW = workers.length;
@@ -2680,6 +2688,7 @@
           <option value="name"   ${workerState.sort==='name'?'selected':''}>이름순</option>
           <option value="warn"   ${workerState.sort==='warn'?'selected':''}>경고 많은 순</option>
           <option value="total"  ${workerState.sort==='total'?'selected':''}>누적 근무순</option>
+          <option value="score"  ${workerState.sort==='score'?'selected':''}>성실도 높은 순</option>
         </select>
         ${(workerState.search || workerState.status) ? `<button onclick="window.__wrkClearFilter()" style="font-size:12px;">필터 초기화</button>` : ''}
         <div style="margin-left:auto; font-size:12px; color:#6B7684; align-self:center;">${list.length}명 표시</div>
@@ -2689,13 +2698,14 @@
     if (list.length === 0) {
       html += `<div class="jf-placeholder"><div class="jf-placeholder-icon">👤</div><div class="jf-placeholder-title">조건에 맞는 근무자가 없습니다</div><div class="jf-placeholder-desc">검색어나 필터를 변경해주세요.</div></div>`;
     } else {
-      const gridCols = '1.6fr 1.1fr 0.7fr 0.7fr 0.6fr 0.9fr 0.9fr 0.6fr';
+      const gridCols = '1.6fr 1.05fr 0.7fr 0.85fr 0.7fr 0.6fr 0.9fr 0.85fr 0.55fr';
       html += `
         <div class="jf-table">
           <div class="jf-table-head" style="grid-template-columns:${gridCols};">
             <div>이름</div>
             <div>전화번호</div>
             <div>누적 근무</div>
+            <div>성실도</div>
             <div>경고</div>
             <div>No-show</div>
             <div>포인트</div>
@@ -2706,6 +2716,11 @@
       list.forEach(w => {
         const warnCls = `warn-${Math.min(w.warnings, 3)}`;
         const warnText = w.warnings > 0 ? `${w.warnings}회` : '없음';
+        const sc = workerScore(w);
+        const scoreBadge = `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:10px; background:${sc.color}1A; color:${sc.color}; font-size:11px; font-weight:600;">
+          ${sc.tier && sc.tier !== 'unknown' ? '<span style="font-size:9px; opacity:0.85;">'+sc.tier+'</span>' : ''}
+          ${sc.label}
+        </span>`;
         html += `
           <div class="jf-table-row" style="grid-template-columns:${gridCols};" onclick="window.__wrkDetail('${w.id}')">
             <div class="worker-name">
@@ -2715,6 +2730,7 @@
             </div>
             <div style="font-family:'SF Mono',Monaco,monospace; font-size:12px; color:#6B7684;">${w.phone}</div>
             <div><strong>${w.total}</strong><span style="color:#6B7684; font-size:11px;">회</span></div>
+            <div>${scoreBadge}</div>
             <div><span class="warn-pill ${warnCls}">${warnText}</span></div>
             <div style="color:${w.noshow>0?'#EF4444':'#6B7684'};">${w.noshow}</div>
             <div>${w.points.toLocaleString()}P</div>
@@ -2779,7 +2795,20 @@
         </div>
       </div>
 
-      <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+      <div style="display:grid; grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+        ${(() => {
+          const sc = workerScore(w);
+          return `
+            <div class="jf-metric" style="border-left: 3px solid ${sc.color};">
+              <div class="jf-metric-label">성실도 점수</div>
+              <div class="jf-metric-value" style="color:${sc.color};">
+                ${sc.score == null ? '<span style="font-size:18px;">'+sc.label+'</span>' : sc.score}
+                ${sc.score != null ? '<span style="font-size:13px; color:#6B7684; font-weight:400;"> / 100</span>' : ''}
+              </div>
+              <div class="jf-metric-hint">${sc.tier && sc.tier !== 'unknown' && sc.tier !== 'new' && sc.tier !== 'neg' ? sc.tier+' 등급 · ' : ''}${sc.tier === 'new' ? '근무 3회 미만' : sc.tier === 'neg' ? '협의대상' : sc.score >= 90 ? '모범 근무자' : sc.score >= 75 ? '양호' : sc.score >= 60 ? '주의 관찰' : sc.score >= 40 ? '재발 우려' : '심각'}</div>
+            </div>
+          `;
+        })()}
         <div class="jf-metric"><div class="jf-metric-label">누적 근무</div><div class="jf-metric-value">${w.total}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 회</span></div></div>
         <div class="jf-metric"><div class="jf-metric-label">경고</div><div class="jf-metric-value" style="color:${w.warnings>0?'#F59E0B':'#111827'};">${w.warnings}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 회</span></div><div class="jf-metric-hint">${w.warnings>=3?'3회 누적 — 협의대상':'3회 누적 시 협의대상'}</div></div>
         <div class="jf-metric"><div class="jf-metric-label">No-show</div><div class="jf-metric-value" style="color:${w.noshow>0?'#EF4444':'#111827'};">${w.noshow}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 회</span></div></div>
@@ -3254,11 +3283,17 @@
 
         if (dwell.over) badges.push('<span class="apv-badge apv-badge-warn">⚠ 6h 초과</span>');
 
+        const sc = workerScore(w);
+        const scoreBadge = `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:10px; background:${sc.color}1A; color:${sc.color}; font-size:10px; font-weight:600;">
+          ${sc.tier && sc.tier !== 'unknown' ? '<span style="font-size:9px; opacity:0.85;">'+sc.tier+'</span>' : ''}
+          ${sc.label}
+        </span>`;
         html += `
           <div class="apv-card ${cardCls}${overClass}">
             <div class="apv-worker">
               <div class="apv-worker-name">
                 ${w.name}
+                ${scoreBadge}
                 ${w.negotiation ? '<span class="apv-badge apv-badge-neg" style="font-size:10px; padding:2px 6px;">협의대상</span>' : ''}
               </div>
               <div class="apv-worker-phone">${w.phone}</div>
@@ -7026,6 +7061,355 @@
   window.__apSet = function(key, val) { appPreviewState[key] = val; renderAppPreview(); };
 
   // ───────────────────────────────────────────────────────
+  // 모바일 관리자 뷰 (현장 2등급 관리자 — 폰으로 처리)
+  // ───────────────────────────────────────────────────────
+  const mobileAdminState = {
+    tab: 'home',     // home / attendance / approval / warning
+    adminId: '',     // 선택된 관리자 (default: 첫 번째 admin2)
+  };
+
+  function renderMobileAdmin() {
+    // 기본 관리자: admin2 중 sites 있는 첫 번째
+    const admin2List = admins.filter(a => a.role === 'admin2' && a.active);
+    const admin = (mobileAdminState.adminId ? admins.find(a => a.id === mobileAdminState.adminId) : null) || admin2List[0] || admins[0];
+    if (!admin) { main.innerHTML = '<div class="jf-placeholder"><div class="jf-placeholder-title">관리자 데이터가 없습니다</div></div>'; return; }
+    if (!mobileAdminState.adminId) mobileAdminState.adminId = admin.id;
+
+    const tabs = [
+      { key: 'home',       icon: '🏠', label: '홈' },
+      { key: 'attendance', icon: '📋', label: '출결' },
+      { key: 'approval',   icon: '✓',  label: '승인' },
+      { key: 'warning',    icon: '⚠',  label: '경고' },
+    ];
+
+    const adminPicker = admins.filter(a => a.role !== 'master').map(a =>
+      `<option value="${a.id}" ${a.id === admin.id ? 'selected' : ''}>${a.name} (${ROLE_LABEL[a.role]} · ${a.sites && a.sites.length > 0 ? a.sites.length + '개 근무지' : '전 근무지'})</option>`
+    ).join('');
+
+    main.innerHTML = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">🛡 모바일 관리자 뷰</div>
+          <div class="jf-subtitle">현장 1·2등급 관리자가 폰으로 처리하는 화면 — Flutter 관리자 앱 디자인 레퍼런스</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span style="font-size:12px; color:#6B7684;">시뮬 관리자:</span>
+          <select onchange="window.__maSet('adminId', this.value)" style="min-width: 320px;">${adminPicker}</select>
+        </div>
+      </div>
+
+      <div class="ap-tabs">
+        ${tabs.map(t => `
+          <div class="ap-tab ${mobileAdminState.tab === t.key ? 'active' : ''}" onclick="window.__maTab('${t.key}')">
+            <span>${t.icon}</span>${t.label}
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="ap-layout">
+        <div class="ap-phone-col">
+          <div class="mobile-frame">
+            <div class="mobile-screen">
+              ${renderMaPhoneScreen(admin)}
+            </div>
+          </div>
+        </div>
+        <div class="ap-info-panel">
+          ${renderMaInfoPanel(admin)}
+        </div>
+      </div>
+    `;
+  }
+
+  function maStatusBar() {
+    const d = new Date();
+    const tt = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    return `
+      <div class="mobile-status-bar">
+        <span class="mp-time">${tt}</span>
+        <span class="mp-icons">📶 📡 🔋</span>
+      </div>
+    `;
+  }
+
+  function maBottomNav(active) {
+    const items = [
+      { key: 'home',       icon: '🏠', label: '홈' },
+      { key: 'attendance', icon: '📋', label: '출결' },
+      { key: 'approval',   icon: '✓',  label: '승인' },
+      { key: 'warning',    icon: '⚠',  label: '경고' },
+    ];
+    return `
+      <div class="app-bottom-nav" style="grid-template-columns: repeat(4, 1fr);">
+        ${items.map(i => `
+          <div class="app-bnav-item ${i.key === active ? 'active' : ''}" onclick="window.__maTab('${i.key}')">
+            <div class="app-bnav-icon">${i.icon}</div>
+            <div>${i.label}</div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="mobile-home-ind"></div>
+    `;
+  }
+
+  // 관리자가 담당하는 근무지의 현재 진행/오늘 공고
+  function maMyJobs(admin) {
+    const sites = (admin.sites && admin.sites.length > 0) ? admin.sites : Object.values(worksites).flatMap(p => p.sites).map(s => s.id);
+    return jobs.filter(j => sites.includes(j.siteId) && j.date === TODAY);
+  }
+  function maMyPendingApps(admin) {
+    const sites = (admin.sites && admin.sites.length > 0) ? admin.sites : Object.values(worksites).flatMap(p => p.sites).map(s => s.id);
+    return applications.filter(a => {
+      if (a.status !== 'pending') return false;
+      const j = findJob(a.jobId); if (!j) return false;
+      return sites.includes(j.siteId);
+    });
+  }
+
+  function renderMaPhoneScreen(admin) {
+    const tab = mobileAdminState.tab;
+    let appHeader = '';
+    let body = '';
+
+    if (tab === 'home') {
+      const myJobs = maMyJobs(admin);
+      const pendingApps = maMyPendingApps(admin);
+      const todayProgress = myJobs.filter(j => jobStatus(j) === 'progress');
+      let ok = 0, late = 0, no = 0, wait = 0;
+      myJobs.forEach(j => {
+        const s = attendanceSummary(j.id);
+        ok += s.출근; late += s.지각; no += s.결근; wait += s.대기;
+      });
+      const total = ok + late + no;
+      const rate = total > 0 ? Math.round((ok + late) / total * 100) : null;
+      appHeader = `<div class="mobile-app-header-title">안녕하세요, ${admin.name}님</div><div class="mobile-app-header-sub">${ROLE_LABEL[admin.role]} · 담당 ${admin.sites?.length || '전'} 근무지</div>`;
+
+      body = `
+        <div class="app-big-point" style="background: linear-gradient(135deg, #1B3A6B, #1E40AF);">
+          <div class="app-big-point-label">오늘 출근율</div>
+          <div class="app-big-point-value">${rate !== null ? rate + '%' : '-'}</div>
+          <div class="app-big-point-hint">🟢 ${ok} · 🟡 ${late} · 🔴 ${no} · 대기 ${wait}</div>
+        </div>
+
+        <div class="app-section-title">담당 근무지 오늘 공고 (${myJobs.length})</div>
+        ${myJobs.length === 0 ? `
+          <div class="app-card" style="text-align:center; color:#6B7684; font-size:11px; padding:18px 12px;">오늘 진행되는 공고가 없습니다</div>
+        ` : myJobs.slice(0, 4).map(j => {
+          const site = findSite(j.siteId);
+          const sum = attendanceSummary(j.id);
+          const st = jobStatus(j);
+          const stColor = { open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#9CA3AF' }[st];
+          return `
+            <div class="app-card" onclick="window.__maTab('attendance')" style="cursor:pointer;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div class="app-card-title">${esc(site.site.name)}</div>
+                <span class="app-chip" style="background:${stColor}22; color:${stColor};">${STATUS_LABEL[st]}</span>
+              </div>
+              <div class="app-card-meta">${j.slot} ${j.start}~${j.end} · ${j.cap}명</div>
+              <div style="display:flex; gap:8px; margin-top:6px; font-size:10px;">
+                <span style="color:#166534;">🟢${sum.출근}</span>
+                <span style="color:#92400E;">🟡${sum.지각}</span>
+                <span style="color:#991B1B;">🔴${sum.결근}</span>
+                <span style="color:#6B7684;">⏱${sum.대기}</span>
+              </div>
+            </div>
+          `;
+        }).join('')}
+
+        ${pendingApps.length > 0 ? `
+          <div class="app-section-title">승인 대기 (${pendingApps.length})</div>
+          <div class="app-card" onclick="window.__maTab('approval')" style="background: linear-gradient(135deg, #FEF3C7, #FDE68A); cursor:pointer;">
+            <div class="app-card-title">⚠ 신청 ${pendingApps.length}건 대기 중</div>
+            <div class="app-card-meta">탭하여 검토</div>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    if (tab === 'attendance') {
+      const myJobs = maMyJobs(admin);
+      appHeader = `<div class="mobile-app-header-title">출결 체크</div><div class="mobile-app-header-sub">담당 근무지 · 오늘 ${myJobs.length}건</div>`;
+      if (myJobs.length === 0) {
+        body = `<div class="app-card" style="text-align:center; color:#6B7684; font-size:11px; padding:18px 12px;">오늘 공고 없음</div>`;
+      } else {
+        body = myJobs.map(j => {
+          const site = findSite(j.siteId);
+          const att = getAttendance(j.id).slice(0, 3); // 첫 3명만 미리보기
+          return `
+            <div class="app-card">
+              <div class="app-card-title">${esc(site.site.name)} · ${j.slot}</div>
+              <div class="app-card-meta">${j.start}~${j.end} · 모집 ${j.apply}/${j.cap}</div>
+              <div style="margin-top:8px; padding-top:8px; border-top:0.5px solid rgba(0,0,0,0.06);">
+                ${att.map(a => `
+                  <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; font-size:10px;">
+                    <div>${esc(a.worker.name)}</div>
+                    <div style="display:flex; gap:3px;">
+                      ${['출근','지각','결근'].map(st => `
+                        <span style="padding:1px 5px; border-radius:3px; ${a.status === st ? (st==='출근'?'background:#22C55E; color:#fff;':st==='지각'?'background:#F59E0B; color:#fff;':'background:#EF4444; color:#fff;') : 'background:#F3F4F6; color:#9CA3AF;'} font-weight:500;">${st}</span>
+                      `).join('')}
+                    </div>
+                  </div>
+                `).join('')}
+                <div style="text-align:center; margin-top:6px; font-size:10px; color:#2563EB;">${getAttendance(j.id).length - 3 > 0 ? '+ ' + (getAttendance(j.id).length - 3) + '명 더보기' : ''}</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+    if (tab === 'approval') {
+      const pending = maMyPendingApps(admin);
+      appHeader = `<div class="mobile-app-header-title">신청 승인</div><div class="mobile-app-header-sub">현장 즉시 처리 · ${pending.length}건 대기</div>`;
+      if (pending.length === 0) {
+        body = `<div class="app-card" style="text-align:center; color:#6B7684; font-size:11px; padding:18px 12px;">✅ 승인 대기 없음</div>`;
+      } else {
+        body = pending.slice(0, 5).map(a => {
+          const w = findWorker(a.workerId);
+          const j = findJob(a.jobId);
+          const site = findSite(j.siteId);
+          const sc = workerScore(w);
+          return `
+            <div class="app-card">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:6px;">
+                <div style="min-width:0;">
+                  <div class="app-card-title">${esc(w.name)}</div>
+                  <div class="app-card-meta">${esc(site.site.name)} · ${j.slot} ${j.start}~${j.end}</div>
+                </div>
+                <span style="padding:2px 6px; border-radius:8px; background:${sc.color}1A; color:${sc.color}; font-size:9px; font-weight:600; flex-shrink:0;">${sc.label}</span>
+              </div>
+              ${a.reason ? `<div style="margin-top:4px; font-size:9px; color:#92400E;">⚠ ${a.reason === 'neg' ? '협의대상' : a.reason === 'urgent' ? '12h 이내' : a.reason === 'warn3' ? '경고 3회' : a.reason}</div>` : ''}
+              <div style="display:flex; gap:6px; margin-top:8px;">
+                <button style="flex:1; height:30px; background:#22C55E; color:#fff; border:0; border-radius:6px; font-size:11px; font-weight:500;">승인</button>
+                <button style="flex:1; height:30px; background:#fff; color:#EF4444; border:1px solid #EF4444; border-radius:6px; font-size:11px; font-weight:500;">거절</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+    if (tab === 'warning') {
+      const sites = (admin.sites && admin.sites.length > 0) ? admin.sites : Object.values(worksites).flatMap(p => p.sites).map(s => s.id);
+      const todayWorkers = [];
+      maMyJobs(admin).forEach(j => {
+        getAttendance(j.id).forEach(a => {
+          if (!todayWorkers.find(x => x.id === a.worker.id)) todayWorkers.push(a.worker);
+        });
+      });
+      appHeader = `<div class="mobile-app-header-title">경고 부여 / 협의대상</div><div class="mobile-app-header-sub">담당 근무지 오늘 명단 · ${todayWorkers.length}명</div>`;
+      const REASONS = [
+        { key: 'cancel12h', label: '12h 이내 취소' },
+        { key: 'late',      label: '지각' },
+        { key: 'noshow',    label: '무단결근' },
+        { key: 'noresp',    label: '무응답' },
+        { key: 'gps',       label: 'GPS 미검증' },
+      ];
+      body = `
+        <div class="app-card" style="background:#FEF3C7; border-left: 3px solid #F59E0B;">
+          <div class="app-card-title">⚠ 경고 부여 가이드</div>
+          <div class="app-card-meta">3회 누적 시 자동 협의대상 등록 · 해제는 마스터만 가능</div>
+        </div>
+        <div class="app-section-title">사유 선택 (예시 UI)</div>
+        ${REASONS.map(r => `
+          <div class="app-list-row">
+            <div>
+              <div class="app-list-row-main">${r.label}</div>
+              <div class="app-list-row-sub">${r.key === 'noshow' ? '가장 무거운 사유' : r.key === 'gps' ? '거리 기반 자동 감지' : '관리자 재량 판단'}</div>
+            </div>
+            <div style="font-size:14px; color:#6B7684;">›</div>
+          </div>
+        `).join('')}
+        <div class="app-section-title">담당 근무지 오늘 명단 (${todayWorkers.length})</div>
+        ${todayWorkers.slice(0, 5).map(w => {
+          const sc = workerScore(w);
+          return `
+            <div class="app-list-row">
+              <div>
+                <div class="app-list-row-main">${esc(w.name)}</div>
+                <div class="app-list-row-sub">경고 ${w.warnings} · ${sc.label}</div>
+              </div>
+              <span style="padding:3px 8px; background:${w.warnings>=3?'#FEE2E2':w.warnings>0?'#FEF3C7':'#F3F4F6'}; color:${w.warnings>=3?'#991B1B':w.warnings>0?'#92400E':'#6B7684'}; border-radius:4px; font-size:10px; font-weight:500;">경고 부여</span>
+            </div>
+          `;
+        }).join('') || '<div style="text-align:center; padding:14px; color:#6B7684; font-size:11px;">오늘 출결 데이터 없음</div>'}
+      `;
+    }
+
+    return `
+      ${maStatusBar()}
+      <div class="mobile-app-header">${appHeader}</div>
+      <div class="mobile-app-body">
+        ${body}
+      </div>
+      ${maBottomNav(tab)}
+    `;
+  }
+
+  function renderMaInfoPanel(admin) {
+    const myJobs = maMyJobs(admin);
+    const pending = maMyPendingApps(admin);
+    const sites = (admin.sites && admin.sites.length > 0) ? admin.sites.map(id => findSite(id)?.site.name || id).join(', ') : '전 근무지';
+
+    const TAB_INFO = {
+      home: {
+        title: '홈 — 오늘 한눈에',
+        sections: [
+          { h: '대상', p: '현장 2등급 관리자 (가끔 1등급 백업)' },
+          { h: '주요 정보', html: '<ul><li>오늘 출근율 (담당 근무지 한정)</li><li>오늘 진행 중 공고 카드</li><li>승인 대기 알림 (탭하여 이동)</li></ul>' },
+          { h: '실제 앱에서', p: 'Flutter — 위젯 트리: BottomNavigationBar + Stack(권한 필터링된 데이터). 푸시 알림으로 실시간 갱신.' },
+        ],
+      },
+      attendance: {
+        title: '출결 체크 — 현장 처리',
+        sections: [
+          { h: '시나리오', p: '관리자가 도착해서 알바생을 직접 호명, 출근 처리. 알바생이 GPS 자동 출근 못 했을 때 수동 토글.' },
+          { h: '주요 동작', html: '<ul><li>알바생 한 줄에 [출근/지각/결근] 3-way 토글</li><li>변경 시 audit log + 알바생에게 알림</li><li>퇴근은 자동 (GPS) — 영역 밖이면 마스터 승인 큐로</li></ul>' },
+        ],
+      },
+      approval: {
+        title: '승인 — 현장 즉시 결재',
+        sections: [
+          { h: '권한', p: '담당 근무지 공고에 한해 승인 가능 (전 근무지는 1등급/마스터)' },
+          { h: '카드 구성', html: '<ul><li>알바생 이름 + <strong>성실도 뱃지</strong> (배치 3에서 추가)</li><li>경고/협의대상/12h 등 플래그</li><li>승인/거절 두 버튼 (거절은 사유 필수)</li></ul>' },
+        ],
+      },
+      warning: {
+        title: '경고 — 사유 선택',
+        sections: [
+          { h: '5가지 사유', p: '12h 이내 취소 / 지각 / 무단결근 / 무응답 / GPS 미검증 (자유 입력 폐지 — 통계 일관성 확보)' },
+          { h: '플로우', html: '<ul><li>알바생 선택 → 사유 선택 → 메모 입력</li><li>저장 시 audit log + 알바생 알림 + 경고 카운트 증가</li><li>3회 누적 시 자동 협의대상 등록 (마스터만 해제 가능)</li></ul>' },
+        ],
+      },
+    };
+    const info = TAB_INFO[mobileAdminState.tab] || TAB_INFO.home;
+
+    return `
+      <div class="ap-info-title">${info.title}</div>
+      <div class="ap-info-section">
+        <h4>현재 시뮬</h4>
+        <p><strong>${esc(admin.name)}</strong> (${ROLE_LABEL[admin.role]}) · ${esc(admin.phone)}<br>
+        담당 근무지: ${esc(sites)}<br>
+        오늘 공고 ${myJobs.length}건 · 승인 대기 ${pending.length}건</p>
+      </div>
+      ${info.sections.map(s => `
+        <div class="ap-info-section">
+          <h4>${s.h}</h4>
+          ${s.p ? `<p>${s.p}</p>` : ''}
+          ${s.html ? s.html : ''}
+        </div>
+      `).join('')}
+      <div class="ap-info-section">
+        <h4>구현 메모</h4>
+        <p style="font-size:11px; color:#6B7684;">현재는 디자인 레퍼런스 — 폰 화면의 [승인]/[거절] 버튼은 시각적 시뮬이며 실제 처리는 데스크톱 페이지에서 가능합니다.</p>
+      </div>
+    `;
+  }
+
+  window.__maTab = function(tab) { mobileAdminState.tab = tab; renderMobileAdmin(); };
+  window.__maSet = function(key, val) { mobileAdminState[key] = val; renderMobileAdmin(); };
+
+  // ───────────────────────────────────────────────────────
   // 처리 이력 전체 보기 (신청/협의대상/포인트 통합)
   // ───────────────────────────────────────────────────────
   const historyState = {
@@ -7439,15 +7823,35 @@
       urgent: '수신 동의자에게만 발송 · 야간 발송 허용',
     };
 
+    // 미리보기 시각/날짜 결정
+    let previewTime, previewDateLabel, isNight = false;
+    if (n.scheduled && n.scheduleAt) {
+      const dt = new Date(n.scheduleAt);
+      previewTime = String(dt.getHours()).padStart(2,'0') + ':' + String(dt.getMinutes()).padStart(2,'0');
+      previewDateLabel = (dt.getMonth()+1) + '월 ' + dt.getDate() + '일 ' + ['일','월','화','수','목','금','토'][dt.getDay()] + '요일';
+      const h = dt.getHours(); isNight = (h >= 22 || h < 8);
+    } else {
+      const now = new Date();
+      previewTime = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+      const td = new Date(TODAY);
+      previewDateLabel = (td.getMonth()+1) + '월 ' + td.getDate() + '일 ' + ['일','월','화','수','목','금','토'][td.getDay()] + '요일';
+      const h = now.getHours(); isNight = (h >= 22 || h < 8);
+    }
+    const blockedByNight = isNight && !n.allowNight && n.notifType !== 'urgent';
+    const previewWhen = n.scheduled ? '예약' : (n.notifType === 'urgent' ? '긴급' : '방금');
+    const TYPE_BADGE = { service: { l: '서비스', c: '#2563EB' }, marketing: { l: '마케팅', c: '#A855F7' }, urgent: { l: '긴급', c: '#EF4444' } };
+    const tb = TYPE_BADGE[n.notifType];
+
     const overlay = document.createElement('div');
     overlay.className = 'jf-modal-overlay notif';
     overlay.innerHTML = `
-      <div class="jf-modal" style="max-width: 540px;" onclick="event.stopPropagation()">
+      <div class="jf-modal" style="max-width: 880px;" onclick="event.stopPropagation()">
         <div class="jf-modal-head">
-          <div class="jf-modal-title">알림 발송</div>
+          <div class="jf-modal-title">알림 발송 <span style="font-size:11px; color:#6B7684; font-weight:400; margin-left:6px;">실제 폰 미리보기</span></div>
           <button class="jf-modal-close" onclick="this.closest('.jf-modal-overlay').remove()">×</button>
         </div>
-        <div class="jf-modal-body">
+        <div class="jf-modal-body" style="display:flex; gap:18px; align-items:flex-start;">
+          <div style="flex:1; min-width:0;">
           <div class="jf-form-row">
             <div class="jf-form-label">수신 대상</div>
             <div style="display:flex; flex-wrap:wrap; gap:6px;">
@@ -7477,18 +7881,18 @@
 
           <div class="jf-form-row">
             <div class="jf-form-label">제목<span class="req">*</span></div>
-            <input type="text" placeholder="최대 30자" maxlength="30" value="${n.title}" oninput="notifState.title = this.value" />
+            <input type="text" placeholder="최대 30자" maxlength="30" value="${esc(n.title)}" oninput="notifState.title = this.value; renderNotificationModal();" />
           </div>
           <div class="jf-form-row top">
             <div class="jf-form-label">내용<span class="req">*</span></div>
-            <textarea rows="4" placeholder="알림 본문을 입력하세요..." oninput="notifState.body = this.value">${n.body}</textarea>
+            <textarea rows="4" placeholder="알림 본문을 입력하세요..." oninput="notifState.body = this.value; renderNotificationModal();">${esc(n.body)}</textarea>
           </div>
 
           <div class="jf-form-row top" style="padding-top:14px;">
             <div class="jf-form-label">옵션</div>
             <div style="display:flex; flex-direction:column; gap:10px;">
               <label class="jf-toggle">
-                <input type="checkbox" ${n.allowNight?'checked':''} ${n.notifType==='marketing'?'disabled':''} onchange="notifState.allowNight = this.checked">
+                <input type="checkbox" ${n.allowNight?'checked':''} ${n.notifType==='marketing'?'disabled':''} onchange="notifState.allowNight = this.checked; renderNotificationModal();">
                 <span class="jf-toggle-switch"></span>
                 <span class="jf-toggle-text">야간 시간대(22:00~08:00)에도 발송</span>
               </label>
@@ -7498,16 +7902,46 @@
                 <span class="jf-toggle-text">예약 발송</span>
               </label>
               ${n.scheduled ? `
-                <input type="datetime-local" value="${n.scheduleAt}" oninput="notifState.scheduleAt = this.value" style="max-width:240px; margin-left:48px;" />
+                <input type="datetime-local" value="${n.scheduleAt}" oninput="notifState.scheduleAt = this.value; renderNotificationModal();" style="max-width:240px; margin-left:48px;" />
               ` : ''}
             </div>
           </div>
 
           <div style="display:flex; gap:8px; margin-top: 20px; padding-top:14px; border-top:0.5px solid rgba(0,0,0,0.08);">
             <button onclick="this.closest('.jf-modal-overlay').remove()">취소</button>
-            <button onclick="alert('발송 전 미리보기 (추후 구현)')">미리보기</button>
             <div style="flex:1;"></div>
-            <button class="btn-primary" onclick="window.__notifSend()" ${recipientCount===0 ? 'disabled' : ''}>${n.scheduled ? '예약 등록' : '즉시 발송'} (${recipientCount}명)</button>
+            <button class="btn-primary" onclick="window.__notifSend()" ${recipientCount===0 || blockedByNight ? 'disabled' : ''}>${blockedByNight ? '🚫 야간 차단됨' : (n.scheduled ? '예약 등록' : '즉시 발송')} ${recipientCount>0 ? '('+recipientCount+'명)' : ''}</button>
+          </div>
+          </div>
+
+          <div class="npn-frame">
+            <div class="npn-time">${previewTime}</div>
+            <div class="npn-date">${previewDateLabel}</div>
+            ${blockedByNight ? `
+              <div class="npn-blocked">
+                <b>🚫 야간 시간대 차단</b>
+                ${n.notifType === 'marketing'
+                  ? '마케팅 알림은 22:00~08:00 발송이 정책상 금지됩니다.'
+                  : '서비스 알림 야간 발송 옵션이 꺼져있어 차단됨.<br>토글을 켜면 발송 가능.'}
+              </div>
+            ` : (!n.title.trim() && !n.body.trim()) ? `
+              <div class="npn-empty">제목/내용을 입력하면<br>여기에 미리보기가 표시됩니다</div>
+            ` : `
+              <div class="npn-card">
+                <div class="npn-head">
+                  <div class="npn-icon">잡</div>
+                  <div class="npn-app">잡핏 · <span style="color:${tb.c}; font-weight:600;">${tb.l}</span></div>
+                  <div class="npn-when">${previewWhen}</div>
+                </div>
+                <div class="npn-title">${esc(n.title || '(제목 없음)')}</div>
+                ${n.body ? `<div class="npn-body">${esc(n.body).slice(0, 120)}${n.body.length > 120 ? '...' : ''}</div>` : ''}
+              </div>
+            `}
+            <div class="npn-info-block">
+              <div><strong>대상:</strong> ${recipientCount}명</div>
+              <div style="margin-top:2px;"><strong>유형:</strong> ${TYPE_LABEL[n.notifType]}</div>
+              ${n.scheduled ? `<div style="margin-top:2px;"><strong>예약:</strong> ${n.scheduleAt || '-'}</div>` : ''}
+            </div>
           </div>
         </div>
       </div>
@@ -7696,6 +8130,7 @@
     { kind: 'page', title: '포인트',       sub: '출금 요청 · 이력 · 회수', icon: '💰', goto: 'points' },
     { kind: 'page', title: '문의',         sub: '알바생 문의 답변', icon: '💬', goto: 'inquiry' },
     { kind: 'page', title: '앱 미리보기',  sub: '알바생 앱 모바일 화면', icon: '📱', goto: 'apppreview' },
+    { kind: 'page', title: '모바일 관리자 뷰', sub: '현장 2등급 폰 화면 미리보기', icon: '🛡', goto: 'mobileadmin' },
     { kind: 'page', title: '관제 시스템',  sub: '실시간 출결 · 별도 창', icon: '🖥', goto: 'control' },
     { kind: 'page', title: '통계 리포트',  sub: '파트너사/시간대/트렌드', icon: '📊', goto: 'stats' },
     { kind: 'page', title: '관리자 계정',  sub: '권한 3등급 · 근무지 배정', icon: '👤', goto: 'accounts' },
@@ -7918,6 +8353,7 @@
     inquiry: renderInquiries,
     stats: renderStats,
     apppreview: renderAppPreview,
+    mobileadmin: renderMobileAdmin,
     audit: renderAuditLog,
   };
 
@@ -7938,7 +8374,7 @@
   });
 
   function pageNameFor(page) {
-    const names = { home: '홈', jobs: '공고 관리', approval: '신청 승인', waitlistapv: '대기열 승인', gpsapproval: '퇴근 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정', stats: '통계 리포트', apppreview: '앱 미리보기', audit: '감사로그' };
+    const names = { home: '홈', jobs: '공고 관리', approval: '신청 승인', waitlistapv: '대기열 승인', gpsapproval: '퇴근 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정', stats: '통계 리포트', apppreview: '앱 미리보기', mobileadmin: '모바일 관리자 뷰', audit: '감사로그' };
     return names[page] || '';
   }
 
