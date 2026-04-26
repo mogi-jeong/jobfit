@@ -371,6 +371,83 @@ order=1 자에게 자리 제안 알림 (status='pending_accept')
 job.reopened = TRUE → 일반 모집 재개
 ```
 
+### 4.6 같이하기 (Buddy / 친구 호출) — 정책 v1
+
+같이하기는 알바생 1명이 친구 1명을 초대해 **같은 공고에 페어로 신청**하는 기능. 양쪽 모두 출퇴근 완료 시 각자 **+3,000P 추가 지급** (`POLICY.BUDDY_BONUS_AMOUNT`).
+
+**기본 흐름:**
+```
+알바생A가 공고 X에 같이하기 신청
+  ↓ 카카오/링크로 친구B에게 초대 발송
+B가 링크 클릭 + 잡핏 앱에서 수락
+  ↓ 양쪽 application 동시 생성 (buddyAppId 양방향 참조)
+[자동 분류 — 일반 신청과 동일 룰 적용]
+- 양쪽 모두 12h 전 + 정상 워커 + 자리 ≥ 2 → 양쪽 자동 승인
+- 한쪽이라도 12h 이내/협의대상/경고3회 → 양쪽 모두 관리자 검토 (B 정상이어도 검토 대상)
+  ↓
+[관리자 처리 — A안: 묶음 처리]
+- 승인: cascadeBuddyApprove() → 짝꿎 자동 승인 + 양쪽 알림
+- 거절: cascadeBuddyReject() → 짝꿎 자동 거절 + "같이하기가 거절되었어요" 알림
+  ↓
+[근무 완료]
+- 양쪽 모두 정시 출근 + 퇴근 → 자동 +3,000P × 2 지급
+- 한쪽 지각/결근 정정 후 출근 인정 → 관리자 판단으로 [🤝 보너스 지급] 수동 버튼
+- 한쪽 결근 → 보너스 자격 자동 소멸
+```
+
+**핵심 정책 결정 (8개):**
+
+| # | 정책 | 결정 | 적용 영역 |
+|---|---|---|---|
+| 1 | 자리 부족 시 (자리 < 2) | **둘 다 신청 불가** + 알바생 앱에 "자리 부족" 안내 팝업 | 알바생 앱 (백엔드 검증) |
+| 2 | 한쪽 협의대상/경고3회 페어 | 둘 다 관리자 검토 (정상 알바생까지) | 관리자 화면 ✅ 구현 |
+| 3 | 한쪽 자유 취소 (12h 전) | 짝꿎에게 알림 + 본인 선택 (취소/유지) · 보너스 자격은 **양쪽 모두 자동 소멸** | 알바생 앱 (취소) + 관리자 화면 (소멸 표시) ✅ 구현 |
+| 4 | 결근/지각 시 보너스 | **양쪽 정시 출근만 자동 지급** · 지각/결근 정정 인정 케이스는 **관리자 판단으로 수동 지급** | 관리자 화면 ✅ 구현 |
+| 5 | 친구 응답 없음 | **10분 자동 취소** (알바생 앱에 타이머 표시) | 알바생 앱 |
+| 6 | cascade reject 후 재신청 | **자리에 여유 있을 때만** 단독 재신청 가능 | 알바생 앱 (백엔드 검증) |
+| 7 | 포인트 합산 | 시간대별(2,000~3,000P) + 같이하기(3,000P) **별도 합산** (예: 새벽 같이하기 = 6,000P) | `pointRewardFor()` + `tryGrantBuddyBonus()` ✅ 구현 |
+| 8 | 그룹 크기 | **1:1 페어만** (다중 인원 같이하기는 향후 검토 — 기술 난이도) | 데이터 모델 ✅ 구현 |
+
+**추가 규칙:**
+
+- **미성년자 가입 차단**: 알바생 앱 회원가입 단계에서 차단 (생년월일 검증)
+- **탈퇴자 재가입**: 탈퇴 후 30일간 재가입 불가 (전화번호 기준)
+- **로그인 불가 시**: 카카오 인증 + SMS 인증 실패 시 10분 후 자동 취소
+- **앱 미설치 시**: 같이하기 링크 클릭 → 앱 설치 + 가입 유도 페이지 (Universal Link / App Links)
+- **결근 시 페널티 (정책 #4 보충)**:
+  - 출근자: 페널티 없음 (단, 같이하기 보너스 자격 소멸)
+  - 결근자: **관리자 판단**으로 경고 부여 가능 (기존 5사유 + 같이하기 결근 사유)
+- **보너스 지급 시점**: 같이하기 양쪽 멤버가 **출근 + 퇴근** 모두 완료된 시점 (퇴근 시각 기록되는 즉시)
+
+**알바생 앱 영역 vs 관리자 영역 구분:**
+
+| 영역 | 책임 |
+|---|---|
+| **알바생 앱 (Flutter)** | 친구 호출 링크 발송 / 10분 타이머 / 자리 부족 검증 / 미설치 시 가입 유도 / 자유 취소 / 협의대상 본인 알림 |
+| **관리자 웹 (현재 prototype)** | 페어 시각화 (핑크 카드/배경) / cascade 승인·거절 / 보너스 자동·수동 지급 / 정정 시 보너스 트리거 / 감사로그 |
+
+**데이터 모델 추가 필드 (`applications` 테이블):**
+
+```sql
+ALTER TABLE applications ADD COLUMN buddy_app_id UUID REFERENCES applications(id);
+ALTER TABLE applications ADD COLUMN buddy_role  TEXT CHECK (buddy_role IN ('inviter', 'invitee'));
+ALTER TABLE applications ADD COLUMN buddy_bonus_given BOOLEAN DEFAULT FALSE;
+-- buddy_app_id 양방향 참조 — 자기 참조 방지 CHECK 필요
+ALTER TABLE applications ADD CONSTRAINT no_self_buddy CHECK (id <> buddy_app_id);
+```
+
+**Mutation 헬퍼 (`data.js`):**
+- `findBuddy(appId)` — 짝꿎 application 조회
+- `cascadeBuddyApprove(appId, by, byRole)` — 짝꿎 자동 승인 + 공고 인원 +1
+- `cascadeBuddyReject(appId, primaryReason, by, byRole)` — 짝꿎 자동 거절 + 알림
+- `tryGrantBuddyBonus(appId, by)` — 양쪽 정시 출근 검증 후 +3,000P × 2 지급
+
+**Supabase 전환 시 주의 (이전 점검 결과):**
+- `cascadeBuddyApprove`에서 `j.apply++`가 짝꿎 호출에서 다시 +1 → cap 초과 가능 (현재 P0 버그)
+  - 해결: `UPDATE jobs SET apply_count = apply_count + 1 WHERE id = ? AND apply_count + 1 <= cap` 조건부 update
+- `tryGrantBuddyBonus` 중복 호출 race → DB 단 `UNIQUE (application_id) ON buddy_bonus_grants` 제약
+- 자기 참조 외래키 CHECK + 같은 페어가 동일 jobId여야 함 검증 (cross-job 페어 방지)
+
 ---
 
 ## 5. mutation 헬퍼 → API endpoint 매핑

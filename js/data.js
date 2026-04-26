@@ -192,6 +192,15 @@ const applications = [
   // Pair 4: rejected · 한쪽 거절로 짝꿍도 자동 거절 (j011 이천 4/27 주간)
   { id: 'a017', workerId: 'w020', jobId: 'j011', appliedAt: '2026-04-22 14:00', status: 'rejected', reason: 'urgent', processedAt: '2026-04-23 09:30', processedBy: '테스트(마스터)', rejectReason: '주 4일 초과', buddyAppId: 'a018', buddyRole: 'inviter' },
   { id: 'a018', workerId: 'w021', jobId: 'j011', appliedAt: '2026-04-22 14:05', status: 'rejected', reason: 'urgent', processedAt: '2026-04-23 09:30', processedBy: '테스트(마스터)', rejectReason: '같이하기 짝꿍 거절로 자동 처리', buddyAppId: 'a017', buddyRole: 'invitee' },
+  // Pair 5: 정상 + 협의대상 페어 (정책 #2 시연 — 정상 알바생까지 관리자 검토, j008 안성 4/25 새벽)
+  { id: 'a019', workerId: 'w025', jobId: 'j008', appliedAt: '2026-04-23 16:00', status: 'pending', reason: 'urgent',                                buddyAppId: 'a020', buddyRole: 'inviter' },
+  { id: 'a020', workerId: 'w002', jobId: 'j008', appliedAt: '2026-04-23 16:01', status: 'pending', reason: 'neg' /* 협의대상 페어 짝 */,         buddyAppId: 'a019', buddyRole: 'invitee' },
+  // Pair 6: 한쪽 자유 취소 — 보너스 자격 소멸 (정책 #3 시연, j025 이천 4/23 진행 중)
+  { id: 'a021', workerId: 'w035', jobId: 'j025', appliedAt: '2026-04-22 11:00', status: 'approved',  reason: 'normal', processedAt: '2026-04-22 11:01', processedBy: '자동',           buddyAppId: 'a022', buddyRole: 'inviter' },
+  { id: 'a022', workerId: 'w036', jobId: 'j025', appliedAt: '2026-04-22 11:02', status: 'cancelled', reason: 'normal', processedAt: '2026-04-23 06:00', processedBy: '알바생 자유 취소', cancelReason: '개인 사정 — 시작 12h 전 자유 취소', buddyAppId: 'a021', buddyRole: 'invitee' },
+  // Pair 7: 한쪽 지각 케이스 (정책 #4 시연 — 자동 X, 관리자 판단 수동 지급 가능, j025 이천 4/23 진행 중)
+  { id: 'a023', workerId: 'w038', jobId: 'j025', appliedAt: '2026-04-22 12:00', status: 'approved', reason: 'normal', processedAt: '2026-04-22 12:01', processedBy: '자동', buddyAppId: 'a024', buddyRole: 'inviter' },
+  { id: 'a024', workerId: 'w039', jobId: 'j025', appliedAt: '2026-04-22 12:02', status: 'approved', reason: 'normal', processedAt: '2026-04-22 12:03', processedBy: '자동', buddyAppId: 'a023', buddyRole: 'invitee' },
 ];
 
 function findJob(id) { return jobs.find(j => j.id === id); }
@@ -898,34 +907,45 @@ function cascadeBuddyApprove(appId, by, byRole) {
   return buddy;
 }
 
-// 양쪽 출퇴근 완료 시 +3,000P 자동 지급 (각자에게)
-// 호출 시점: 출결 정정으로 출근/지각 처리됐을 때 + 시드용으로 직접 호출 가능
-function tryGrantBuddyBonus(appId, by) {
-  const a = findApp(appId); if (!a) return null;
-  if (a.status !== 'approved' || !a.buddyAppId) return null;
-  if (a.buddyBonusGiven) return null;
-  const b = findBuddy(appId); if (!b) return null;
-  if (b.status !== 'approved') return null;
-  if (b.buddyBonusGiven) return null;
+// 같이하기 보너스 자격 체크 — 둘 다 짝꿓 신청 + approved + 미지급 + 한쪽 취소 아님
+// reason 반환: 'eligible_auto' (정시 출근만 자동) / 'eligible_manual' (지각/정정 — 수동만 가능)
+//             / 'pending_complete' (아직 출퇴근 미완료) / 'cancelled' (한쪽 취소)
+//             / 'absent' (한쪽 결근 — 보너스 자격 자동 소멸) / 'invalid' (페어 자체가 없음)
+function checkBuddyBonusEligibility(appId) {
+  const a = findApp(appId); if (!a || !a.buddyAppId) return { ok: false, reason: 'invalid' };
+  if (a.status !== 'approved') return { ok: false, reason: 'invalid' };
+  if (a.buddyBonusGiven) return { ok: false, reason: 'already_given' };
+  const b = findBuddy(appId); if (!b) return { ok: false, reason: 'invalid' };
+  // 한쪽 취소 시 자격 소멸 (정책 #3)
+  if (a.status === 'cancelled' || b.status === 'cancelled') return { ok: false, reason: 'cancelled' };
+  if (b.status !== 'approved') return { ok: false, reason: 'invalid' };
 
-  // 양쪽 출퇴근 완료 여부 — getAttendance 결과 활용
-  const j = findJob(a.jobId); if (!j) return null;
+  const j = findJob(a.jobId); if (!j) return { ok: false, reason: 'invalid' };
   const attA = getAttendance(j.id).find(x => x.worker.id === a.workerId);
   const attB = getAttendance(j.id).find(x => x.worker.id === b.workerId);
-  // 출근/지각 + 퇴근시각 있어야 완료로 판단
+  // 한쪽 결근 → 자격 소멸 (정책 #4)
+  if ((attA && attA.status === '결근') || (attB && attB.status === '결근')) {
+    return { ok: false, reason: 'absent', a, b, j, attA, attB };
+  }
+  // 둘 다 출퇴근 완료 여부
   const completeA = attA && (attA.status === '출근' || attA.status === '지각') && attA.checkout;
   const completeB = attB && (attB.status === '출근' || attB.status === '지각') && attB.checkout;
-  if (!completeA || !completeB) return null;
+  if (!completeA || !completeB) return { ok: false, reason: 'pending_complete', a, b, j, attA, attB };
+  // 양쪽 정시 출근 = 자동 지급 가능 / 한쪽이라도 지각/정정 = 수동만 가능
+  const punctualA = attA.status === '출근';
+  const punctualB = attB.status === '출근';
+  if (punctualA && punctualB) return { ok: true, reason: 'eligible_auto', a, b, j, attA, attB };
+  return { ok: true, reason: 'eligible_manual', a, b, j, attA, attB };
+}
 
+// 보너스 실제 지급 — 자격 검증 후 양쪽 +3,000P 지급
+function _grantBuddyBonusInternal({ a, b, j, by, byRole, mode }) {
   const wA = findWorker(a.workerId);
   const wB = findWorker(b.workerId);
+  if (!wA || !wB) return null;
   const siteName = findSite(j.siteId)?.site.name || '';
-  const reasonText = '같이하기 보너스 — ' + siteName + ' ' + j.date + ' ' + j.slot;
   const stamp = nowStamp();
-
-  // 각자에게 지급
-  [{ ap: a, w: wA, partnerName: wB?.name || '' }, { ap: b, w: wB, partnerName: wA?.name || '' }].forEach(({ ap, w, partnerName }) => {
-    if (!w) return;
+  [{ ap: a, w: wA, partnerName: wB.name }, { ap: b, w: wB, partnerName: wA.name }].forEach(({ ap, w, partnerName }) => {
     w.points += POLICY.BUDDY_BONUS_AMOUNT;
     pointTxs.unshift({
       id: uid('p-buddy'),
@@ -933,24 +953,40 @@ function tryGrantBuddyBonus(appId, by) {
       type: 'reward',
       status: 'done',
       amount: POLICY.BUDDY_BONUS_AMOUNT,
-      reason: reasonText + ' (짝꿓: ' + partnerName + ')',
+      reason: '같이하기 보너스' + (mode === 'manual' ? ' (관리자 판단)' : '') + ' — ' + siteName + ' ' + j.date + ' ' + j.slot + ' (짝꿓: ' + partnerName + ')',
       requestedAt: stamp,
       processedBy: by || '시스템',
     });
     ap.buddyBonusGiven = true;
   });
-
   if (typeof logAudit === 'function') {
     logAudit({
-      category: 'point', action: 'buddy_bonus',
-      target: (wA?.name || '?') + ' + ' + (wB?.name || '?') + ' / ' + siteName + ' ' + j.date + ' ' + j.slot,
+      category: 'point', action: mode === 'manual' ? 'buddy_bonus_manual' : 'buddy_bonus',
+      target: wA.name + ' + ' + wB.name + ' / ' + siteName + ' ' + j.date + ' ' + j.slot,
       targetId: a.id,
-      summary: '같이하기 보너스 — 양쪽 각자 ' + POLICY.BUDDY_BONUS_AMOUNT.toLocaleString() + 'P 자동 지급 (총 ' + (POLICY.BUDDY_BONUS_AMOUNT * 2).toLocaleString() + 'P)',
+      summary: '같이하기 보너스 ' + (mode === 'manual' ? '수동' : '자동') + ' 지급 — 양쪽 각자 ' + POLICY.BUDDY_BONUS_AMOUNT.toLocaleString() + 'P (총 ' + (POLICY.BUDDY_BONUS_AMOUNT * 2).toLocaleString() + 'P)',
       by: by || '시스템',
+      byRole,
     });
   }
-
   return { a, b, amount: POLICY.BUDDY_BONUS_AMOUNT };
+}
+
+// 자동 지급 — 양쪽 정시 출근('출근') + 퇴근 완료 시에만 (정책 #4)
+// 호출 시점: 출결 정정으로 출근/지각 처리됐을 때
+function tryGrantBuddyBonus(appId, by) {
+  const elig = checkBuddyBonusEligibility(appId);
+  if (!elig.ok || elig.reason !== 'eligible_auto') return null;
+  return _grantBuddyBonusInternal({ a: elig.a, b: elig.b, j: elig.j, by, mode: 'auto' });
+}
+
+// 수동 지급 — 관리자 판단 (지각/정정 인정 케이스)
+// 자격 무관 강제 지급은 아님: 둘 다 출퇴근 완료 + 결근 아님 + 미지급 상태일 때만
+function grantBuddyBonusManual(appId, by, byRole) {
+  const elig = checkBuddyBonusEligibility(appId);
+  if (!elig.ok) return { error: elig.reason };
+  // eligible_auto 또는 eligible_manual 모두 가능
+  return _grantBuddyBonusInternal({ a: elig.a, b: elig.b, j: elig.j, by, byRole, mode: 'manual' });
 }
 
 // 알바생 성실도 점수 (0~100) — 출근/지각/결근/경고/협의대상 종합

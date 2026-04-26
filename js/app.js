@@ -2807,6 +2807,45 @@
     document.body.appendChild(overlay);
   };
 
+  // 같이하기 보너스 수동 지급 — 한쪽 지각/정정 인정 케이스 (관리자 판단)
+  window.__buddyBonusManual = function(appId) {
+    const a = findApp(appId); if (!a) return;
+    const elig = checkBuddyBonusEligibility(appId);
+    if (!elig.ok) {
+      const msg = {
+        already_given: '이미 같이하기 보너스가 지급된 페어입니다.',
+        cancelled: '한쪽이 취소되어 보너스 자격이 소멸된 페어입니다.',
+        absent: '한쪽이 결근 상태라 보너스 자격이 소멸되었습니다. (출결 정정으로 출근 인정 후 다시 시도 가능)',
+        pending_complete: '아직 양쪽 출퇴근이 완료되지 않았습니다.',
+        invalid: '유효한 같이하기 페어가 아닙니다.',
+      }[elig.reason] || '보너스 자격 미충족';
+      alert(msg);
+      return;
+    }
+    const wA = findWorker(elig.a.workerId);
+    const wB = findWorker(elig.b.workerId);
+    const j = elig.j;
+    const site = findSite(j.siteId);
+    const me = currentAdmin();
+
+    promptModal({
+      title: '🤝 같이하기 보너스 수동 지급',
+      subtitle: `<strong>${esc(wA?.name || '')}</strong> + <strong>${esc(wB?.name || '')}</strong>` +
+        `<br>${esc(site?.site.name || '')} · ${j.date} ${j.slot} ${j.start}~${j.end}` +
+        `<br><br>한쪽 지각/정정 케이스 — 사유 인정 시 양쪽 각자 ${POLICY.BUDDY_BONUS_AMOUNT.toLocaleString()}P (총 ${(POLICY.BUDDY_BONUS_AMOUNT * 2).toLocaleString()}P) 지급됩니다.`,
+      fields: [
+        { key: 'reason', label: '지급 사유', type: 'textarea', required: true, placeholder: '예: 지각 사유 인정 (교통 사고) / 출결 정정 후 정상 인정 등', hint: '감사로그 + 양쪽 알바생 알림에 기록됨' },
+      ],
+      submitLabel: `${(POLICY.BUDDY_BONUS_AMOUNT * 2).toLocaleString()}P 지급`,
+      onSubmit: (vals) => {
+        const result = grantBuddyBonusManual(appId, me.name, me.role);
+        if (result?.error) { alert('지급 실패: ' + result.error); return false; }
+        alert(`🤝 같이하기 보너스 수동 지급 완료\n\n${wA?.name} + ${wB?.name} 양쪽에게 각자 ${POLICY.BUDDY_BONUS_AMOUNT.toLocaleString()}P 지급되었습니다.\n사유: ${vals.reason}`);
+        renderJobDetail(j.id);
+      },
+    });
+  };
+
   // 공고 단위 일괄 보너스 — 출근/지각자 전원에게 동일 금액 지급
   window.__bonusGiveAll = function(jobId) {
     const j = findJob(jobId); if (!j) return;
@@ -5003,16 +5042,26 @@
               ? '<div style="padding:20px 0; text-align:center; color:#6B7684; font-size:13px;">아직 신청자가 없습니다.</div>'
               : myApps.map(a => {
                   const w = findWorker(a.workerId);
-                  const stColor = { pending: '#F59E0B', approved: '#22C55E', rejected: '#EF4444' }[a.status];
-                  const stLabel = { pending: '대기', approved: '승인', rejected: '거절' }[a.status];
+                  const stColor = { pending: '#F59E0B', approved: '#22C55E', rejected: '#EF4444', cancelled: '#6B7684' }[a.status];
+                  const stLabel = { pending: '대기', approved: '승인', rejected: '거절', cancelled: '취소' }[a.status];
                   const buddy = a.buddyAppId ? findApp(a.buddyAppId) : null;
                   const buddyW = buddy ? findWorker(buddy.workerId) : null;
                   let buddyStatusBadge = '';
                   if (buddyW) {
                     if (a.buddyBonusGiven) {
                       buddyStatusBadge = '<span style="display:inline-block; font-size:9px; padding:2px 6px; background:#DCFCE7; color:#166534; border-radius:3px; margin-left:4px;">🤝 +3,000P 지급됨</span>';
+                    } else if (a.status === 'cancelled' || buddy.status === 'cancelled') {
+                      buddyStatusBadge = '<span style="display:inline-block; font-size:9px; padding:2px 6px; background:#F3F4F6; color:#6B7684; border-radius:3px; margin-left:4px;" title="짝꿓 취소 — 보너스 자격 소멸">🚫 자격 소멸</span>';
                     } else if (a.status === 'approved' && buddy.status === 'approved') {
-                      buddyStatusBadge = '<span style="display:inline-block; font-size:9px; padding:2px 6px; background:#FEF3C7; color:#92400E; border-radius:3px; margin-left:4px;">🤝 보너스 대기</span>';
+                      // eligibility 체크해서 정확한 상태 표시
+                      const e = checkBuddyBonusEligibility(a.id);
+                      if (e.reason === 'absent') {
+                        buddyStatusBadge = '<span style="display:inline-block; font-size:9px; padding:2px 6px; background:#FEE2E2; color:#991B1B; border-radius:3px; margin-left:4px;">🚫 결근 — 자격 소멸</span>';
+                      } else if (e.reason === 'eligible_manual') {
+                        buddyStatusBadge = '<span style="display:inline-block; font-size:9px; padding:2px 6px; background:#FEF3C7; color:#92400E; border-radius:3px; margin-left:4px;">🤝 수동 지급 가능</span>';
+                      } else {
+                        buddyStatusBadge = '<span style="display:inline-block; font-size:9px; padding:2px 6px; background:#FEF3C7; color:#92400E; border-radius:3px; margin-left:4px;">🤝 보너스 대기</span>';
+                      }
                     } else if (a.status === 'rejected' && a.rejectReason && a.rejectReason.includes('짝꿓')) {
                       buddyStatusBadge = '<span style="display:inline-block; font-size:9px; padding:2px 6px; background:#FEE2E2; color:#991B1B; border-radius:3px; margin-left:4px;">🤝 짝꿓 자동 거절</span>';
                     } else {
@@ -5157,15 +5206,25 @@
               const gpsBadge = gpsReq ? `<span class="gps-roster-badge" title="${gpsReq.reason.replace(/"/g,'&quot;')}">🛰 GPS 대기 ${gpsReq.distance}m</span>` : '';
               const ovBadge = a.overridden ? '<span style="display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:1px 6px; background:#E0F2FE; color:#0369A1; border-radius:4px; font-weight:500; margin-left:6px;" title="관리자 정정됨">🔧 정정됨</span>' : '';
               // 같이하기 짝꿓 표시 (이 공고에 신청한 application 중 buddy 매칭)
-              const myApp = myApps.find(ap => ap.workerId === a.worker.id && ap.status === 'approved');
+              const myApp = myApps.find(ap => ap.workerId === a.worker.id && (ap.status === 'approved' || ap.status === 'cancelled'));
               const buddyApp = myApp && myApp.buddyAppId ? findApp(myApp.buddyAppId) : null;
               const buddyW = buddyApp ? findWorker(buddyApp.workerId) : null;
               let buddyBadge = '';
-              if (buddyW) {
+              let buddyEligibility = null;
+              if (buddyW && myApp) {
                 if (myApp.buddyBonusGiven) {
                   buddyBadge = `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:1px 6px; background:#DCFCE7; color:#166534; border-radius:4px; font-weight:500; margin-left:6px;" title="${esc(buddyW.name)}와 함께 — 보너스 +3,000P 지급 완료">🤝 +3,000P</span>`;
+                } else if (myApp.status === 'cancelled' || buddyApp.status === 'cancelled') {
+                  buddyBadge = `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:1px 6px; background:#F3F4F6; color:#6B7684; border-radius:4px; font-weight:500; margin-left:6px;" title="짝꿓 취소 — 보너스 자격 소멸">🚫 자격 소멸</span>`;
                 } else {
-                  buddyBadge = `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:1px 6px; background:#FCE7F3; color:#9D174D; border-radius:4px; font-weight:500; margin-left:6px;" title="${esc(buddyW.name)}와 함께 — 양쪽 출퇴근 완료 시 +3,000P">🤝 ${esc(buddyW.name)}</span>`;
+                  buddyEligibility = checkBuddyBonusEligibility(myApp.id);
+                  if (buddyEligibility.reason === 'absent') {
+                    buddyBadge = `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:1px 6px; background:#FEE2E2; color:#991B1B; border-radius:4px; font-weight:500; margin-left:6px;" title="한쪽 결근 — 보너스 자격 소멸">🚫 결근으로 자격 소멸</span>`;
+                  } else if (buddyEligibility.reason === 'eligible_manual') {
+                    buddyBadge = `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:1px 6px; background:#FEF3C7; color:#92400E; border-radius:4px; font-weight:500; margin-left:6px;" title="한쪽 지각/정정 — 관리자 판단 수동 지급 가능">🤝 수동 지급 가능</span>`;
+                  } else {
+                    buddyBadge = `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:1px 6px; background:#FCE7F3; color:#9D174D; border-radius:4px; font-weight:500; margin-left:6px;" title="${esc(buddyW.name)}와 함께 — 양쪽 정시 출퇴근 완료 시 +3,000P">🤝 ${esc(buddyW.name)}</span>`;
+                  }
                 }
               }
               const rowBg = buddyW ? 'background: linear-gradient(90deg, #FDF2F8 0%, transparent 50%);' : '';
@@ -5181,6 +5240,7 @@
                   <div style="color:${stClr}; font-size:12px; font-weight:500;">${a.status}</div>
                   <div style="display:flex; gap:6px; justify-content:flex-end; align-items:center;" onclick="event.stopPropagation();">
                     <button onclick="window.__attOverride('${j.id}','${a.worker.id}')" style="font-size:11px; height:26px; padding:0 8px; background:#fff; border:0.5px solid rgba(14,165,233,0.4); color:#0EA5E9;">✏ 정정</button>
+                    ${buddyEligibility && buddyEligibility.reason === 'eligible_manual' ? `<button onclick="window.__buddyBonusManual('${myApp.id}')" style="font-size:11px; height:26px; padding:0 8px; background:#FEF3C7; border:0.5px solid #F59E0B; color:#92400E;" title="짝꿓 ${esc(buddyW.name)} 와 함께 — 양쪽 +3,000P 수동 지급">🤝 +3,000P 지급</button>` : ''}
                     <button onclick="window.__bonusGive('${a.worker.id}','${j.id}')" style="font-size:11px; height:26px; padding:0 8px; background:#fff; border:0.5px solid rgba(37,99,235,0.4); color:#2563EB;">💰 보너스</button>
                     <span style="color:#2563EB; font-size:11px; cursor:pointer;" onclick="window.__ctrlContract('${j.id}','${a.worker.id}')">📄</span>
                   </div>
