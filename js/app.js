@@ -8820,6 +8820,306 @@
   window.__maSet = function(key, val) { mobileAdminState[key] = val; renderMobileAdmin(); };
 
   // ───────────────────────────────────────────────────────
+  // 통근버스 길찾기 미리보기 (마스터/관리자 시뮬용)
+  // 카카오맵 임베드 + 출발지/정거장 마커 + 추천 차수 표시
+  // 알바생 앱 [🚌 가이드]의 풀 화면 + 인앱 미니 지도 검증용
+  // ───────────────────────────────────────────────────────
+  const ORIGIN_PRESETS = [
+    { key: 'gangnam',  name: '강남역 11번 출구',  lat: 37.4979, lng: 127.0276 },
+    { key: 'jamsil',   name: '잠실역 1번 출구',   lat: 37.5133, lng: 127.1000 },
+    { key: 'sadang',   name: '사당역 6번 출구',   lat: 37.4769, lng: 126.9816 },
+    { key: 'suwon',    name: '수원역 6번 출구',   lat: 37.2657, lng: 127.0017 },
+    { key: 'anyang',   name: '안양역 1번 출구',   lat: 37.4039, lng: 126.9226 },
+    { key: 'cheonan',  name: '천안역 동부광장',   lat: 36.8094, lng: 127.1469 },
+    { key: 'cheongju', name: '청주역 광장',       lat: 36.6308, lng: 127.4486 },
+  ];
+
+  const busmapState = {
+    jobId: null,           // 선택된 공고
+    originKey: 'gangnam',  // 프리셋 키 (또는 'custom')
+    customLat: null,
+    customLng: null,
+    customName: '직접 지정',
+    arriveBufferMin: 15,
+  };
+
+  function getBusmapOrigin() {
+    if (busmapState.originKey === 'custom' && busmapState.customLat != null) {
+      return { name: busmapState.customName, lat: busmapState.customLat, lng: busmapState.customLng };
+    }
+    return ORIGIN_PRESETS.find(p => p.key === busmapState.originKey) || ORIGIN_PRESETS[0];
+  }
+
+  // 통근버스 운영 + 노선 있는 근무지의 공고만
+  function getBusmapJobOptions() {
+    const sites = Object.values(worksites).flatMap(p => p.sites).filter(s => s.bus && getBusRoutes(s.id).length > 0);
+    const siteIds = new Set(sites.map(s => s.id));
+    return jobs
+      .filter(j => siteIds.has(j.siteId) && j.date >= TODAY)
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.start || '').localeCompare(b.start || ''));
+  }
+
+  function renderBusMap() {
+    const jobOpts = getBusmapJobOptions();
+    if (!busmapState.jobId && jobOpts.length > 0) busmapState.jobId = jobOpts[0].id;
+    const j = busmapState.jobId ? findJob(busmapState.jobId) : null;
+    const site = j ? findSite(j.siteId) : null;
+    const origin = getBusmapOrigin();
+    const routes = site ? getBusRoutes(site.site.id) : [];
+    const rec = (j && site) ? recommendBusForWorker(origin.lat, origin.lng, site.site.id, j.start, busmapState.arriveBufferMin) : null;
+
+    const jobOptHtml = jobOpts.map(jj => {
+      const ss = findSite(jj.siteId);
+      return `<option value="${jj.id}" ${jj.id === busmapState.jobId ? 'selected' : ''}>${esc(ss.site.name)} · ${jj.date} ${jj.slot} ${jj.start}~${jj.end}</option>`;
+    }).join('');
+
+    const presetBtns = ORIGIN_PRESETS.map(p => `
+      <button onclick="window.__bmSetOrigin('${p.key}')" style="font-size:11px; padding:6px 8px; height:auto; ${busmapState.originKey===p.key?'background:#1B3A6B; color:#fff; border-color:#1B3A6B;':''}">${esc(p.name)}</button>
+    `).join('');
+
+    let recHtml = '';
+    if (rec) {
+      const stopArrive = busStopArriveTime(rec.bestDeparture, rec.nearestStop.offsetMin);
+      const walkMin = walkMinutes(rec.nearestStop.distanceM);
+      const [bh, bm] = stopArrive.split(':').map(Number);
+      const leaveMin = (bh * 60 + bm - walkMin + 24*60) % (24*60);
+      const leaveBy = String(Math.floor(leaveMin/60)).padStart(2,'0') + ':' + String(leaveMin%60).padStart(2,'0');
+      const routeUrl = kakaoWalkRouteUrl(origin.lat, origin.lng, origin.name, rec.nearestStop.lat, rec.nearestStop.lng, rec.nearestStop.name);
+      recHtml = `
+        <div class="jf-panel" style="border-left: 3px solid #14B8A6;">
+          <div class="ws-section-title">⭐ 추천 결과 <span style="font-size:11px; color:#6B7684; font-weight:400;">${esc(rec.route.name)}</span></div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:10px;">
+            <div style="padding:10px 12px; background:#F0FDFA; border-radius:8px;">
+              <div style="font-size:11px; color:#6B7684; margin-bottom:3px;">탑승</div>
+              <div style="font-size:18px; font-weight:600; color:#0F766E; font-family:'SF Mono',Monaco,monospace;">${stopArrive}</div>
+              <div style="font-size:12px; color:#374151; margin-top:3px;">${esc(rec.nearestStop.name)}</div>
+              <div style="font-size:10px; color:#0F766E; margin-top:2px;">🚶 도보 약 ${walkMin}분 (${rec.nearestStop.distanceM}m)</div>
+            </div>
+            <div style="padding:10px 12px; background:#F5F7FA; border-radius:8px;">
+              <div style="font-size:11px; color:#6B7684; margin-bottom:3px;">근무지 도착</div>
+              <div style="font-size:18px; font-weight:600; color:#111827; font-family:'SF Mono',Monaco,monospace;">${rec.siteArriveTime}</div>
+              <div style="font-size:12px; color:#374151; margin-top:3px;">${esc(site.site.name)}</div>
+              <div style="font-size:10px; color:#16A34A; margin-top:2px;">근무 ${rec.bufferMin}분 전 도착</div>
+            </div>
+          </div>
+          <div style="padding:10px 12px; background:#FEF3C7; border-radius:6px; font-size:12px; color:#92400E; display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <span>⏰ 늦지 않으려면 출발</span>
+            <strong style="font-family:'SF Mono',Monaco,monospace; font-size:14px;">${leaveBy} 까지</strong>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn-primary" style="flex:1; height:36px;" onclick="window.open('${routeUrl}','_blank','noopener')">🗺 카카오맵 도보 길찾기 (외부)</button>
+          </div>
+        </div>
+      `;
+    } else if (j) {
+      recHtml = `
+        <div class="jf-panel" style="border-left: 3px solid #EF4444; background:#FEF2F2;">
+          <div style="font-size:13px; font-weight:500; color:#991B1B;">⚠ 추천 가능한 차수가 없습니다</div>
+          <div style="font-size:12px; color:#7F1D1D; margin-top:4px;">근무 시작(${j.start}) 시각이 너무 이르거나 운행 시간 외입니다. 출발지를 변경해보거나 다른 교통수단을 이용해야 합니다.</div>
+        </div>
+      `;
+    } else {
+      recHtml = `
+        <div class="jf-panel" style="text-align:center; color:#6B7684; padding: 30px;">
+          좌측에서 공고를 선택해주세요.
+        </div>
+      `;
+    }
+
+    let routesHtml = '';
+    if (routes.length > 0) {
+      routesHtml = routes.map(rt => `
+        <div style="padding:10px 12px; border:0.5px solid rgba(0,0,0,0.08); border-radius:8px; margin-bottom:6px; ${rec && rec.route.id === rt.id ? 'border-color:#14B8A6; background:#F0FDFA;' : ''}">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:13px; font-weight:500; color:#111827;">${esc(rt.name)} ${rec && rec.route.id === rt.id ? '<span style="font-size:10px; color:#0F766E; margin-left:4px;">⭐ 추천</span>' : ''}</div>
+            <span style="font-size:10px; color:#6B7684;">${rt.cycleMinutes}분/회 · ${rt.departures.length}회</span>
+          </div>
+          <div style="font-family:'SF Mono',Monaco,monospace; font-size:11px; color:#374151; margin-top:4px;">${rt.departures.join(' / ')}</div>
+        </div>
+      `).join('');
+    }
+
+    main.innerHTML = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">🗺 통근버스 길찾기</div>
+          <div class="jf-subtitle">알바생 위치 기반 추천 차수 + 정거장 시각화 — 마스터/관리자 시뮬레이터</div>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 360px 1fr; gap: 16px; align-items: start;">
+        <!-- 좌측: 컨트롤 + 추천 결과 -->
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div class="jf-panel">
+            <div class="ws-section-title">시뮬 조건</div>
+            <div class="jf-form-row" style="grid-template-columns: 80px 1fr; padding: 8px 0;">
+              <div class="jf-form-label">공고</div>
+              <select onchange="window.__bmSet('jobId', this.value)">
+                ${jobOpts.length === 0 ? '<option>(통근버스 운영 공고 없음)</option>' : jobOptHtml}
+              </select>
+            </div>
+            <div class="jf-form-row top" style="grid-template-columns: 80px 1fr; padding: 8px 0;">
+              <div class="jf-form-label">현재 위치</div>
+              <div>
+                <div style="display:flex; flex-wrap:wrap; gap:4px;">${presetBtns}</div>
+                <div style="font-size:11px; color:#6B7684; margin-top:6px;">또는 지도 클릭으로 직접 지정</div>
+                ${busmapState.originKey === 'custom' ? `<div style="margin-top:4px; font-size:11px; color:#2563EB;">📍 ${busmapState.customLat?.toFixed(4)}, ${busmapState.customLng?.toFixed(4)}</div>` : ''}
+              </div>
+            </div>
+            <div class="jf-form-row" style="grid-template-columns: 80px 1fr; padding: 8px 0;">
+              <div class="jf-form-label">도착 버퍼</div>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <input type="number" min="5" max="60" step="5" value="${busmapState.arriveBufferMin}" style="width:80px;" onchange="window.__bmSet('arriveBufferMin', parseInt(this.value)||15)">
+                <span style="font-size:12px; color:#6B7684;">분 일찍 도착</span>
+              </div>
+            </div>
+          </div>
+
+          ${recHtml}
+
+          ${routes.length > 0 ? `
+            <div class="jf-panel">
+              <div class="ws-section-title">전체 노선 <span style="font-size:11px; color:#6B7684; font-weight:400;">${routes.length}개</span></div>
+              ${routesHtml}
+            </div>
+          ` : ''}
+        </div>
+
+        <!-- 우측: 카카오맵 -->
+        <div class="jf-panel" style="padding: 12px;">
+          <div style="font-size:12px; color:#6B7684; margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;">
+            <span>
+              <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#2563EB; vertical-align:middle; margin-right:4px;"></span>현재 위치 ·
+              <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#14B8A6; vertical-align:middle; margin-right:4px;"></span>추천 정거장 ·
+              <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#9CA3AF; vertical-align:middle; margin-right:4px;"></span>일반 정거장 ·
+              <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#EF4444; vertical-align:middle; margin-right:4px;"></span>근무지
+            </span>
+            <span style="font-size:11px;">지도 클릭 시 출발지 직접 지정</span>
+          </div>
+          <div id="busmap-canvas" style="width:100%; height: calc(100vh - 220px); min-height: 480px; border-radius: 8px; border: 0.5px solid rgba(0,0,0,0.1); overflow: hidden;"></div>
+        </div>
+      </div>
+    `;
+
+    // 카카오맵 초기화
+    setTimeout(() => {
+      const mapEl = document.getElementById('busmap-canvas');
+      if (!mapEl) return;
+      if (window.__kakaoLoadFailed || typeof kakao === 'undefined' || !kakao.maps) {
+        mapEl.innerHTML = renderMapError();
+        return;
+      }
+      kakao.maps.load(() => {
+        const center = new kakao.maps.LatLng(origin.lat, origin.lng);
+        const map = new kakao.maps.Map(mapEl, { center, level: 7 });
+        new ResizeObserver(() => map.relayout()).observe(mapEl);
+
+        const bounds = new kakao.maps.LatLngBounds();
+
+        // 출발지 마커 (파란 원)
+        const originPos = new kakao.maps.LatLng(origin.lat, origin.lng);
+        const originMarker = new kakao.maps.CustomOverlay({
+          position: originPos,
+          content: '<div style="background:#2563EB; color:#fff; padding:4px 8px; border-radius:14px; font-size:11px; font-weight:600; box-shadow:0 2px 6px rgba(0,0,0,0.2); white-space:nowrap; transform:translate(-50%, -50%); border:2px solid #fff;">📍 ' + origin.name + '</div>',
+          zIndex: 100,
+        });
+        originMarker.setMap(map);
+        bounds.extend(originPos);
+
+        // 모든 노선의 정거장 + 노선 polyline
+        if (site) {
+          const allRoutes = getBusRoutes(site.site.id);
+          allRoutes.forEach(rt => {
+            const path = rt.stops.map(s => new kakao.maps.LatLng(s.lat, s.lng));
+            const isRecRoute = rec && rec.route.id === rt.id;
+            new kakao.maps.Polyline({
+              map,
+              path,
+              strokeWeight: isRecRoute ? 4 : 2,
+              strokeColor: isRecRoute ? '#14B8A6' : '#9CA3AF',
+              strokeOpacity: isRecRoute ? 0.9 : 0.5,
+              strokeStyle: 'solid',
+            });
+            rt.stops.forEach(stop => {
+              const isLast = stop.order === rt.stops.length;
+              const isRecStop = isRecRoute && rec && rec.nearestStop.name === stop.name;
+              const color = isLast ? '#EF4444' : isRecStop ? '#14B8A6' : '#9CA3AF';
+              const size = isLast ? 16 : isRecStop ? 14 : 10;
+              const pos = new kakao.maps.LatLng(stop.lat, stop.lng);
+              const ov = new kakao.maps.CustomOverlay({
+                position: pos,
+                content: `<div style="width:${size}px; height:${size}px; background:${color}; border-radius:50%; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,0.3); transform:translate(-50%, -50%); cursor:pointer;" title="${esc(stop.name)} (+${stop.offsetMin}분)"></div>`,
+                zIndex: isLast || isRecStop ? 50 : 30,
+              });
+              ov.setMap(map);
+              bounds.extend(pos);
+              // 추천 정거장에는 라벨 추가
+              if (isRecStop) {
+                const label = new kakao.maps.CustomOverlay({
+                  position: pos,
+                  yAnchor: 2.2,
+                  content: '<div style="background:#14B8A6; color:#fff; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:600; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,0.2);">탑승: ' + esc(stop.name) + '</div>',
+                  zIndex: 200,
+                });
+                label.setMap(map);
+              }
+              if (isLast) {
+                const label = new kakao.maps.CustomOverlay({
+                  position: pos,
+                  yAnchor: 2.2,
+                  content: '<div style="background:#EF4444; color:#fff; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:600; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,0.2);">근무지: ' + esc(stop.name) + '</div>',
+                  zIndex: 200,
+                });
+                label.setMap(map);
+              }
+            });
+          });
+
+          // 출발지 → 추천 정거장 점선 (파란색)
+          if (rec) {
+            new kakao.maps.Polyline({
+              map,
+              path: [originPos, new kakao.maps.LatLng(rec.nearestStop.lat, rec.nearestStop.lng)],
+              strokeWeight: 3,
+              strokeColor: '#2563EB',
+              strokeOpacity: 0.7,
+              strokeStyle: 'shortdash',
+            });
+          }
+        }
+
+        // bounds 적용
+        requestAnimationFrame(() => {
+          map.relayout();
+          if (!bounds.isEmpty()) map.setBounds(bounds, 60, 60, 60, 60);
+        });
+
+        // 지도 클릭 시 출발지 변경
+        kakao.maps.event.addListener(map, 'click', (mouseEvent) => {
+          const ll = mouseEvent.latLng;
+          busmapState.originKey = 'custom';
+          busmapState.customLat = ll.getLat();
+          busmapState.customLng = ll.getLng();
+          busmapState.customName = '직접 지정 위치';
+          renderBusMap();
+        });
+      });
+    }, 100);
+  }
+
+  window.__bmSet = function(key, val) {
+    if (key === 'originKey') return; // setOrigin 사용
+    busmapState[key] = val;
+    renderBusMap();
+  };
+  window.__bmSetOrigin = function(presetKey) {
+    busmapState.originKey = presetKey;
+    busmapState.customLat = null;
+    busmapState.customLng = null;
+    renderBusMap();
+  };
+
+  // ───────────────────────────────────────────────────────
   // 처리 이력 전체 보기 (신청/협의대상/포인트 통합)
   // ───────────────────────────────────────────────────────
   const historyState = {
@@ -9552,6 +9852,7 @@
     stats: renderStats,
     apppreview: renderAppPreview,
     mobileadmin: renderMobileAdmin,
+    busmap: renderBusMap,
     audit: renderAuditLog,
   };
 
@@ -9572,7 +9873,7 @@
   });
 
   function pageNameFor(page) {
-    const names = { home: '홈', home2: '홈 (재설계)', jobs: '공고 관리', approval: '신청 승인', waitlistapv: '대기열 승인', gpsapproval: '퇴근 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정', stats: '통계 리포트', apppreview: '앱 미리보기', mobileadmin: '모바일 관리자 뷰', audit: '감사로그' };
+    const names = { home: '홈', home2: '홈 (재설계)', jobs: '공고 관리', approval: '신청 승인', waitlistapv: '대기열 승인', gpsapproval: '퇴근 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정', stats: '통계 리포트', apppreview: '앱 미리보기', mobileadmin: '모바일 관리자 뷰', busmap: '통근버스 길찾기', audit: '감사로그' };
     return names[page] || '';
   }
 
