@@ -6,6 +6,31 @@
   const main = document.getElementById('jf-main-content');
   const navItems = document.querySelectorAll('.jf-nav-item');
 
+  // ─── 한글 IME 조합 추적 (composition events) ───
+  // 한글 입력 시 oninput이 매 자모마다 발생 → render 호출 시 input 재생성으로 조합 깨짐
+  // 모든 input/textarea에 자동 적용: 조합 중에는 dataset.composing='1' 표시
+  document.addEventListener('compositionstart', e => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+      e.target.dataset.composing = '1';
+    }
+  }, true);
+  document.addEventListener('compositionend', e => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+      e.target.dataset.composing = '';
+      // 조합 종료 시 search 트리거가 있으면 강제 호출 (data-imefn에 함수명)
+      const fn = e.target.dataset.imefn;
+      if (fn && typeof window[fn] === 'function') {
+        window[fn](e.target.value);
+      }
+    }
+  }, true);
+
+  // 검색/필터 입력에 사용 — 조합 중이면 skip, 영문/완성된 한글만 처리
+  function imeSafeInput(el, fnName) {
+    if (el.dataset.composing === '1') return;
+    if (typeof window[fnName] === 'function') window[fnName](el.value);
+  }
+  window.__imeInput = imeSafeInput;
 
   // findSite · addMin · donutSvg · pointRewardFor · attendanceDonut · getAttendance · attendanceSummary
   // → 공용 헬퍼는 data.js 에 정의됨 (control.html 에서도 공유)
@@ -608,7 +633,7 @@
       </div>
 
       <div class="jobs-filters">
-        <div class="jf-search"><input type="text" placeholder="제목 · 내용 검색" value="${inqState.search}" oninput="window.__inqSearch(this.value)" /></div>
+        <div class="jf-search"><input type="text" placeholder="제목 · 내용 검색" value="${inqState.search}" oninput="window.__imeInput(this, '__inqSearch')" data-imefn="__inqSearch" /></div>
         <select onchange="window.__inqFilter('status', this.value)">
           <option value="">전체 상태</option>
           <option value="pending"  ${inqState.status==='pending'?'selected':''}>미답변</option>
@@ -839,7 +864,7 @@
 
       <div style="display:flex; gap:8px; margin-bottom:14px; align-items:center; flex-wrap:wrap;">
         <div class="jf-search" style="flex:0 0 280px;">
-          <input type="text" placeholder="대상/요약/관리자 검색" value="${esc(auditState.search)}" oninput="window.__audSearch(this.value)" />
+          <input type="text" placeholder="대상/요약/관리자 검색" value="${esc(auditState.search)}" oninput="window.__imeInput(this, '__audSearch')" data-imefn="__audSearch" />
         </div>
         <div style="display:inline-flex; gap:4px; border:0.5px solid rgba(0,0,0,0.12); border-radius:8px; padding:3px;">
           ${rangeBtns}
@@ -1092,7 +1117,7 @@
       </div>
 
       <div class="jobs-filters">
-        <div class="jf-search"><input type="text" placeholder="이름 · 전화번호 검색" value="${adminState.search}" oninput="window.__admSearch(this.value)" /></div>
+        <div class="jf-search"><input type="text" placeholder="이름 · 전화번호 검색" value="${adminState.search}" oninput="window.__imeInput(this, '__admSearch')" data-imefn="__admSearch" /></div>
         <select onchange="window.__admFilter('role', this.value)">
           <option value="">전체 등급</option>
           <option value="master" ${adminState.role==='master'?'selected':''}>마스터</option>
@@ -3245,7 +3270,7 @@
       </div>
 
       <div class="jobs-filters">
-        <div class="jf-search"><input type="text" placeholder="이름 · 전화번호 검색" value="${negState.search}" oninput="window.__negSearch(this.value)" /></div>
+        <div class="jf-search"><input type="text" placeholder="이름 · 전화번호 검색" value="${negState.search}" oninput="window.__imeInput(this, '__negSearch')" data-imefn="__negSearch" /></div>
         <select onchange="window.__negFilter('reason', this.value)">
           <option value="">전체 등록 사유</option>
           <option value="auto"    ${negState.reason==='auto'?'selected':''}>경고 3회 자동</option>
@@ -3435,7 +3460,7 @@
       </div>
 
       <div class="jobs-filters">
-        <div class="jf-search"><input type="text" placeholder="이름 · 전화번호 검색" value="${workerState.search}" oninput="window.__wrkSearch(this.value)" /></div>
+        <div class="jf-search"><input type="text" placeholder="이름 · 전화번호 검색" value="${workerState.search}" oninput="window.__imeInput(this, '__wrkSearch')" data-imefn="__wrkSearch" /></div>
         <select onchange="window.__wrkFilter('status', this.value)">
           <option value="">전체 상태</option>
           <option value="normal" ${workerState.status==='normal'?'selected':''}>정상</option>
@@ -5345,10 +5370,10 @@
         <div class="jf-form-row">
           <div class="jf-form-label">잡핏 포인트<span class="req">*</span></div>
           <div style="display:flex; gap:8px; align-items:center;">
-            <input type="number" step="500" min="0" value="${reward}" onchange="jobEditState.draft.point=parseInt(this.value)||0; renderJobEdit('${jobId}')" style="width:120px; ${(typeof d.point === 'number' && d.point > 0 && d.point !== (POINT_REWARDS[d.slot] || 2000)) ? 'color:#2563EB; font-weight:600;' : ''}" />
+            <input type="number" step="500" min="0" value="${reward}" onchange="jobEditState.draft.point=parseInt(this.value)||0; renderJobEdit('${jobId}')" style="width:120px; ${(typeof d.point === 'number' && d.point > 0 && d.point !== DEFAULT_POINT_REWARD) ? 'color:#2563EB; font-weight:600;' : ''}" />
             <span style="font-size:13px; color:#6B7684;">P</span>
-            <span style="font-size:11px; color:#9CA3AF;">시간대 기본값: ${(POINT_REWARDS[d.slot] || 2000).toLocaleString()}P${(typeof d.point === 'number' && d.point > 0 && d.point !== (POINT_REWARDS[d.slot] || 2000)) ? ' · <span style="color:#2563EB; font-weight:500;">관리자 수동 설정</span>' : ''}</span>
-            ${(typeof d.point === 'number' && d.point > 0 && d.point !== (POINT_REWARDS[d.slot] || 2000)) ? `<button onclick="jobEditState.draft.point=undefined; renderJobEdit('${jobId}')" style="font-size:11px; padding:0 8px; height:28px;">기본값으로 초기화</button>` : ''}
+            <span style="font-size:11px; color:#9CA3AF;">기본값: ${DEFAULT_POINT_REWARD.toLocaleString()}P${(typeof d.point === 'number' && d.point > 0 && d.point !== DEFAULT_POINT_REWARD) ? ' · <span style="color:#2563EB; font-weight:500;">관리자 수동 설정</span>' : ''}</span>
+            ${(typeof d.point === 'number' && d.point > 0 && d.point !== DEFAULT_POINT_REWARD) ? `<button onclick="jobEditState.draft.point=undefined; renderJobEdit('${jobId}')" style="font-size:11px; padding:0 8px; height:28px;">기본값으로 초기화</button>` : ''}
           </div>
         </div>
         <div class="jf-form-row">
@@ -5575,7 +5600,7 @@
             <div>시간대</div><div>시작</div><div>종료</div><div>모집</div><div>급여 유형</div><div>금액</div><div>포인트(P)</div><div></div>
           </div>
           ${f.slots.map((s, i) => {
-            const pointDefault = (typeof POINT_REWARDS !== 'undefined' && POINT_REWARDS[s.slot]) || 2000;
+            const pointDefault = DEFAULT_POINT_REWARD;
             const pointVal = (typeof s.point === 'number' && s.point > 0) ? s.point : pointDefault;
             const isCustom = pointVal !== pointDefault;
             return `
@@ -5602,7 +5627,7 @@
             <button onclick="window.__jfAddSlot()" style="font-size:12px;">+ 시간대 추가</button>
           </div>
           <div class="jf-form-hint" style="margin-top:10px;">
-            ※ 잡핏 포인트 보상 — 시간대 기본값: 주간 2,000P · 야간 2,500P · 새벽 3,000P · 웨딩 2,500P. 공고별 수동 조정 가능 (수정값은 파란색으로 표시됨). 알바비는 파트너사가 직접 지급.
+            ※ 잡핏 포인트 보상 — <strong>모든 공고 기본 1,000P</strong>. 마스터/관리자가 등록·수정 시 공고별로 자유롭게 조정 (변경값은 파란색으로 표시됨). 알바비는 파트너사가 직접 지급.
           </div>
         </div>
 
@@ -5755,8 +5780,8 @@
     s[key] = val;
     // 시간대 변경 시 포인트가 기본값이거나 미설정이면 새 시간대 기본값으로 자동 업데이트
     if (key === 'slot') {
-      const oldDefault = POINT_REWARDS[s._lastSlot || '주간'] || 2000;
-      const newDefault = POINT_REWARDS[val] || 2000;
+      const oldDefault = DEFAULT_POINT_REWARD;
+      const newDefault = DEFAULT_POINT_REWARD;
       if (typeof s.point !== 'number' || s.point === oldDefault) {
         s.point = newDefault;
       }
@@ -5863,7 +5888,7 @@
                   <div style="background:#fff; border-radius:10px; padding:12px; font-size:11px; color:#6B7684; line-height:1.6;">
                     <div style="color:#111827; font-weight:600; font-size:12px; margin-bottom:6px;">${sc.site}</div>
                     📅 2026-04-25 (토) · 주간 07:00~15:00<br>
-                    💰 일급 115,000원 · 포인트 2,000P<br>
+                    💰 일급 115,000원 · 포인트 1,000P<br>
                     👥 모집 15 / 30명
                   </div>
                   <div class="mp-dim">
@@ -6014,14 +6039,14 @@
     f.dates.forEach(date => {
       f.slots.forEach(s => {
         const newId = 'j' + String(jobs.length + created + 1).padStart(3, '0');
-        const slotPoint = (typeof s.point === 'number' && s.point > 0) ? s.point : (POINT_REWARDS[s.slot] || 2000);
+        const slotPoint = (typeof s.point === 'number' && s.point > 0) ? s.point : DEFAULT_POINT_REWARD;
         jobs.push({
           id: newId, siteId: f.siteId,
           date, slot: s.slot, start: s.start, end: s.end,
           cap: s.cap, apply: 0, wage: s.wage, wageType: s.wageType, point: slotPoint,
           contact: f.contact, contract: f.useContract, safety: f.useSafety,
         });
-        const isCustomPoint = slotPoint !== (POINT_REWARDS[s.slot] || 2000);
+        const isCustomPoint = slotPoint !== DEFAULT_POINT_REWARD;
         logAudit({
           category: 'job', action: 'create',
           target: site.site.name + ' ' + date + ' ' + s.slot,
@@ -7979,7 +8004,7 @@
         <div class="ap-info-section">
           <h4>포인트 적립 규칙</h4>
           <ul>
-            <li>주간 2,000P · 야간 2,500P · 새벽 3,000P · 웨딩 2,500P</li>
+            <li>모든 공고 기본 1,000P (마스터/관리자가 공고별로 조정)</li>
             <li>알바비(일급 10~12만 원)는 파트너사가 <b>직접 지급</b> (잡핏 책임 아님)</li>
           </ul>
         </div>
@@ -8494,7 +8519,7 @@
       </div>
 
       <div class="jobs-filters">
-        <div class="jf-search"><input type="text" placeholder="이름 · 사유 · 근무지 검색" value="${historyState.search}" oninput="window.__histSearch(this.value)" /></div>
+        <div class="jf-search"><input type="text" placeholder="이름 · 사유 · 근무지 검색" value="${historyState.search}" oninput="window.__imeInput(this, '__histSearch')" data-imefn="__histSearch" /></div>
         <div class="jobs-view-toggle">
           <button class="${historyState.cat==='all'?'active':''}" onclick="window.__histCat('all')">전체 (${totalCount})</button>
           <button class="${historyState.cat==='approval'?'active':''}" onclick="window.__histCat('approval')">신청 (${byCat.approval})</button>
@@ -8842,11 +8867,11 @@
 
           <div class="jf-form-row">
             <div class="jf-form-label">제목<span class="req">*</span></div>
-            <input type="text" placeholder="최대 30자" maxlength="30" value="${esc(n.title)}" oninput="notifState.title = this.value; renderNotificationModal();" />
+            <input type="text" placeholder="최대 30자" maxlength="30" value="${esc(n.title)}" oninput="window.__imeInput(this, '__notifTitleSet')" data-imefn="__notifTitleSet" />
           </div>
           <div class="jf-form-row top">
             <div class="jf-form-label">내용<span class="req">*</span></div>
-            <textarea rows="4" placeholder="알림 본문을 입력하세요..." oninput="notifState.body = this.value; renderNotificationModal();">${esc(n.body)}</textarea>
+            <textarea rows="4" placeholder="알림 본문을 입력하세요..." oninput="window.__imeInput(this, '__notifBodySet')" data-imefn="__notifBodySet">${esc(n.body)}</textarea>
           </div>
 
           <div class="jf-form-row top" style="padding-top:14px;">
@@ -8863,7 +8888,7 @@
                 <span class="jf-toggle-text">예약 발송</span>
               </label>
               ${n.scheduled ? `
-                <input type="datetime-local" value="${n.scheduleAt}" oninput="notifState.scheduleAt = this.value; renderNotificationModal();" style="max-width:240px; margin-left:48px;" />
+                <input type="datetime-local" value="${n.scheduleAt}" onchange="notifState.scheduleAt = this.value; renderNotificationModal();" style="max-width:240px; margin-left:48px;" />
               ` : ''}
             </div>
           </div>
@@ -8910,6 +8935,16 @@
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
     document.body.appendChild(overlay);
   }
+
+  // 알림 모달 텍스트 입력 핸들러 — IME 조합 종료 후에만 미리보기 갱신
+  window.__notifTitleSet = function(val) {
+    notifState.title = val;
+    renderNotificationModal();
+  };
+  window.__notifBodySet = function(val) {
+    notifState.body = val;
+    renderNotificationModal();
+  };
 
   window.__notifSend = function() {
     const n = notifState;
