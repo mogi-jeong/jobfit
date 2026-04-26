@@ -3348,11 +3348,11 @@
   // ───────────────────────────────────────────────────────
   const jobsState = {
     tab: 'list',           // list / create / template
-    view: 'list',          // list / calendar
     partnerKey: '',        // 파트너사 필터
     siteId: '',            // 근무지 필터
     status: '',            // 상태 필터
     slot: '',              // 시간대 필터
+    selectedDate: '',      // '' = 전체, 'YYYY-MM-DD' = 해당 날짜만
     calYear: 2026,
     calMonth: 4,           // 1~12
   };
@@ -3379,8 +3379,8 @@
   function renderWaitlistApv() { renderJobsWaitlist(); }
 
   function renderJobsList() {
-    // 현재 필터 적용된 공고
-    const filtered = jobs.filter(j => {
+    // 캘린더용 — 날짜 외 모든 필터 적용 (캘린더는 선택 가능한 모든 날짜 표시)
+    const filteredForCal = jobs.filter(j => {
       const st = jobStatus(j);
       if (jobsState.status && jobsState.status !== st) return false;
       if (jobsState.slot && jobsState.slot !== j.slot) return false;
@@ -3390,6 +3390,11 @@
       if (jobsState.siteId && jobsState.siteId !== j.siteId) return false;
       return true;
     });
+
+    // 리스트용 — 캘린더 필터 + 선택 날짜
+    const filtered = jobsState.selectedDate
+      ? filteredForCal.filter(j => j.date === jobsState.selectedDate)
+      : filteredForCal;
 
     // 메트릭 (전체 공고 기준)
     const total = jobs.length;
@@ -3456,60 +3461,92 @@
           <option value="웨딩" ${jobsState.slot==='웨딩'?'selected':''}>웨딩</option>
         </select>
         ${(jobsState.partnerKey||jobsState.siteId||jobsState.status||jobsState.slot) ? `<button onclick="window.__jobsClearFilter()" style="font-size:12px;">필터 초기화</button>` : ''}
-        <div class="jobs-view-toggle">
-          <button class="${jobsState.view==='list'?'active':''}" onclick="window.__jobsView('list')">리스트</button>
-          <button class="${jobsState.view==='calendar'?'active':''}" onclick="window.__jobsView('calendar')">캘린더</button>
-        </div>
       </div>
     `;
 
-    if (jobsState.view === 'list') {
-      if (filtered.length === 0) {
-        html += `<div class="jf-placeholder"><div class="jf-placeholder-icon">📋</div><div class="jf-placeholder-title">조건에 맞는 공고가 없습니다</div><div class="jf-placeholder-desc">필터를 변경하거나 새 공고를 등록해주세요.</div></div>`;
-      } else {
-        // 날짜 오름차순, 같은 날짜는 시간대 순서
-        const slotOrder = { 새벽: 0, 주간: 1, 야간: 2, 웨딩: 3 };
-        const sorted = [...filtered].sort((a, b) => a.date.localeCompare(b.date) || (slotOrder[a.slot]||9) - (slotOrder[b.slot]||9));
-        html += `<div class="jobs-grid">`;
-        sorted.forEach(j => {
-          const site = findSite(j.siteId);
-          const st = jobStatus(j);
-          const pct = Math.round((j.apply / j.cap) * 100);
-          const wlCount = currentWaitCount(j.id);
-          const wlPending = waitlist.filter(w => w.jobId === j.id && w.status === 'pending_accept').length;
-          html += `
-            <div class="jobs-card" onclick="window.__jobsDetail('${j.id}')">
-              <div class="jobs-card-head">
-                <div>
-                  <div class="jobs-card-title">${site.site.name}</div>
-                  <div class="jobs-card-sub">${site.partner} · ${j.slot} ${j.start}~${j.end}</div>
-                </div>
-                <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
-                  <span class="jobs-status jobs-status-${st}">${STATUS_LABEL[st]}</span>
-                  ${j.reopened ? '<span class="wl-reopened" style="font-size:10px; padding:2px 6px;">REOPENED</span>' : ''}
-                  ${wlPending > 0 ? `<span class="wl-badge wl-badge-pending">수락 대기 ${wlPending}</span>` : (wlCount > 0 ? `<span class="wl-badge">대기 ${wlCount}</span>` : '')}
-                </div>
-              </div>
-              <div class="jobs-card-row"><span>날짜</span><strong>${j.date}</strong></div>
-              <div class="jobs-card-row"><span>${j.wageType}</span><strong>${j.wage.toLocaleString()}원</strong></div>
-              <div class="jobs-card-row"><span>담당자</span><strong>${j.contact}</strong></div>
-              <div class="jobs-progress-bar"><div class="jobs-progress-bar-fill" style="width:${pct}%;"></div></div>
-              <div class="jobs-progress-label"><span>모집 ${j.apply} / ${j.cap}명${wlCount > 0 ? ` · 대기 ${wlCount}/${maxWaitCap(j)}` : ''}</span><span>${pct}%</span></div>
-              <div class="jobs-card-foot" onclick="event.stopPropagation()">
-                <button onclick="window.__jobsDetail('${j.id}')">신청자</button>
-                <button onclick="window.__jobEdit('${j.id}')">수정</button>
-              </div>
-            </div>
-          `;
-        });
-        html += `</div>`;
-      }
-    } else {
-      // 캘린더 뷰
-      html += renderJobsCalendar(filtered);
-    }
+    // 좌:캘린더 + 우:리스트 분할 레이아웃
+    html += `<div class="jobs-split">
+      <div class="jobs-cal-side">${renderJobsCalendar(filteredForCal)}</div>
+      <div class="jobs-list-side">${renderJobsListSection(filtered)}</div>
+    </div>`;
 
     main.innerHTML = html;
+  }
+
+  function renderJobsListSection(filtered) {
+    const sel = jobsState.selectedDate;
+    let head = '';
+    if (sel) {
+      const d = new Date(sel);
+      const dowKor = ['일','월','화','수','목','금','토'][d.getDay()];
+      const isToday = sel === TODAY;
+      head = `
+        <div class="jobs-list-head">
+          <div class="jobs-list-head-title">
+            <span style="color:#6B7684;">선택된 날짜:</span>
+            <span class="jobs-date-chip">
+              📅 ${sel.slice(5)} (${dowKor}) ${isToday ? '· 오늘' : ''}
+              <button onclick="window.__jobsClearDate()" title="전체 보기">✕</button>
+            </span>
+            <span style="color:#6B7684; font-size:12px;">${filtered.length}건</span>
+          </div>
+          <button onclick="window.__jobsClearDate()" style="font-size:12px;">전체 날짜 보기</button>
+        </div>
+      `;
+    } else {
+      head = `
+        <div class="jobs-list-head">
+          <div class="jobs-list-head-title">
+            <span>📋 전체 공고</span>
+            <span style="color:#6B7684; font-size:12px;">${filtered.length}건</span>
+          </div>
+          <span style="font-size:11px; color:#6B7684;">← 캘린더에서 날짜를 클릭하면 해당 일자만 표시</span>
+        </div>
+      `;
+    }
+
+    if (filtered.length === 0) {
+      return head + `<div class="jf-placeholder"><div class="jf-placeholder-icon">📋</div><div class="jf-placeholder-title">조건에 맞는 공고가 없습니다</div><div class="jf-placeholder-desc">${sel ? '다른 날짜를 선택하거나 ' : ''}필터를 변경하거나 새 공고를 등록해주세요.</div></div>`;
+    }
+
+    // 날짜 오름차순, 같은 날짜는 시간대 순서
+    const slotOrder = { 새벽: 0, 주간: 1, 야간: 2, 웨딩: 3 };
+    const sorted = [...filtered].sort((a, b) => a.date.localeCompare(b.date) || (slotOrder[a.slot]||9) - (slotOrder[b.slot]||9));
+    let body = `<div class="jobs-grid">`;
+    sorted.forEach(j => {
+      const site = findSite(j.siteId);
+      const st = jobStatus(j);
+      const pct = Math.round((j.apply / j.cap) * 100);
+      const wlCount = currentWaitCount(j.id);
+      const wlPending = waitlist.filter(w => w.jobId === j.id && w.status === 'pending_accept').length;
+      body += `
+        <div class="jobs-card" onclick="window.__jobsDetail('${j.id}')">
+          <div class="jobs-card-head">
+            <div>
+              <div class="jobs-card-title">${site.site.name}</div>
+              <div class="jobs-card-sub">${site.partner} · ${j.slot} ${j.start}~${j.end}</div>
+            </div>
+            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+              <span class="jobs-status jobs-status-${st}">${STATUS_LABEL[st]}</span>
+              ${j.reopened ? '<span class="wl-reopened" style="font-size:10px; padding:2px 6px;">REOPENED</span>' : ''}
+              ${wlPending > 0 ? `<span class="wl-badge wl-badge-pending">수락 대기 ${wlPending}</span>` : (wlCount > 0 ? `<span class="wl-badge">대기 ${wlCount}</span>` : '')}
+            </div>
+          </div>
+          <div class="jobs-card-row"><span>날짜</span><strong>${j.date}</strong></div>
+          <div class="jobs-card-row"><span>${j.wageType}</span><strong>${j.wage.toLocaleString()}원</strong></div>
+          <div class="jobs-card-row"><span>담당자</span><strong>${j.contact}</strong></div>
+          <div class="jobs-progress-bar"><div class="jobs-progress-bar-fill" style="width:${pct}%;"></div></div>
+          <div class="jobs-progress-label"><span>모집 ${j.apply} / ${j.cap}명${wlCount > 0 ? ` · 대기 ${wlCount}/${maxWaitCap(j)}` : ''}</span><span>${pct}%</span></div>
+          <div class="jobs-card-foot" onclick="event.stopPropagation()">
+            <button onclick="window.__jobsDetail('${j.id}')">신청자</button>
+            <button onclick="window.__jobsDuplicate('${j.id}')" title="이 공고를 복제">📋 복제</button>
+            <button onclick="window.__jobEdit('${j.id}')">수정</button>
+          </div>
+        </div>
+      `;
+    });
+    body += `</div>`;
+    return head + body;
   }
 
   function renderJobsCalendar(filtered) {
@@ -3541,14 +3578,15 @@
       const dateStr = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
       const dayJobs = byDate[dateStr] || [];
       const isToday = dateStr === TODAY;
+      const isSelected = jobsState.selectedDate === dateStr;
       const dow = idx % 7;
       const numClass = dow === 0 ? 'sun' : dow === 6 ? 'sat' : '';
       const statusColors = { open:'#2563EB', progress:'#22C55E', closed:'#F59E0B', done:'#9CA3AF' };
       const dots = dayJobs.slice(0, 6).map(j =>
         `<span class="jobs-cal-day-dot" style="background:${statusColors[jobStatus(j)]};"></span>`).join('');
       daysHtml += `
-        <div class="jobs-cal-day ${dayJobs.length > 0 ? 'has-jobs' : ''} ${isToday ? 'today' : ''}"
-             ${dayJobs.length > 0 ? `onclick="window.__jobsCalDay('${dateStr}')"` : ''}>
+        <div class="jobs-cal-day ${dayJobs.length > 0 ? 'has-jobs' : ''} ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''}"
+             onclick="window.__jobsCalDay('${dateStr}')">
           <div class="jobs-cal-day-num ${numClass}">${d}</div>
           ${dots ? `<div class="jobs-cal-day-dots">${dots}</div>` : ''}
           ${dayJobs.length > 0 ? `<div class="jobs-cal-day-count">${dayJobs.length}건</div>` : ''}
@@ -4456,6 +4494,7 @@
     const partnerOpts = Object.keys(worksites).map(k =>
       `<option value="${k}" ${f.partnerKey===k?'selected':''}>${worksites[k].name}</option>`).join('');
 
+    const tpls = loadJobTemplates();
     main.innerHTML = `
       <div class="jf-header">
         <div>
@@ -4468,6 +4507,40 @@
         </div>
       </div>
       ${jobsTabsHtml()}
+
+      <div class="jf-panel" style="margin-bottom: 14px; border-left: 3px solid #2563EB; padding: 14px 16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:13px; font-weight:500; color:#111827;">📌 즐겨쓰는 템플릿</span>
+            <span style="font-size:11px; color:#6B7684;">자주 쓰는 패턴(근무지·시간대·인원·금액)을 저장해 한 번에 불러오기</span>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button onclick="window.__jtSaveCurrent()" style="font-size:12px;">💾 현재 입력값을 템플릿으로 저장</button>
+          </div>
+        </div>
+        ${tpls.length === 0 ? `
+          <div style="margin-top:10px; padding:14px 16px; background:#F9FAFB; border-radius:8px; font-size:12px; color:#6B7684; text-align:center;">
+            저장된 템플릿이 없습니다. 자주 등록하는 패턴을 저장해두면 다음에 클릭 한 번으로 불러올 수 있습니다.
+          </div>
+        ` : `
+          <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+            ${tpls.map(t => {
+              const partner = worksites[t.partnerKey];
+              const site = partner?.sites.find(s => s.id === t.siteId);
+              const slotInfo = (t.slots || []).map(s => s.slot + ' ' + s.start + '~' + s.end + ' ' + s.cap + '명').join(' / ');
+              return `
+                <div style="background:#F0F9FF; border:0.5px solid #BFDBFE; border-radius:8px; padding:8px 10px 8px 12px; display:flex; align-items:center; gap:10px; cursor:pointer; min-width:0;" onclick="window.__jtApply('${t.id}')" title="클릭하여 폼에 적용">
+                  <div style="min-width:0;">
+                    <div style="font-size:12px; font-weight:500; color:#1E40AF;">${esc(t.name)}</div>
+                    <div style="font-size:10px; color:#6B7684; margin-top:1px;">${esc((site?site.name:'-') + (slotInfo?' · '+slotInfo:''))}</div>
+                  </div>
+                  <button onclick="event.stopPropagation(); window.__jtDelete('${t.id}')" style="background:transparent; border:0; color:#EF4444; font-size:14px; height:auto; padding:0 4px; cursor:pointer; line-height:1;" title="삭제">×</button>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `}
+      </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
         <!-- 기본 정보 -->
@@ -4857,6 +4930,72 @@
     holidayPreviewScenario = key;
     renderHolidayPreviewModal();
   };
+
+  // ─── 즐겨쓰는 템플릿 (localStorage) ────────────────────────
+  const JT_STORAGE_KEY = 'jobpit_job_templates';
+  function loadJobTemplates() {
+    try {
+      const raw = localStorage.getItem(JT_STORAGE_KEY);
+      if (!raw) return [];
+      const list = JSON.parse(raw);
+      return Array.isArray(list) ? list : [];
+    } catch (e) { return []; }
+  }
+  function saveJobTemplates(list) {
+    try { localStorage.setItem(JT_STORAGE_KEY, JSON.stringify(list)); } catch (e) {}
+  }
+
+  window.__jtSaveCurrent = function() {
+    const f = jobFormState;
+    if (!f.partnerKey || !f.siteId) { alert('파트너사와 근무지를 먼저 선택해주세요.'); return; }
+    if (!f.slots || f.slots.length === 0) { alert('시간대를 1개 이상 입력해주세요.'); return; }
+    promptModal({
+      title: '템플릿 저장',
+      subtitle: '자주 쓰는 공고 패턴을 저장해 두면 다음에 클릭 한 번으로 불러옵니다.',
+      fields: [{ key: 'name', label: '템플릿 이름', type: 'text', required: true, placeholder: '예: 곤지암 야간 12명' }],
+      submitLabel: '저장',
+      onSubmit: (vals) => {
+        const list = loadJobTemplates();
+        list.unshift({
+          id: 'jt_' + Date.now(),
+          name: vals.name.trim(),
+          partnerKey: f.partnerKey,
+          siteId: f.siteId,
+          contact: f.contact,
+          useContract: f.useContract,
+          useSafety: f.useSafety,
+          showHolidayPopup: f.showHolidayPopup,
+          slots: JSON.parse(JSON.stringify(f.slots)),
+          savedAt: TODAY,
+        });
+        // 최대 10개까지만
+        saveJobTemplates(list.slice(0, 10));
+        alert('템플릿 저장 완료: ' + vals.name);
+        renderJobsCreate();
+      },
+    });
+  };
+  window.__jtApply = function(id) {
+    const list = loadJobTemplates();
+    const t = list.find(x => x.id === id); if (!t) return;
+    Object.assign(jobFormState, {
+      partnerKey: t.partnerKey,
+      siteId: t.siteId,
+      contact: t.contact || jobFormState.contact,
+      useContract:      t.useContract !== undefined ? t.useContract : jobFormState.useContract,
+      useSafety:        t.useSafety !== undefined ? t.useSafety : jobFormState.useSafety,
+      showHolidayPopup: t.showHolidayPopup !== undefined ? t.showHolidayPopup : jobFormState.showHolidayPopup,
+      slots: JSON.parse(JSON.stringify(t.slots || [])),
+    });
+    renderJobsCreate();
+  };
+  window.__jtDelete = function(id) {
+    if (!confirm('이 템플릿을 삭제합니다.')) return;
+    const list = loadJobTemplates().filter(x => x.id !== id);
+    saveJobTemplates(list);
+    renderJobsCreate();
+  };
+
   window.__jfSubmit = function() {
     const f = jobFormState;
     // 유효성 검사
@@ -5077,7 +5216,8 @@
 
   // 공고 관리 전역 핸들러
   window.__jobsTab = function(id) { jobsState.tab = id; renderJobs(); };
-  window.__jobsView = function(v) { jobsState.view = v; renderJobsList(); };
+  // __jobsView 는 v0.6 토글 유지용 (현재는 항상 분할 뷰) — 외부 호출 호환
+  window.__jobsView = function() { renderJobsList(); };
   window.__jobsFilter = function(key, val) {
     jobsState[key] = val;
     if (key === 'partnerKey') jobsState.siteId = ''; // 파트너사 바뀌면 근무지 리셋
@@ -5185,15 +5325,17 @@
   };
   window.__jobEdit = function(id) { renderJobEdit(id); };
   window.__jobsCalDay = function(dateStr) {
-    // 해당 날짜 공고가 1건이면 바로 상세로, 여러 개면 리스트 뷰로 전환 후 필터
-    const dayJobs = jobs.filter(j => j.date === dateStr);
-    if (dayJobs.length === 1) {
-      renderJobDetail(dayJobs[0].id);
+    // 같은 날짜 다시 클릭 시 토글로 해제
+    if (jobsState.selectedDate === dateStr) {
+      jobsState.selectedDate = '';
     } else {
-      jobsState.view = 'list';
-      alert(`${dateStr} 일 공고 ${dayJobs.length}건 — 리스트 뷰로 전환합니다.`);
-      renderJobsList();
+      jobsState.selectedDate = dateStr;
     }
+    renderJobsList();
+  };
+  window.__jobsClearDate = function() {
+    jobsState.selectedDate = '';
+    renderJobsList();
   };
 
   window.__wsToggle = function(key) {
@@ -7538,6 +7680,228 @@
     Object.assign(siteFormState, { step: 1, partnerKey: '', siteName: '', address: '', lat: 37.5665, lng: 126.9780, bus: false, wage: 100000, wageType: '일급', holiday: '주 4일 만근', contact: '', manager1: '', manager2: '' });
     renderSiteWizard();
   };
+
+  // ───────────────────────────────────────────────────────
+  // 글로벌 검색 (Cmd+K / Ctrl+K) — 페이지/근무자/공고/근무지/관리자 통합
+  // ───────────────────────────────────────────────────────
+  const PAGE_INDEX = [
+    { kind: 'page', title: '홈',           sub: '대시보드 · KPI · 이상감지', icon: '🏠', goto: 'home' },
+    { kind: 'page', title: '공고 관리',    sub: '공고 리스트 · 등록 · 템플릿', icon: '📋', goto: 'jobs' },
+    { kind: 'page', title: '신청 승인',    sub: '대기 중인 신청 검토', icon: '✓', goto: 'approval' },
+    { kind: 'page', title: '대기열 승인',  sub: 'FULL 공고 자리 제안', icon: '⏱', goto: 'waitlistapv' },
+    { kind: 'page', title: '퇴근 승인',    sub: 'GPS 미검증 퇴근 검토', icon: '📍', goto: 'gpsapproval' },
+    { kind: 'page', title: '근무자 관리',  sub: '50명 알바생 · 경고 이력', icon: '👥', goto: 'workers' },
+    { kind: 'page', title: '근무지 관리',  sub: '11개 근무지 · GPS 영역', icon: '🏢', goto: 'worksite' },
+    { kind: 'page', title: '협의대상',     sub: '전화번호 기반 차단 명단', icon: '🚫', goto: 'negotiation' },
+    { kind: 'page', title: '포인트',       sub: '출금 요청 · 이력 · 회수', icon: '💰', goto: 'points' },
+    { kind: 'page', title: '문의',         sub: '알바생 문의 답변', icon: '💬', goto: 'inquiry' },
+    { kind: 'page', title: '앱 미리보기',  sub: '알바생 앱 모바일 화면', icon: '📱', goto: 'apppreview' },
+    { kind: 'page', title: '관제 시스템',  sub: '실시간 출결 · 별도 창', icon: '🖥', goto: 'control' },
+    { kind: 'page', title: '통계 리포트',  sub: '파트너사/시간대/트렌드', icon: '📊', goto: 'stats' },
+    { kind: 'page', title: '관리자 계정',  sub: '권한 3등급 · 근무지 배정', icon: '👤', goto: 'accounts' },
+    { kind: 'page', title: '감사로그',     sub: '관리자 액션 추적 (마스터)', icon: '📜', goto: 'audit' },
+  ];
+
+  const gsState = { open: false, q: '', activeIdx: 0, results: [] };
+
+  function buildSearchResults(q) {
+    const query = q.trim().toLowerCase();
+    if (!query) {
+      // 기본: 페이지만 보여주기
+      return PAGE_INDEX.map(p => ({ ...p, score: 0 }));
+    }
+    const out = [];
+    // 페이지
+    PAGE_INDEX.forEach(p => {
+      const blob = (p.title + ' ' + p.sub).toLowerCase();
+      if (blob.includes(query)) out.push({ ...p, score: p.title.toLowerCase().startsWith(query) ? 0 : 1 });
+    });
+    // 근무자
+    workers.forEach(w => {
+      const blob = (w.name + ' ' + w.phone).toLowerCase();
+      if (blob.includes(query)) {
+        out.push({
+          kind: 'worker', title: w.name, sub: w.phone + ' · 경고 ' + w.warnings + ' · ' + w.points.toLocaleString() + 'P' + (w.negotiation?' · 협의대상':''),
+          icon: w.negotiation ? '🚫' : (w.warnings > 0 ? '⚠' : '👤'),
+          goto: () => { window.__navGoto('workers'); setTimeout(() => window.__wrkDetail(w.id), 60); },
+          score: 2,
+        });
+      }
+    });
+    // 공고
+    jobs.forEach(j => {
+      const site = findSite(j.siteId); if (!site) return;
+      const blob = (site.site.name + ' ' + site.partner + ' ' + j.date + ' ' + j.slot + ' ' + j.id).toLowerCase();
+      if (blob.includes(query)) {
+        out.push({
+          kind: 'job', title: site.site.name + ' · ' + j.slot + ' ' + j.start + '~' + j.end,
+          sub: j.date + ' · ' + site.partner + ' · 모집 ' + j.apply + '/' + j.cap + ' · ' + j.id,
+          icon: '📋',
+          goto: () => { window.__navGoto('jobs'); setTimeout(() => window.__jobsDetail(j.id), 60); },
+          score: 3,
+        });
+      }
+    });
+    // 근무지
+    Object.values(worksites).flatMap(p => p.sites).forEach(s => {
+      const blob = (s.name + ' ' + s.addr).toLowerCase();
+      if (blob.includes(query)) {
+        out.push({
+          kind: 'site', title: s.name, sub: s.addr + ' · ' + (s.gps ? 'GPS ✓' : 'GPS ✗') + ' · 진행 ' + (s.activeJobs || 0),
+          icon: '🏢',
+          goto: () => { window.__navGoto('worksite'); setTimeout(() => window.__wsDetail(s.id), 60); },
+          score: 4,
+        });
+      }
+    });
+    // 관리자
+    admins.forEach(a => {
+      const blob = (a.name + ' ' + a.phone + ' ' + (ROLE_LABEL[a.role]||'')).toLowerCase();
+      if (blob.includes(query)) {
+        out.push({
+          kind: 'admin', title: a.name + ' (' + (ROLE_LABEL[a.role]||a.role) + ')', sub: a.phone + ' · ' + (a.active ? '활성' : '비활성'),
+          icon: '🛡',
+          goto: () => { window.__navGoto('accounts'); setTimeout(() => window.__admDetail(a.id), 60); },
+          score: 5,
+        });
+      }
+    });
+    return out.sort((x, y) => x.score - y.score).slice(0, 50);
+  }
+
+  function renderGlobalSearch() {
+    document.querySelectorAll('.gs-overlay').forEach(el => el.remove());
+    if (!gsState.open) return;
+
+    const grouped = {};
+    gsState.results.forEach(r => {
+      const k = r.kind;
+      if (!grouped[k]) grouped[k] = [];
+      grouped[k].push(r);
+    });
+    const KIND_LABEL = { page: '📍 페이지', worker: '👥 근무자', job: '📋 공고', site: '🏢 근무지', admin: '🛡 관리자' };
+    const order = ['page', 'worker', 'job', 'site', 'admin'];
+
+    let listHtml = '';
+    let flatIdx = 0;
+    if (gsState.results.length === 0) {
+      listHtml = `<div class="gs-empty">검색 결과 없음 — 다른 키워드를 시도해보세요</div>`;
+    } else {
+      order.forEach(k => {
+        if (!grouped[k]) return;
+        listHtml += `<div class="gs-section">${KIND_LABEL[k] || k} <span style="opacity:0.6; font-weight:400;">${grouped[k].length}</span></div>`;
+        grouped[k].forEach(r => {
+          const isActive = flatIdx === gsState.activeIdx;
+          listHtml += `
+            <div class="gs-item ${isActive?'active':''}" data-gs-idx="${flatIdx}" onclick="window.__gsSelect(${flatIdx})">
+              <div class="gs-item-icon">${r.icon || '·'}</div>
+              <div class="gs-item-main">
+                <div class="gs-item-title">${esc(r.title)}</div>
+                <div class="gs-item-sub">${esc(r.sub || '')}</div>
+              </div>
+              <div class="gs-item-arrow">↵</div>
+            </div>
+          `;
+          flatIdx++;
+        });
+      });
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'gs-overlay';
+    overlay.innerHTML = `
+      <div class="gs-modal" onclick="event.stopPropagation()">
+        <div class="gs-input-wrap">
+          <input type="text" class="gs-input" id="gs-input" placeholder="페이지 · 근무자 이름/전화번호 · 공고 · 근무지 · 관리자 검색..." value="${esc(gsState.q)}" autofocus />
+          <span class="gs-kbd">ESC</span>
+        </div>
+        <div class="gs-results">${listHtml}</div>
+        <div class="gs-foot">
+          <span class="gs-foot-key"><span class="gs-kbd">↑↓</span> 이동</span>
+          <span class="gs-foot-key"><span class="gs-kbd">↵</span> 선택</span>
+          <span class="gs-foot-key"><span class="gs-kbd">Esc</span> 닫기</span>
+          <span style="margin-left:auto;">${gsState.results.length}개 결과</span>
+        </div>
+      </div>
+    `;
+    overlay.addEventListener('click', () => window.__gsClose());
+    document.body.appendChild(overlay);
+
+    const input = overlay.querySelector('#gs-input');
+    if (input) {
+      input.focus();
+      // 커서를 끝으로 이동
+      const len = input.value.length;
+      input.setSelectionRange(len, len);
+      input.addEventListener('input', (e) => {
+        gsState.q = e.target.value;
+        gsState.results = buildSearchResults(gsState.q);
+        gsState.activeIdx = 0;
+        renderGlobalSearch();
+      });
+    }
+
+    // 활성 항목으로 스크롤
+    setTimeout(() => {
+      const active = overlay.querySelector('.gs-item.active');
+      if (active) active.scrollIntoView({ block: 'nearest' });
+    }, 0);
+  }
+
+  window.__gsOpen = function() {
+    gsState.open = true;
+    gsState.q = '';
+    gsState.results = buildSearchResults('');
+    gsState.activeIdx = 0;
+    renderGlobalSearch();
+  };
+  window.__gsClose = function() {
+    gsState.open = false;
+    document.querySelectorAll('.gs-overlay').forEach(el => el.remove());
+  };
+  window.__gsSelect = function(idx) {
+    const r = gsState.results[idx];
+    if (!r) return;
+    window.__gsClose();
+    if (typeof r.goto === 'function') r.goto();
+    else if (typeof r.goto === 'string') window.__navGoto(r.goto);
+  };
+
+  // 키보드: Cmd+K / Ctrl+K 토글, ESC 닫기, ↑↓ 이동, Enter 선택
+  document.addEventListener('keydown', (e) => {
+    const isCmdK = (e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K');
+    if (isCmdK) {
+      e.preventDefault();
+      if (gsState.open) window.__gsClose();
+      else window.__gsOpen();
+      return;
+    }
+    if (!gsState.open) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      window.__gsClose();
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (gsState.results.length === 0) return;
+      gsState.activeIdx = (gsState.activeIdx + 1) % gsState.results.length;
+      renderGlobalSearch();
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (gsState.results.length === 0) return;
+      gsState.activeIdx = (gsState.activeIdx - 1 + gsState.results.length) % gsState.results.length;
+      renderGlobalSearch();
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      window.__gsSelect(gsState.activeIdx);
+      return;
+    }
+  });
 
   const pageRouters = {
     home: renderHome,
