@@ -1722,7 +1722,7 @@
             ? '<div style="padding:20px 0; text-align:center; color:#6B7684; font-size:13px;">오늘 예정된 공고가 없습니다.</div>'
             : todayJobs.sort((a,b) => (a.start||'').localeCompare(b.start||'')).map(j => {
                 const site = findSite(j.siteId); const st = jobStatus(j); const sum = attendanceSummary(j.id);
-                const stColor = { pending:'#8B5CF6', open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
+                const stColor = { pending:'#8B5CF6', expired:'#9CA3AF', open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
                 return `
                   <div onclick="window.__gotoJobDetail('${j.id}');" style="padding: 10px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:10px;">
                     <div>
@@ -2010,7 +2010,7 @@
             ? '<div style="padding:20px 0; text-align:center; color:#6B7684; font-size:13px;">오늘 예정된 공고가 없습니다.</div>'
             : todayJobs.sort((a,b) => (a.start||'').localeCompare(b.start||'')).map(j => {
                 const site = findSite(j.siteId); const st = jobStatus(j); const sum = attendanceSummary(j.id);
-                const stColor = { pending:'#8B5CF6', open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
+                const stColor = { pending:'#8B5CF6', expired:'#9CA3AF', open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
                 return `
                   <div onclick="window.__gotoJobDetail('${j.id}');" style="padding: 10px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:10px;">
                     <div>
@@ -4383,6 +4383,7 @@
         <select onchange="window.__jobsFilter('status', this.value)">
           <option value="">전체 상태</option>
           <option value="pending"  ${jobsState.status==='pending'?'selected':''}>🟣 모집 대기</option>
+          <option value="expired"  ${jobsState.status==='expired'?'selected':''}>⊘ 대기 만료</option>
           <option value="progress" ${jobsState.status==='progress'?'selected':''}>진행중</option>
           <option value="open"     ${jobsState.status==='open'?'selected':''}>모집중</option>
           <option value="closed"   ${jobsState.status==='closed'?'selected':''}>마감</option>
@@ -5012,7 +5013,7 @@
     const j = findJob(jobId); if (!j) return;
     const site = findSite(j.siteId);
     const st = jobStatus(j);
-    const stColor = { pending:'#8B5CF6', open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
+    const stColor = { pending:'#8B5CF6', expired:'#9CA3AF', open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
     if (!Array.isArray(j.externalWorkers)) j.externalWorkers = [];
     const ext = j.externalWorkers;
     const effApply = j.apply + ext.length;  // 외부 구인 인원 포함 총 구인
@@ -5442,6 +5443,12 @@
   window.__jobsPublish = function(jobId) {
     const j = findJob(jobId); if (!j) return;
     if (!j.pending) { alert('이미 모집 중인 공고입니다.'); return; }
+    // 과거 날짜 차단 — pending이지만 이미 지난 날짜이거나 오늘 시작 시각 지난 경우
+    const st = jobStatus(j);
+    if (st === 'expired') {
+      alert('이미 지난 날짜(' + j.date + (j.start?' '+j.start:'') + ')의 공고는 게시할 수 없습니다.\n\n공고 수정에서 날짜를 변경하거나 삭제하세요.');
+      return;
+    }
     const site = findSite(j.siteId);
     if (!confirm(`"${site?.site.name || ''} ${j.date} ${j.slot}" 공고를 모집 시작하시겠습니까?\n\n알바생 앱에 즉시 노출되며 신청을 받기 시작합니다.`)) return;
     j.pending = false;
@@ -5517,7 +5524,7 @@
 <title>${esc(site?.site.name || '')} ${j.date} ${j.slot} 신청자 명단</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: 'Malgun Gothic', 'Noto Sans KR', sans-serif; padding: 24px; color: #111; line-height: 1.5; }
+  body { font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif; padding: 24px; color: #111; line-height: 1.5; }
   .h-row { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 12px; }
   .h-title { font-size: 22px; font-weight: 700; }
   .h-sub { font-size: 12px; color: #555; margin-top: 4px; }
@@ -5613,11 +5620,25 @@
     });
   };
 
-  // 모집 중 → 모집 대기로 전환 (신청자 0명일 때만)
+  // 모집 중 → 모집 대기로 전환 (신청자/외부 0명 + open/closed 상태일 때만)
   window.__jobsHold = function(jobId) {
     const j = findJob(jobId); if (!j) return;
-    if (j.apply > 0) { alert('이미 신청자가 있는 공고는 모집 대기로 전환할 수 없습니다.\n공고 수정 또는 삭제를 검토하세요.'); return; }
     if (j.pending) { alert('이미 모집 대기 상태입니다.'); return; }
+    // status 검증 — open/closed 외 차단 (방어)
+    const st = jobStatus(j);
+    if (st !== 'open' && st !== 'closed') {
+      alert('진행 중이거나 종료된 공고는 모집 대기로 전환할 수 없습니다.\n현재 상태: ' + (STATUS_LABEL[st] || st));
+      return;
+    }
+    // 신청자 + 외부 구인 인원 모두 0명일 때만 허용
+    const ext = Array.isArray(j.externalWorkers) ? j.externalWorkers.length : 0;
+    if (j.apply > 0 || ext > 0) {
+      const parts = [];
+      if (j.apply > 0) parts.push('앱 신청자 ' + j.apply + '명');
+      if (ext > 0) parts.push('외부 구인 인원 ' + ext + '명');
+      alert('이미 ' + parts.join(' / ') + '이(가) 있는 공고는 모집 대기로 전환할 수 없습니다.\n공고 수정 또는 삭제를 검토하세요.');
+      return;
+    }
     const site = findSite(j.siteId);
     if (!confirm(`"${site?.site.name || ''} ${j.date} ${j.slot}" 공고를 모집 대기로 전환하시겠습니까?\n\n알바생 앱 노출이 중단되고, 수정/일정 조정 후 다시 [모집 시작]을 누를 수 있습니다.`)) return;
     j.pending = true;
@@ -5665,7 +5686,6 @@
     useContract: true,
     useSafety: true,
     showHolidayPopup: true,
-    publishNow: true,   // false면 pending(모집 대기) 상태로 저장
     calYear: 2026,
     calMonth: 4,
   };
@@ -6256,7 +6276,10 @@
       contact: '', useContract: true, useSafety: true, showHolidayPopup: true,
     });
     jobsState.tab = 'list';
-    if (isPending) jobsState.status = 'pending';   // 대기 등록 시 자동으로 모집 대기 필터로 이동
+    if (isPending) {
+      jobsState.status = 'pending';      // 대기 등록 시 자동으로 모집 대기 필터로 이동
+      jobsState.selectedDate = '';       // 캘린더 날짜 선택 초기화 → 등록한 공고 즉시 보임
+    }
     renderJobs();
   };
 
@@ -8376,7 +8399,7 @@
           const site = findSite(j.siteId);
           const sum = attendanceSummary(j.id);
           const st = jobStatus(j);
-          const stColor = { pending:'#8B5CF6', open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#9CA3AF' }[st];
+          const stColor = { pending:'#8B5CF6', expired:'#9CA3AF', open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#9CA3AF' }[st];
           return `
             <div class="app-card" onclick="window.__maTab('attendance')" style="cursor:pointer;">
               <div style="display:flex; justify-content:space-between; align-items:center;">

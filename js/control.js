@@ -92,8 +92,9 @@
 
   // ─── 시각 기준 상태 판정 (오늘 공고를 시간으로 세분화) ───────
   function hhmmToMin(hhmm) { const [h,m] = hhmm.split(':').map(Number); return h*60 + m; }
-  // 오늘 공고의 시각 기준 effective status: 'open' | 'progress' | 'done'
+  // 오늘 공고의 시각 기준 effective status: 'pending' | 'expired' | 'open' | 'progress' | 'done'
   function effectiveStatus(j) {
+    if (j.pending) return jobStatus(j);     // 'pending' 또는 'expired'
     if (j.date !== TODAY) return jobStatus(j); // 과거/미래는 기존 로직
     const nowMin = hhmmToMin(simNowStr());
     const startMin = hhmmToMin(j.start);
@@ -334,8 +335,8 @@
       ? `전 근무지 (${visibleSiteIds(adm).length}곳)`
       : `담당 ${adm.sites.length}곳: ${adm.sites.map(sid => findSite(sid)?.site.name).filter(Boolean).join(', ')}`;
 
-    // 오늘 공고 전체 (권한 필터 적용)
-    const todayJobs = jobs.filter(j => j.date === TODAY && jobVisibleTo(j, adm));
+    // 오늘 공고 전체 (권한 필터 + 모집 대기/만료 제외 — 알바생 노출 안 된 공고는 관제 대상 아님)
+    const todayJobs = jobs.filter(j => j.date === TODAY && !j.pending && jobVisibleTo(j, adm));
 
     // 상태별 분류
     const doneJobs = todayJobs.filter(j => effectiveStatus(j) === 'done')

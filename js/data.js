@@ -105,6 +105,13 @@ const jobs = [
   { id: 'j018', siteId: 'jincheon', date: '2026-04-22', slot: '야간', start: '22:00', end: '06:00', cap: 25, apply: 24, wage: 120000, wageType: '일급', contact: '010-7890-1234', contract: true, safety: true },
   { id: 'j019', siteId: 'whills',   date: '2026-04-20', slot: '웨딩', start: '10:00', end: '18:00', cap: 15, apply: 14, wage: 125000, wageType: '일급', contact: '010-1234-0987', contract: true, safety: true },
   { id: 'j020', siteId: 'icheon',   date: '2026-04-21', slot: '주간', start: '07:00', end: '15:00', cap: 20, apply: 19, wage: 105000, wageType: '일급', contact: '010-5678-9012', contract: true, safety: true },
+
+  // 모집 대기 (pending) — 시연용 시드
+  // 마스터가 등록 후 검토 중인 공고들 — [모집 시작] 버튼으로 게시 가능
+  { id: 'j040', siteId: 'whills',   date: '2026-04-30', slot: '웨딩', start: '14:00', end: '20:00', cap: 18, apply: 0, wage: 122000, wageType: '일급', point: 1500, contact: '010-1234-0987', contract: true, safety: true,  pending: true },
+  { id: 'j041', siteId: 'gonjiam',  date: '2026-05-02', slot: '주간', start: '07:00', end: '15:00', cap: 30, apply: 0, wage: 110000, wageType: '일급', point: 1000, contact: '010-1234-5678', contract: true, safety: true,  pending: true },
+  // 만료 시연 (과거 날짜 + pending) — [모집 시작] 시도하면 차단됨
+  { id: 'j042', siteId: 'yongin',   date: '2026-04-21', slot: '주간', start: '06:00', end: '12:00', cap: 18, apply: 0, wage: 105000, wageType: '일급', point: 1000, contact: '010-2345-6789', contract: true, safety: true,  pending: true },
 ];
 
 // 알바생(근무자) 샘플 데이터
@@ -328,12 +335,24 @@ const gpsRequests = [
 ];
 function findGpsReq(id) { return gpsRequests.find(g => g.id === id); }
 
-// 공고 상태 판정: pending(모집 대기·게시 전) · open(모집중) · closed(마감·시작전) · progress(진행중) · done(종료)
+// 공고 상태 판정: pending(모집 대기·게시 전) · expired(대기 만료) · open(모집중) · closed(마감·시작전) · progress(진행중) · done(종료)
 // j.pending=true 면 게시 전 대기 (알바생에게 노출 안 됨)
+// pending 공고가 과거 날짜 또는 오늘 시작 시각 지났으면 자동 'expired' (게시 의도 사라짐)
 // recruitClosed(수동 구인 완료) 또는 apply+외부 구인 >= cap 이면 모집 마감
 // 오늘 공고는 "근무 진행" 의미 우선 → progress 유지하되, 마감 표시는 jobMarketStatus 로 별도 조회
 function jobStatus(j) {
-  if (j.pending) return 'pending';
+  if (j.pending) {
+    // 자동 만료 — 과거 날짜 / 오늘 시작 시각 지남
+    if (j.date < TODAY) return 'expired';
+    if (j.date === TODAY && j.start) {
+      const now = new Date();
+      const [h, m] = j.start.split(':').map(Number);
+      const startMin = h * 60 + m;
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      if (nowMin >= startMin) return 'expired';
+    }
+    return 'pending';
+  }
   if (j.date < TODAY) return 'done';
   const ext = Array.isArray(j.externalWorkers) ? j.externalWorkers.length : 0;
   const filled = j.apply + ext;
@@ -347,7 +366,7 @@ function jobIsRecruitFilled(j) {
   const ext = Array.isArray(j.externalWorkers) ? j.externalWorkers.length : 0;
   return j.recruitClosed || (j.apply + ext) >= j.cap;
 }
-const STATUS_LABEL = { pending: '모집 대기', open: '모집중', closed: '마감', progress: '진행중', done: '종료' };
+const STATUS_LABEL = { pending: '모집 대기', expired: '대기 만료', open: '모집중', closed: '마감', progress: '진행중', done: '종료' };
 
 // ───────────────────────────────────────────────────────────
 // 공용 헬퍼 — app.js / control.js 양쪽에서 사용
