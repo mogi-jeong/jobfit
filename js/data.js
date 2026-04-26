@@ -398,6 +398,7 @@ function attendanceDonut(sum, size = 90, thick = 10) {
 }
 
 // 결정적 출결 시뮬레이션 — 공고 상태에 따라 분포 조정
+// 관리자 정정 (attendanceOverrides)이 있으면 시뮬 결과 위에 덮어씀
 function getAttendance(jobId) {
   const job = findJob(jobId); if (!job) return [];
   const st = jobStatus(job);
@@ -408,20 +409,39 @@ function getAttendance(jobId) {
   );
   const picked = shuffled.slice(0, actualCount);
 
+  // 이 공고에 적용된 정정 (status === 'applied' 만 반영, 'pending'은 미반영)
+  const overrides = (typeof attendanceOverrides !== 'undefined' ? attendanceOverrides : [])
+    .filter(o => o.jobId === jobId && o.status === 'applied');
+
   return picked.map((w, i) => {
     const r = (seed + i * 7) % 100;
+    let entry;
     if (st === 'open' || st === 'closed') {
-      return { worker: w, status: '대기', checkin: null, checkout: null };
+      entry = { worker: w, status: '대기', checkin: null, checkout: null };
+    } else if (st === 'progress') {
+      if (r < 70)      entry = { worker: w, status: '출근', checkin: job.start, checkout: null };
+      else if (r < 90) entry = { worker: w, status: '지각', checkin: addMin(job.start, 8 + (r % 20)), checkout: null };
+      else             entry = { worker: w, status: '결근', checkin: null, checkout: null };
+    } else {
+      // done
+      if (r < 85)      entry = { worker: w, status: '출근', checkin: job.start, checkout: job.end };
+      else if (r < 95) entry = { worker: w, status: '지각', checkin: addMin(job.start, 5 + (r % 15)), checkout: job.end };
+      else             entry = { worker: w, status: '결근', checkin: null, checkout: null };
     }
-    if (st === 'progress') {
-      if (r < 70) return { worker: w, status: '출근', checkin: job.start, checkout: null };
-      if (r < 90) return { worker: w, status: '지각', checkin: addMin(job.start, 8 + (r % 20)), checkout: null };
-      return { worker: w, status: '결근', checkin: null, checkout: null };
+    // 정정 덮어쓰기
+    const ov = overrides.find(o => o.workerId === w.id);
+    if (ov) {
+      entry = {
+        ...entry,
+        status:   ov.newStatus   || entry.status,
+        checkin:  ov.newCheckin  !== undefined ? ov.newCheckin  : entry.checkin,
+        checkout: ov.newCheckout !== undefined ? ov.newCheckout : entry.checkout,
+        overridden: true,
+        overrideId: ov.id,
+        overrideReason: ov.reason,
+      };
     }
-    // done
-    if (r < 85) return { worker: w, status: '출근', checkin: job.start, checkout: job.end };
-    if (r < 95) return { worker: w, status: '지각', checkin: addMin(job.start, 5 + (r % 15)), checkout: job.end };
-    return { worker: w, status: '결근', checkin: null, checkout: null };
+    return entry;
   });
 }
 
@@ -463,6 +483,7 @@ const AUDIT_CATEGORIES = {
   warning:     { label: '경고 부여',   icon: '⚠',  color: '#F59E0B' },
   negotiation: { label: '협의대상',    icon: '🚫', color: '#EF4444' },
   gps:         { label: 'GPS 퇴근 승인', icon: '📍', color: '#8B5CF6' },
+  attendance:  { label: '출결 정정',   icon: '🔧', color: '#0EA5E9' },
   point:       { label: '포인트 처리', icon: '💰', color: '#2563EB' },
   job:         { label: '공고',        icon: '📋', color: '#1E40AF' },
   site:        { label: '근무지',      icon: '🏢', color: '#0F766E' },
@@ -647,6 +668,158 @@ function releaseNegotiation(workerId) {
     summary: '협의대상 해제 (마스터 권한)',
   });
   return w;
+}
+
+// ───────────────────────────────────────────────────────────
+// 출결 정정 (Attendance Override) — 마스터/1급 직접, 2급 신청
+// GPS 신호 불량/폰 배터리/관리자 직접 확인 등으로 자동 결근 처리된 케이스 정정
+// ───────────────────────────────────────────────────────────
+
+// 정정 사유 카테고리
+const ATTENDANCE_OVERRIDE_REASONS = {
+  gps_signal:    { label: 'GPS 신호 불량',        hint: '실내/지하/건물 안쪽 등 GPS 미수신' },
+  phone_issue:   { label: '폰 배터리/고장',       hint: '근무자 휴대폰 문제로 출/퇴근 미체크' },
+  network:       { label: '기지국/네트워크 장애', hint: '통신 장애 (지역 단위 또는 전국)' },
+  admin_witness: { label: '관리자 직접 확인',     hint: '현장 관리자가 직접 출결 확인함' },
+  excuse_accept: { label: '사유 인정',            hint: '교통 사고/응급 등 정당한 사유' },
+  other:         { label: '기타',                 hint: '위 항목에 없는 사유 (필수 메모)' },
+};
+
+let attendanceOverrides = [];
+
+// 출결 정정 적용 — 권한별 동작 분리
+// byRole: 'master'/'admin1' = 즉시 적용 · 'admin2' = pending 신청
+function applyAttendanceOverride({ jobId, workerId, newStatus, newCheckin, newCheckout, reason, memo, by, byRole }) {
+  const job = findJob(jobId); if (!job) return null;
+  const w = findWorker(workerId); if (!w) return null;
+  const isPending = byRole === 'admin2';
+  // 기존 정정 있으면 교체 (idempotent — 같은 워커 같은 공고)
+  const existingIdx = attendanceOverrides.findIndex(o => o.jobId === jobId && o.workerId === workerId && o.status !== 'rejected');
+  // 시뮬 원본 상태 추출 (revert 시 사용 가능)
+  const sim = getAttendance(jobId).find(a => a.worker.id === workerId);
+  const overrideEntry = {
+    id: uid('aov'),
+    jobId, workerId,
+    originalStatus:   sim ? sim.status : null,
+    originalCheckin:  sim ? sim.checkin : null,
+    originalCheckout: sim ? sim.checkout : null,
+    newStatus,
+    newCheckin:  newCheckin  || null,
+    newCheckout: newCheckout || null,
+    reason,
+    memo: memo || '',
+    by: by || '시스템',
+    byRole: byRole || 'master',
+    at: nowStamp(),
+    status: isPending ? 'pending' : 'applied',
+  };
+  if (existingIdx >= 0) attendanceOverrides[existingIdx] = overrideEntry;
+  else attendanceOverrides.unshift(overrideEntry);
+
+  // 결근 → 출근/지각 전환 시 포인트 자동 지급 (즉시 적용 케이스만)
+  let rewardGiven = 0;
+  if (!isPending && (overrideEntry.originalStatus === '결근' || overrideEntry.originalStatus === '대기') &&
+      (newStatus === '출근' || newStatus === '지각')) {
+    rewardGiven = pointRewardFor(job);
+    w.points += rewardGiven;
+    pointTxs.unshift({
+      id: uid('p-aov'),
+      workerId: w.id,
+      type: 'reward',
+      status: 'done',
+      amount: rewardGiven,
+      reason: '출결 정정 — ' + (findSite(job.siteId)?.site.name || '') + ' ' + job.date + ' ' + job.slot + ' (' + (ATTENDANCE_OVERRIDE_REASONS[reason]?.label || reason) + ')',
+      requestedAt: overrideEntry.at,
+      processedBy: overrideEntry.by,
+    });
+  }
+
+  // 감사로그
+  if (typeof logAudit === 'function') {
+    const siteName = findSite(job.siteId)?.site.name || '';
+    logAudit({
+      category: 'attendance', action: isPending ? 'override_request' : 'override_apply',
+      target: w.name + ' / ' + siteName + ' ' + job.date + ' ' + job.slot,
+      targetId: overrideEntry.id,
+      summary: (overrideEntry.originalStatus || '?') + ' → ' + newStatus + ' · ' + (ATTENDANCE_OVERRIDE_REASONS[reason]?.label || reason) + (memo ? ' · ' + memo : '') + (rewardGiven > 0 ? ' (포인트 ' + rewardGiven.toLocaleString() + 'P 지급)' : ''),
+      by: by || '시스템',
+      byRole: byRole || 'master',
+    });
+  }
+
+  return { override: overrideEntry, rewardGiven, pending: isPending };
+}
+
+// 2급 신청을 1급/마스터가 승인/반려
+function reviewAttendanceOverride(overrideId, decision, reviewer, reviewerRole) {
+  const ov = attendanceOverrides.find(o => o.id === overrideId);
+  if (!ov || ov.status !== 'pending') return null;
+  ov.status = decision === 'approve' ? 'applied' : 'rejected';
+  ov.reviewedBy = reviewer || '시스템';
+  ov.reviewedAt = nowStamp();
+  // 승인 시 포인트 지급
+  let rewardGiven = 0;
+  if (decision === 'approve') {
+    const w = findWorker(ov.workerId);
+    const j = findJob(ov.jobId);
+    if (w && j && (ov.originalStatus === '결근' || ov.originalStatus === '대기') &&
+        (ov.newStatus === '출근' || ov.newStatus === '지각')) {
+      rewardGiven = pointRewardFor(j);
+      w.points += rewardGiven;
+      pointTxs.unshift({
+        id: uid('p-aov'),
+        workerId: w.id,
+        type: 'reward',
+        status: 'done',
+        amount: rewardGiven,
+        reason: '출결 정정 (2급 신청 승인) — ' + (findSite(j.siteId)?.site.name || '') + ' ' + j.date + ' ' + j.slot,
+        requestedAt: ov.reviewedAt,
+        processedBy: reviewer,
+      });
+    }
+  }
+  if (typeof logAudit === 'function') {
+    const w = findWorker(ov.workerId);
+    const j = findJob(ov.jobId);
+    logAudit({
+      category: 'attendance', action: 'override_' + decision,
+      target: (w?.name || '?') + ' / ' + (findSite(j?.siteId)?.site.name || '') + ' ' + (j?.date || '') + ' ' + (j?.slot || ''),
+      targetId: overrideId,
+      summary: '2급 정정 신청 ' + (decision === 'approve' ? '승인' : '반려') + (rewardGiven > 0 ? ' · 포인트 ' + rewardGiven.toLocaleString() + 'P 지급' : ''),
+      by: reviewer,
+      byRole: reviewerRole,
+    });
+  }
+  return { override: ov, rewardGiven };
+}
+
+// 보너스 포인트 지급 — 단일 또는 일괄
+function givePointBonus({ workerId, jobId, amount, reason, by, byRole }) {
+  const w = findWorker(workerId); if (!w) return null;
+  const j = jobId ? findJob(jobId) : null;
+  if (!amount || amount < 1000) return { error: '최소 1,000P 이상' };
+  w.points += amount;
+  const tx = {
+    id: uid('p-bonus'),
+    workerId,
+    type: 'reward',
+    status: 'done',
+    amount,
+    reason: '보너스 — ' + (j ? (findSite(j.siteId)?.site.name || '') + ' ' + j.date + ' ' + j.slot + ' · ' : '') + (reason || ''),
+    requestedAt: nowStamp(),
+    processedBy: by || '시스템',
+  };
+  pointTxs.unshift(tx);
+  if (typeof logAudit === 'function') {
+    logAudit({
+      category: 'point', action: 'bonus',
+      target: w.name + (j ? ' / ' + (findSite(j.siteId)?.site.name || '') : ''),
+      targetId: tx.id,
+      summary: amount.toLocaleString() + 'P 보너스 지급 — ' + (reason || '사유 없음'),
+      by, byRole,
+    });
+  }
+  return { tx, worker: w };
 }
 
 // 알바생 성실도 점수 (0~100) — 출근/지각/결근/경고/협의대상 종합
