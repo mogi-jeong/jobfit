@@ -5853,24 +5853,18 @@
                 </div>
                 <div class="jf-toggle-sub">신청 시 이번 주 N회 만근 상태에 따라 자동 안내 — CJ/롯데 4회, 컨벤션 2일</div>
               </div>
-              <div style="padding-top:6px; border-top:0.5px solid rgba(0,0,0,0.06); margin-top:4px;">
-                <label class="jf-toggle">
-                  <input type="checkbox" ${(f.publishNow!==false)?'checked':''} onchange="window.__jfSet('publishNow', this.checked)">
-                  <span class="jf-toggle-switch"></span>
-                  <span class="jf-toggle-text"><strong>등록 즉시 모집 시작</strong></span>
-                </label>
-                <div class="jf-toggle-sub" style="color:${(f.publishNow!==false)?'#6B7684':'#9D174D'};">${(f.publishNow!==false) ? '등록 즉시 알바생 앱에 노출됨 (모집중)' : '🟣 모집 대기 상태로 저장 — 나중에 [모집 시작] 버튼으로 게시 (수정사항 점검·일정 조정 시 권장)'}</div>
-              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 20px; padding-top:16px; border-top:0.5px solid rgba(0,0,0,0.08);">
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 20px; padding-top:16px; border-top:0.5px solid rgba(0,0,0,0.08); align-items:center;">
         <button onclick="window.__jfCancel()">취소</button>
         <button onclick="window.__jfDraftSave()">임시저장</button>
         <button onclick="window.__jfDraftLoad()">임시본 불러오기</button>
-        <button class="btn-primary" onclick="window.__jfSubmit()">${(f.publishNow!==false) ? '공고 등록' : '🟣 모집 대기로 저장'}</button>
+        <div style="flex:1;"></div>
+        <button onclick="window.__jfSubmit(false)" title="모집 대기 상태로 저장 — 알바생에 노출 안 됨, 나중에 [모집 시작] 버튼으로 게시" style="background:#F3E8FF; color:#6B21A8; border-color:#8B5CF6;">🟣 대기 등록</button>
+        <button class="btn-primary" onclick="window.__jfSubmit(true)" title="등록 즉시 알바생 앱 노출 + 신청 받기 시작">▶ 공고 등록</button>
       </div>
     `;
   }
@@ -6208,8 +6202,10 @@
     renderJobsCreate();
   };
 
-  window.__jfSubmit = function() {
+  // publishNow=true → 즉시 공고 등록 (모집중) / publishNow=false → 모집 대기로 저장 (pending)
+  window.__jfSubmit = function(publishNow) {
     const f = jobFormState;
+    const isPending = publishNow === false;
     // 유효성 검사
     const errors = [];
     if (!f.partnerKey) errors.push('파트너사를 선택해주세요');
@@ -6233,7 +6229,6 @@
       f.slots.forEach(s => {
         const newId = 'j' + String(jobs.length + created + 1).padStart(3, '0');
         const slotPoint = (typeof s.point === 'number' && s.point > 0) ? s.point : DEFAULT_POINT_REWARD;
-        const isPending = f.publishNow === false;
         jobs.push({
           id: newId, siteId: f.siteId,
           date, slot: s.slot, start: s.start, end: s.end,
@@ -6251,16 +6246,17 @@
         created++;
       });
     });
-    const publishMsg = f.publishNow === false ? '\n\n🟣 모집 대기 상태로 저장됨 — 알바생에게 노출되지 않으며, 공고 리스트/상세에서 [모집 시작] 클릭 시 게시됩니다.' : '';
-    alert(`공고 ${created}건 등록 완료!\n\n근무지: ${site.site.name}\n날짜 ${f.dates.length}일 × 시간대 ${f.slots.length}개\n\n담당자: ${f.contact}\n계약서: ${f.useContract?'ON':'OFF'} / 안전교육: ${f.useSafety?'ON':'OFF'} / 주휴수당 팝업: ${f.showHolidayPopup?'ON':'OFF'}` + publishMsg);
+    const publishMsg = isPending ? '\n\n🟣 모집 대기 상태로 저장됨 — 알바생에게 노출되지 않으며, 공고 리스트/상세에서 [모집 시작] 클릭 시 게시됩니다.' : '\n\n▶ 모집을 시작합니다 — 알바생 앱에 즉시 노출됩니다.';
+    alert(`공고 ${created}건 ${isPending?'대기 등록':'등록'} 완료!\n\n근무지: ${site.site.name}\n날짜 ${f.dates.length}일 × 시간대 ${f.slots.length}개\n\n담당자: ${f.contact}\n계약서: ${f.useContract?'ON':'OFF'} / 안전교육: ${f.useSafety?'ON':'OFF'} / 주휴수당 팝업: ${f.showHolidayPopup?'ON':'OFF'}` + publishMsg);
     // 폼 초기화 + 리스트 탭 이동
     Object.assign(jobFormState, {
       partnerKey: '', siteId: '', title: '', description: '',
       dates: [],
       slots: [{ slot: '주간', start: '07:00', end: '15:00', cap: 30, wageType: '일급', wage: 110000, point: POINT_REWARDS['주간'] }],
-      contact: '', useContract: true, useSafety: true, showHolidayPopup: true, publishNow: true,
+      contact: '', useContract: true, useSafety: true, showHolidayPopup: true,
     });
     jobsState.tab = 'list';
+    if (isPending) jobsState.status = 'pending';   // 대기 등록 시 자동으로 모집 대기 필터로 이동
     renderJobs();
   };
 
