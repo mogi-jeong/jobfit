@@ -7926,6 +7926,13 @@
     // 추천 카드
     if (rec) {
       const stopArrive = busStopArriveTime(rec.bestDeparture, rec.nearestStop.offsetMin);
+      const walkMin = walkMinutes(rec.nearestStop.distanceM);
+      // 출발 마감 시각 = 정거장 도착 시각 - 도보 시간
+      const [bh, bm] = stopArrive.split(':').map(Number);
+      const leaveMin = (bh * 60 + bm - walkMin + 24*60) % (24*60);
+      const leaveBy = String(Math.floor(leaveMin/60)).padStart(2,'0') + ':' + String(leaveMin%60).padStart(2,'0');
+      // 카카오맵 길찾기 URL (현재 위치 → 정거장)
+      const routeUrl = kakaoWalkRouteUrl(origin.lat, origin.lng, origin.name, rec.nearestStop.lat, rec.nearestStop.lng, rec.nearestStop.name);
       body += `
         <div class="app-card" style="margin-top:8px; border:1.5px solid #14B8A6;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -7938,7 +7945,7 @@
                 <div style="font-size:10px; color:#6B7684;">탑승</div>
                 <div style="font-size:14px; font-weight:600; color:#0F766E; font-family:'SF Mono',Monaco,monospace;">${stopArrive}</div>
                 <div style="font-size:10px; color:#374151; margin-top:2px;">${esc(rec.nearestStop.name)}</div>
-                <div style="font-size:9px; color:#9CA3AF;">도보 거리 약 ${rec.nearestStop.distanceM}m</div>
+                <div style="font-size:9px; color:#0F766E;">🚶 도보 약 ${walkMin}분 (${rec.nearestStop.distanceM}m)</div>
               </div>
               <div style="font-size:18px; color:#14B8A6;">→</div>
               <div style="text-align:right;">
@@ -7949,9 +7956,13 @@
               </div>
             </div>
           </div>
+          <div style="margin-top:8px; padding:8px 10px; background:#FEF3C7; border-radius:6px; font-size:11px; color:#92400E; display:flex; justify-content:space-between; align-items:center;">
+            <span>⏰ 출발 시각</span>
+            <strong style="font-family:'SF Mono',Monaco,monospace;">${leaveBy} 까지 출발</strong>
+          </div>
           <div style="display:flex; gap:6px; margin-top:8px;">
-            <button style="flex:1; background:#2563EB; color:#fff; border:none; border-radius:6px; padding:8px; font-size:11px; font-weight:500;">🗺 정류장까지 길찾기</button>
-            <button style="flex:1; background:#F3F4F6; color:#374151; border:none; border-radius:6px; padding:8px; font-size:11px;">📋 시간표</button>
+            <button style="flex:2; background:#2563EB; color:#fff; border:none; border-radius:6px; padding:8px; font-size:11px; font-weight:500; cursor:pointer;" onclick="window.open('${routeUrl}','_blank','noopener')">🗺 카카오맵 길찾기</button>
+            <button style="flex:1; background:#F3F4F6; color:#374151; border:none; border-radius:6px; padding:8px; font-size:11px; cursor:pointer;" onclick="window.__apToggleSchedule()">📋 시간표</button>
           </div>
         </div>
       `;
@@ -8455,6 +8466,9 @@
     appPreviewState.busguideJobId = jobId;
     appPreviewState.tab = 'busguide';
     renderAppPreview();
+  };
+  window.__apToggleSchedule = function() {
+    alert('전체 시간표 보기 (시뮬)\n\n실제 앱에서는 바텀시트 또는 새 화면으로 모든 차수의 정거장별 도착 시각을 표시합니다.\n현재 폰 미리보기에서는 가이드 화면 하단의 [전체 시간표] 카드를 참고하세요.');
   };
 
   // ───────────────────────────────────────────────────────

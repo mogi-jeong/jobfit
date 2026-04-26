@@ -182,6 +182,24 @@ function haversineMeters(lat1, lng1, lat2, lng2) {
   return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
 }
 
+// 도보 소요 시간 (분) — 직선 거리 × 1.3 (실제 경로 보정) ÷ 80m/분
+// 80m/분 = 4.8km/h (성인 평균 도보 속도)
+function walkMinutes(distanceMeters) {
+  const adjusted = distanceMeters * 1.3;  // 직선 → 실제 경로 보정
+  return Math.max(1, Math.round(adjusted / 80));
+}
+
+// 카카오맵 길찾기 URL — 도보 모드
+// 실제 Flutter 앱: url_launcher.launchUrl(kakaomap://route?...)
+// 웹 prototype: 카카오맵 웹 길찾기 새 창
+function kakaoWalkRouteUrl(sLat, sLng, sName, eLat, eLng, eName) {
+  const params = new URLSearchParams({
+    sName: sName || '출발지', sX: sLng, sY: sLat,
+    eName: eName || '도착지', eX: eLng, eY: eLat,
+  });
+  return 'https://map.kakao.com/?' + params.toString();
+}
+
 // 알바생 위치 기반 추천 — 가장 가까운 정거장 + 근무에 맞는 차수
 // jobStartHHMM: 공고 시작 시각 ('07:00')
 // arriveBufferMin: 도착 버퍼 (기본 15분 일찍 도착)
