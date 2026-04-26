@@ -392,10 +392,12 @@ function donutSvg(segments, size = 90, thick = 10) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>`;
 }
 
-// 잡핏 포인트 보상 — 시간대별 (중계 수수료 성격 · 알바비와 별개)
+// 잡핏 포인트 보상 — 시간대별 기본값 (중계 수수료 성격 · 알바비와 별개)
+// job.point 가 명시되면 그 값 사용 (공고별 수동 설정 가능), 없으면 시간대 기본값
 const POINT_REWARDS = { 주간: 2000, 야간: 2500, 새벽: 3000, 웨딩: 2500 };
 function pointRewardFor(job) {
-  return POINT_REWARDS[job.slot] || 2000;
+  if (job && typeof job.point === 'number' && job.point > 0) return job.point;
+  return POINT_REWARDS[job?.slot] || 2000;
 }
 
 // 출결 → 도넛 segments + 중앙 텍스트

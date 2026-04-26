@@ -5343,8 +5343,13 @@
           </div>
         </div>
         <div class="jf-form-row">
-          <div class="jf-form-label">잡핏 포인트</div>
-          <div style="font-size:13px; color:#2563EB;">+${reward.toLocaleString()} P <span style="color:#9CA3AF; font-size:11px; font-weight:400;">시간대별 자동 산정 (주간 2,000P · 야간 2,500P · 새벽 3,000P · 웨딩 2,500P)</span></div>
+          <div class="jf-form-label">잡핏 포인트<span class="req">*</span></div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="number" step="500" min="0" value="${reward}" onchange="jobEditState.draft.point=parseInt(this.value)||0; renderJobEdit('${jobId}')" style="width:120px; ${(typeof d.point === 'number' && d.point > 0 && d.point !== (POINT_REWARDS[d.slot] || 2000)) ? 'color:#2563EB; font-weight:600;' : ''}" />
+            <span style="font-size:13px; color:#6B7684;">P</span>
+            <span style="font-size:11px; color:#9CA3AF;">시간대 기본값: ${(POINT_REWARDS[d.slot] || 2000).toLocaleString()}P${(typeof d.point === 'number' && d.point > 0 && d.point !== (POINT_REWARDS[d.slot] || 2000)) ? ' · <span style="color:#2563EB; font-weight:500;">관리자 수동 설정</span>' : ''}</span>
+            ${(typeof d.point === 'number' && d.point > 0 && d.point !== (POINT_REWARDS[d.slot] || 2000)) ? `<button onclick="jobEditState.draft.point=undefined; renderJobEdit('${jobId}')" style="font-size:11px; padding:0 8px; height:28px;">기본값으로 초기화</button>` : ''}
+          </div>
         </div>
         <div class="jf-form-row">
           <div class="jf-form-label">담당자 전화번호<span class="req">*</span></div>
@@ -5445,7 +5450,7 @@
     description: '',
     dates: [],  // 선택된 날짜 배열 'YYYY-MM-DD'
     slots: [    // 시간대 슬롯 (같은 날짜에 여러 개 가능)
-      { slot: '주간', start: '07:00', end: '15:00', cap: 30, wageType: '일급', wage: 110000 },
+      { slot: '주간', start: '07:00', end: '15:00', cap: 30, wageType: '일급', wage: 110000, point: 2000 },
     ],
     contact: '',
     useContract: true,
@@ -5529,12 +5534,12 @@
           </div>
           <div class="jf-form-row">
             <div class="jf-form-label">공고 제목</div>
-            <input type="text" placeholder="비워두면 근무지명 자동 사용 (예: CJ대한통운 곤지암 MegaHub)" value="${f.title}" oninput="window.__jfSet('title', this.value)" style="max-width:520px;" />
+            <input type="text" placeholder="비워두면 근무지명 자동 사용 (예: CJ대한통운 곤지암 MegaHub)" value="${f.title}" oninput="window.__jfSetText('title', this.value)" style="max-width:520px;" />
           </div>
           <div class="jf-form-row top">
             <div class="jf-form-label">모집 내용 / 상세 설명</div>
             <div>
-              <textarea rows="4" placeholder="근무 내용, 준비물, 주의사항 등을 입력하세요..." oninput="window.__jfSet('description', this.value)">${f.description}</textarea>
+              <textarea rows="4" placeholder="근무 내용, 준비물, 주의사항 등을 입력하세요..." oninput="window.__jfSetText('description', this.value)">${f.description}</textarea>
               <div class="jf-form-hint">알바생 앱의 공고 상세 페이지에 그대로 노출됩니다.</div>
             </div>
           </div>
@@ -5567,9 +5572,13 @@
             <span style="font-size:11px; color:#6B7684; font-weight:400;">같은 근무지·날짜에 시간대 여러 개 등록 가능</span>
           </div>
           <div class="form-slot-row form-slot-head">
-            <div>시간대</div><div>시작</div><div>종료</div><div>모집</div><div>급여 유형</div><div>금액</div><div></div>
+            <div>시간대</div><div>시작</div><div>종료</div><div>모집</div><div>급여 유형</div><div>금액</div><div>포인트(P)</div><div></div>
           </div>
-          ${f.slots.map((s, i) => `
+          ${f.slots.map((s, i) => {
+            const pointDefault = (typeof POINT_REWARDS !== 'undefined' && POINT_REWARDS[s.slot]) || 2000;
+            const pointVal = (typeof s.point === 'number' && s.point > 0) ? s.point : pointDefault;
+            const isCustom = pointVal !== pointDefault;
+            return `
             <div class="form-slot-row">
               <select onchange="window.__jfSlot(${i}, 'slot', this.value)">
                 <option ${s.slot==='주간'?'selected':''}>주간</option>
@@ -5585,14 +5594,15 @@
                 <option value="시급" ${s.wageType==='시급'?'selected':''}>시급</option>
               </select>
               <input type="number" value="${s.wage}" step="1000" onchange="window.__jfSlot(${i}, 'wage', parseInt(this.value)||0)" />
+              <input type="number" value="${pointVal}" step="500" min="0" onchange="window.__jfSlot(${i}, 'point', parseInt(this.value)||0)" title="${isCustom ? '관리자 수동 설정 (기본값 ' + pointDefault.toLocaleString() + 'P)' : '시간대 기본값 — 변경 가능'}" style="${isCustom ? 'color:#2563EB; font-weight:600;' : ''}" />
               <button onclick="window.__jfRemoveSlot(${i})" ${f.slots.length<=1?'disabled':''} style="font-size:11px; padding:0 8px; height:30px; color:#EF4444;">삭제</button>
             </div>
-          `).join('')}
+          `;}).join('')}
           <div style="margin-top:10px;">
             <button onclick="window.__jfAddSlot()" style="font-size:12px;">+ 시간대 추가</button>
           </div>
           <div class="jf-form-hint" style="margin-top:10px;">
-            ※ 잡핏 포인트 보상(자동): 주간 2,000P · 야간 2,500P · 새벽 3,000P · 웨딩 2,500P — 알바비는 파트너사가 직접 지급
+            ※ 잡핏 포인트 보상 — 시간대 기본값: 주간 2,000P · 야간 2,500P · 새벽 3,000P · 웨딩 2,500P. 공고별 수동 조정 가능 (수정값은 파란색으로 표시됨). 알바비는 파트너사가 직접 지급.
           </div>
         </div>
 
@@ -5601,7 +5611,7 @@
           <div class="ws-section-title">옵션 설정</div>
           <div class="jf-form-row">
             <div class="jf-form-label">담당자 전화번호<span class="req">*</span></div>
-            <input type="tel" placeholder="010-XXXX-XXXX — 알바생에게 공개됨" value="${f.contact}" oninput="window.__jfSet('contact', this.value)" style="max-width:260px;" />
+            <input type="tel" placeholder="010-XXXX-XXXX — 알바생에게 공개됨" value="${f.contact}" oninput="window.__jfSetText('contact', this.value)" style="max-width:260px;" />
           </div>
           <div class="jf-form-row top" style="padding-top:14px;">
             <div class="jf-form-label">추가 옵션</div>
@@ -5700,6 +5710,10 @@
     if (key === 'partnerKey') jobFormState.siteId = '';
     renderJobsCreate();
   };
+  // 텍스트 입력은 re-render 안 함 (한글 IME 조합 깨짐 방지) — state만 업데이트
+  window.__jfSetText = function(key, val) {
+    jobFormState[key] = val;
+  };
   window.__jfToggleDate = function(dateStr) {
     const idx = jobFormState.dates.indexOf(dateStr);
     if (idx >= 0) jobFormState.dates.splice(idx, 1);
@@ -5728,7 +5742,7 @@
     renderJobsCreate();
   };
   window.__jfAddSlot = function() {
-    jobFormState.slots.push({ slot: '주간', start: '07:00', end: '15:00', cap: 20, wageType: '일급', wage: 100000 });
+    jobFormState.slots.push({ slot: '주간', start: '07:00', end: '15:00', cap: 20, wageType: '일급', wage: 100000, point: POINT_REWARDS['주간'] });
     renderJobsCreate();
   };
   window.__jfRemoveSlot = function(idx) {
@@ -5737,7 +5751,18 @@
     renderJobsCreate();
   };
   window.__jfSlot = function(idx, key, val) {
-    if (jobFormState.slots[idx]) jobFormState.slots[idx][key] = val;
+    const s = jobFormState.slots[idx]; if (!s) return;
+    s[key] = val;
+    // 시간대 변경 시 포인트가 기본값이거나 미설정이면 새 시간대 기본값으로 자동 업데이트
+    if (key === 'slot') {
+      const oldDefault = POINT_REWARDS[s._lastSlot || '주간'] || 2000;
+      const newDefault = POINT_REWARDS[val] || 2000;
+      if (typeof s.point !== 'number' || s.point === oldDefault) {
+        s.point = newDefault;
+      }
+      s._lastSlot = val;
+      renderJobsCreate();
+    }
   };
   window.__jfDraftSave = function() {
     try {
@@ -5989,17 +6014,19 @@
     f.dates.forEach(date => {
       f.slots.forEach(s => {
         const newId = 'j' + String(jobs.length + created + 1).padStart(3, '0');
+        const slotPoint = (typeof s.point === 'number' && s.point > 0) ? s.point : (POINT_REWARDS[s.slot] || 2000);
         jobs.push({
           id: newId, siteId: f.siteId,
           date, slot: s.slot, start: s.start, end: s.end,
-          cap: s.cap, apply: 0, wage: s.wage, wageType: s.wageType,
+          cap: s.cap, apply: 0, wage: s.wage, wageType: s.wageType, point: slotPoint,
           contact: f.contact, contract: f.useContract, safety: f.useSafety,
         });
+        const isCustomPoint = slotPoint !== (POINT_REWARDS[s.slot] || 2000);
         logAudit({
           category: 'job', action: 'create',
           target: site.site.name + ' ' + date + ' ' + s.slot,
           targetId: newId,
-          summary: '모집 ' + s.cap + '명 · ' + s.wage.toLocaleString() + '원 · ' + s.start + '~' + s.end + (f.useContract?' · 계약서':'') + (f.useSafety?' · 안전교육':''),
+          summary: '모집 ' + s.cap + '명 · ' + s.wage.toLocaleString() + '원 · ' + s.start + '~' + s.end + ' · 포인트 ' + slotPoint.toLocaleString() + 'P' + (isCustomPoint?' (수동)':'') + (f.useContract?' · 계약서':'') + (f.useSafety?' · 안전교육':''),
         });
         created++;
       });
@@ -6009,7 +6036,7 @@
     Object.assign(jobFormState, {
       partnerKey: '', siteId: '', title: '', description: '',
       dates: [],
-      slots: [{ slot: '주간', start: '07:00', end: '15:00', cap: 30, wageType: '일급', wage: 110000 }],
+      slots: [{ slot: '주간', start: '07:00', end: '15:00', cap: 30, wageType: '일급', wage: 110000, point: POINT_REWARDS['주간'] }],
       contact: '', useContract: true, useSafety: true, showHolidayPopup: true,
     });
     jobsState.tab = 'list';
