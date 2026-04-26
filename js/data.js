@@ -328,10 +328,12 @@ const gpsRequests = [
 ];
 function findGpsReq(id) { return gpsRequests.find(g => g.id === id); }
 
-// 공고 상태 판정: open(모집중) · closed(마감·시작전) · progress(진행중) · done(종료)
+// 공고 상태 판정: pending(모집 대기·게시 전) · open(모집중) · closed(마감·시작전) · progress(진행중) · done(종료)
+// j.pending=true 면 게시 전 대기 (알바생에게 노출 안 됨)
 // recruitClosed(수동 구인 완료) 또는 apply+외부 구인 >= cap 이면 모집 마감
 // 오늘 공고는 "근무 진행" 의미 우선 → progress 유지하되, 마감 표시는 jobMarketStatus 로 별도 조회
 function jobStatus(j) {
+  if (j.pending) return 'pending';
   if (j.date < TODAY) return 'done';
   const ext = Array.isArray(j.externalWorkers) ? j.externalWorkers.length : 0;
   const filled = j.apply + ext;
@@ -345,7 +347,7 @@ function jobIsRecruitFilled(j) {
   const ext = Array.isArray(j.externalWorkers) ? j.externalWorkers.length : 0;
   return j.recruitClosed || (j.apply + ext) >= j.cap;
 }
-const STATUS_LABEL = { open: '모집중', closed: '마감', progress: '진행중', done: '종료' };
+const STATUS_LABEL = { pending: '모집 대기', open: '모집중', closed: '마감', progress: '진행중', done: '종료' };
 
 // ───────────────────────────────────────────────────────────
 // 공용 헬퍼 — app.js / control.js 양쪽에서 사용

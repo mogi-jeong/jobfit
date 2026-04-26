@@ -1722,7 +1722,7 @@
             ? '<div style="padding:20px 0; text-align:center; color:#6B7684; font-size:13px;">오늘 예정된 공고가 없습니다.</div>'
             : todayJobs.sort((a,b) => (a.start||'').localeCompare(b.start||'')).map(j => {
                 const site = findSite(j.siteId); const st = jobStatus(j); const sum = attendanceSummary(j.id);
-                const stColor = { open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
+                const stColor = { pending:'#8B5CF6', open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
                 return `
                   <div onclick="window.__gotoJobDetail('${j.id}');" style="padding: 10px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:10px;">
                     <div>
@@ -2010,7 +2010,7 @@
             ? '<div style="padding:20px 0; text-align:center; color:#6B7684; font-size:13px;">오늘 예정된 공고가 없습니다.</div>'
             : todayJobs.sort((a,b) => (a.start||'').localeCompare(b.start||'')).map(j => {
                 const site = findSite(j.siteId); const st = jobStatus(j); const sum = attendanceSummary(j.id);
-                const stColor = { open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
+                const stColor = { pending:'#8B5CF6', open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
                 return `
                   <div onclick="window.__gotoJobDetail('${j.id}');" style="padding: 10px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:10px;">
                     <div>
@@ -4382,6 +4382,7 @@
         </select>
         <select onchange="window.__jobsFilter('status', this.value)">
           <option value="">전체 상태</option>
+          <option value="pending"  ${jobsState.status==='pending'?'selected':''}>🟣 모집 대기</option>
           <option value="progress" ${jobsState.status==='progress'?'selected':''}>진행중</option>
           <option value="open"     ${jobsState.status==='open'?'selected':''}>모집중</option>
           <option value="closed"   ${jobsState.status==='closed'?'selected':''}>마감</option>
@@ -4472,8 +4473,9 @@
           <div class="jobs-progress-bar"><div class="jobs-progress-bar-fill" style="width:${pct}%;"></div></div>
           <div class="jobs-progress-label"><span>모집 ${j.apply} / ${j.cap}명${wlCount > 0 ? ` · 대기 ${wlCount}/${maxWaitCap(j)}` : ''}</span><span>${pct}%</span></div>
           <div class="jobs-card-foot" onclick="event.stopPropagation()">
-            <button onclick="window.__jobsDetail('${j.id}')">신청자</button>
-            <button onclick="window.__jobsDuplicate('${j.id}')" title="이 공고를 복제">📋 복제</button>
+            ${st === 'pending'
+              ? `<button onclick="window.__jobsPublish('${j.id}')" style="color:#6B21A8; border-color:#8B5CF6;">▶ 모집 시작</button>`
+              : `<button onclick="window.__jobsDetail('${j.id}')">신청자</button>`}
             <button onclick="window.__jobEdit('${j.id}')">수정</button>
           </div>
         </div>
@@ -5010,7 +5012,7 @@
     const j = findJob(jobId); if (!j) return;
     const site = findSite(j.siteId);
     const st = jobStatus(j);
-    const stColor = { open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
+    const stColor = { pending:'#8B5CF6', open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
     if (!Array.isArray(j.externalWorkers)) j.externalWorkers = [];
     const ext = j.externalWorkers;
     const effApply = j.apply + ext.length;  // 외부 구인 인원 포함 총 구인
@@ -5035,9 +5037,10 @@
           <div class="jf-subtitle">${j.date} · ${j.slot} ${j.start}~${j.end} · 공고 ID ${j.id}</div>
         </div>
         <div class="ws-actions">
+          ${st === 'pending' ? `<button class="btn-primary" onclick="window.__jobsPublish('${j.id}')" title="모집 시작 — 알바생 앱에 노출">▶ 모집 시작</button>` : ''}
+          ${(st === 'open' || st === 'closed') && j.apply === 0 ? `<button onclick="window.__jobsHold('${j.id}')" title="모집 대기로 전환 — 알바생 노출 중단 (신청자 0명일 때만)">⏸ 모집 대기로</button>` : ''}
           <button onclick="window.__jobEdit('${j.id}')">수정</button>
-          <button onclick="window.__jobsDuplicate('${j.id}')">복제</button>
-          <button onclick="window.__jobsDelete('${j.id}')" class="btn-danger" ${st!=='open'&&st!=='closed'?'disabled':''}>삭제</button>
+          <button onclick="window.__jobsDelete('${j.id}')" class="btn-danger" ${st!=='open'&&st!=='closed'&&st!=='pending'?'disabled':''}>삭제</button>
         </div>
       </div>
 
@@ -5060,8 +5063,8 @@
 
           <div class="jf-panel">
             <div class="ws-section-title">
-              신청자 목록
-              <span style="font-size:11px; color:#6B7684; font-weight:400;">${myApps.length}건 신청 · ${myApps.filter(a=>a.status==='approved').length}명 승인</span>
+              <span>신청자 목록 <span style="font-size:11px; color:#6B7684; font-weight:400;">${myApps.length}건 신청 · ${myApps.filter(a=>a.status==='approved').length}명 승인</span></span>
+              <button onclick="window.__jobsPrintApps('${j.id}')" style="font-size:12px; padding:4px 10px; height:auto;">📄 출력</button>
             </div>
             ${myApps.length === 0
               ? '<div style="padding:20px 0; text-align:center; color:#6B7684; font-size:13px;">아직 신청자가 없습니다.</div>'
@@ -5434,22 +5437,203 @@
   };
 
   window.__jobsBackToList = function() { jobsState.tab = 'list'; renderJobs(); };
-  window.__jobsDuplicate = function(jobId) {
+
+  // 모집 대기 → 모집 시작 (게시)
+  window.__jobsPublish = function(jobId) {
     const j = findJob(jobId); if (!j) return;
-    const newId = 'j' + String(jobs.length + 1).padStart(3, '0');
-    // 내일 날짜로 복제
-    const tomorrow = new Date(TODAY); tomorrow.setDate(tomorrow.getDate() + 1);
-    const newDate = tomorrow.toISOString().slice(0, 10);
-    jobs.push({ ...j, id: newId, date: newDate, apply: 0 });
+    if (!j.pending) { alert('이미 모집 중인 공고입니다.'); return; }
     const site = findSite(j.siteId);
+    if (!confirm(`"${site?.site.name || ''} ${j.date} ${j.slot}" 공고를 모집 시작하시겠습니까?\n\n알바생 앱에 즉시 노출되며 신청을 받기 시작합니다.`)) return;
+    j.pending = false;
     logAudit({
-      category: 'job', action: 'duplicate',
-      target: (site?.site.name || '') + ' ' + newDate + ' ' + j.slot,
-      targetId: newId,
-      summary: '원본 ' + jobId + ' → ' + newId + ' (' + newDate + ')',
+      category: 'job', action: 'publish',
+      target: (site?.site.name || '') + ' ' + j.date + ' ' + j.slot,
+      targetId: jobId,
+      summary: '모집 대기 → 모집 시작 · 알바생 앱 노출 시작',
     });
-    alert(`공고 복제 완료 (${newId}, 날짜: ${newDate})\n필요시 수정 탭에서 편집해주세요.`);
-    renderJobDetail(newId);
+    alert('모집을 시작했습니다. 알바생 앱에 노출됩니다.');
+    // 현재 페이지 리렌더
+    const active = document.querySelector('.jf-nav-item.active');
+    const page = active ? active.getAttribute('data-page') : null;
+    if (page === 'jobs') {
+      if (jobsState.tab === 'list') renderJobsList();
+      else renderJobDetail(jobId);
+    }
+  };
+
+  // 신청자 목록 인쇄 — 새 창에 인쇄 친화적 레이아웃 + window.print()
+  window.__jobsPrintApps = function(jobId) {
+    const j = findJob(jobId); if (!j) return;
+    const site = findSite(j.siteId);
+    const myApps = applications.filter(a => a.jobId === jobId);
+    const approved = myApps.filter(a => a.status === 'approved');
+    const pending = myApps.filter(a => a.status === 'pending');
+    const rejected = myApps.filter(a => a.status === 'rejected');
+    const ext = Array.isArray(j.externalWorkers) ? j.externalWorkers : [];
+    const reward = pointRewardFor(j);
+    const printedAt = new Date();
+    const printedAtStr = printedAt.getFullYear() + '-' + String(printedAt.getMonth()+1).padStart(2,'0') + '-' + String(printedAt.getDate()).padStart(2,'0') + ' ' + String(printedAt.getHours()).padStart(2,'0') + ':' + String(printedAt.getMinutes()).padStart(2,'0');
+
+    const renderRow = (idx, name, phone, statusText, extra) => `
+      <tr>
+        <td style="text-align:center;">${idx}</td>
+        <td>${esc(name)}</td>
+        <td style="font-family:monospace;">${esc(phone)}</td>
+        <td>${esc(statusText)}</td>
+        <td>${esc(extra || '')}</td>
+        <td><!-- 출근 시각 (수기) --></td>
+        <td><!-- 퇴근 시각 (수기) --></td>
+        <td><!-- 비고 (수기) --></td>
+      </tr>
+    `;
+
+    let rowIdx = 0;
+    const allRows = [];
+    // 승인된 사람들 먼저
+    approved.forEach(a => {
+      rowIdx++;
+      const w = findWorker(a.workerId); if (!w) return;
+      const buddy = a.buddyAppId ? findApp(a.buddyAppId) : null;
+      const buddyW = buddy ? findWorker(buddy.workerId) : null;
+      const extra = buddyW ? '🤝 ' + buddyW.name : '';
+      allRows.push(renderRow(rowIdx, w.name, w.phone, '승인', extra));
+    });
+    // 외부 구인 인원
+    ext.forEach(e => {
+      rowIdx++;
+      allRows.push(renderRow(rowIdx, e.name, e.phone, '외부 구인', e.note || ''));
+    });
+    // 대기 (pending) — 명단에는 포함하되 표시
+    pending.forEach(a => {
+      rowIdx++;
+      const w = findWorker(a.workerId); if (!w) return;
+      allRows.push(renderRow(rowIdx, w.name, w.phone, '신청 대기', a.reason || ''));
+    });
+
+    const html = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>${esc(site?.site.name || '')} ${j.date} ${j.slot} 신청자 명단</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Malgun Gothic', 'Noto Sans KR', sans-serif; padding: 24px; color: #111; line-height: 1.5; }
+  .h-row { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 12px; }
+  .h-title { font-size: 22px; font-weight: 700; }
+  .h-sub { font-size: 12px; color: #555; margin-top: 4px; }
+  .h-meta { font-size: 11px; color: #666; text-align: right; }
+  .info-grid { display: grid; grid-template-columns: 110px 1fr 110px 1fr; gap: 4px 12px; font-size: 13px; padding: 10px 12px; border: 1px solid #999; border-radius: 4px; margin-bottom: 14px; }
+  .info-grid .label { color: #555; font-weight: 500; }
+  .info-grid .val { font-weight: 500; }
+  .summary { display: flex; gap: 16px; margin-bottom: 14px; font-size: 12px; }
+  .summary span { padding: 4px 10px; border: 1px solid #999; border-radius: 3px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead th { border: 1px solid #333; background: #f0f0f0; padding: 6px 4px; font-weight: 600; }
+  tbody td { border: 1px solid #999; padding: 8px 6px; min-height: 28px; }
+  tbody tr { page-break-inside: avoid; }
+  tbody td:nth-child(1) { width: 36px; }
+  tbody td:nth-child(2) { width: 80px; }
+  tbody td:nth-child(3) { width: 110px; }
+  tbody td:nth-child(4) { width: 70px; }
+  tbody td:nth-child(5) { width: 110px; }
+  tbody td:nth-child(6),
+  tbody td:nth-child(7) { width: 70px; }
+  .footer-note { margin-top: 14px; font-size: 11px; color: #555; padding-top: 8px; border-top: 1px solid #ccc; }
+  .actions { display: flex; gap: 8px; margin-bottom: 14px; }
+  .actions button { padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  @media print {
+    .actions { display: none; }
+    body { padding: 14mm; }
+    @page { size: A4; margin: 12mm; }
+  }
+</style>
+</head>
+<body>
+  <div class="actions">
+    <button onclick="window.print()">🖨 인쇄</button>
+    <button onclick="window.close()">닫기</button>
+  </div>
+  <div class="h-row">
+    <div>
+      <div class="h-title">${esc(site?.site.name || '')} 신청자 명단</div>
+      <div class="h-sub">${esc(site?.partner || '')} · ${esc(site?.site.addr || '')}</div>
+    </div>
+    <div class="h-meta">
+      출력 일시: ${printedAtStr}<br>
+      공고 ID: ${esc(j.id)}<br>
+      잡핏(JobFit) 관리자
+    </div>
+  </div>
+
+  <div class="info-grid">
+    <div class="label">근무 일자</div><div class="val">${j.date} (${'일월화수목금토'[new Date(j.date).getDay()]})</div>
+    <div class="label">시간대</div><div class="val">${j.slot} · ${j.start} ~ ${j.end}</div>
+    <div class="label">모집 인원</div><div class="val">${j.cap}명 (확정 ${j.apply}명${ext.length>0?', 외부 '+ext.length+'명':''})</div>
+    <div class="label">알바비</div><div class="val">${j.wage.toLocaleString()}원 / ${j.wageType}</div>
+    <div class="label">잡핏 포인트</div><div class="val">+${reward.toLocaleString()} P</div>
+    <div class="label">담당자</div><div class="val">${esc(j.contact || '-')}</div>
+  </div>
+
+  <div class="summary">
+    <span>✅ 승인 ${approved.length}명</span>
+    ${ext.length>0?`<span>🏷 외부 구인 ${ext.length}명</span>`:''}
+    ${pending.length>0?`<span>⏳ 대기 ${pending.length}명</span>`:''}
+    ${rejected.length>0?`<span style="color:#999;">❌ 거절 ${rejected.length}명 (목록 제외)</span>`:''}
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>이름</th><th>전화번호</th><th>상태</th><th>비고</th>
+        <th>출근</th><th>퇴근</th><th>현장 메모</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${allRows.length === 0 ? '<tr><td colspan="8" style="text-align:center; padding:20px; color:#999;">신청자가 없습니다.</td></tr>' : allRows.join('')}
+    </tbody>
+  </table>
+
+  <div class="footer-note">
+    ※ 이 명단은 <strong>${printedAtStr}</strong> 기준입니다 — 출력 후 변동된 신청은 반영되지 않습니다.<br>
+    ※ 현장에서 출근/퇴근 시각은 알바생 앱 GPS 자동 처리가 우선이며, 본 명단은 보조 기록용입니다.
+  </div>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank', 'width=900,height=720');
+    if (!win) { alert('팝업이 차단되었습니다. 팝업을 허용해주세요.'); return; }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    logAudit({
+      category: 'job', action: 'print_applicants',
+      target: (site?.site.name || '') + ' ' + j.date + ' ' + j.slot,
+      targetId: jobId,
+      summary: '신청자 명단 출력 — 승인 ' + approved.length + '명' + (ext.length>0?' / 외부 '+ext.length+'명':'') + (pending.length>0?' / 대기 '+pending.length+'명':''),
+    });
+  };
+
+  // 모집 중 → 모집 대기로 전환 (신청자 0명일 때만)
+  window.__jobsHold = function(jobId) {
+    const j = findJob(jobId); if (!j) return;
+    if (j.apply > 0) { alert('이미 신청자가 있는 공고는 모집 대기로 전환할 수 없습니다.\n공고 수정 또는 삭제를 검토하세요.'); return; }
+    if (j.pending) { alert('이미 모집 대기 상태입니다.'); return; }
+    const site = findSite(j.siteId);
+    if (!confirm(`"${site?.site.name || ''} ${j.date} ${j.slot}" 공고를 모집 대기로 전환하시겠습니까?\n\n알바생 앱 노출이 중단되고, 수정/일정 조정 후 다시 [모집 시작]을 누를 수 있습니다.`)) return;
+    j.pending = true;
+    logAudit({
+      category: 'job', action: 'hold',
+      target: (site?.site.name || '') + ' ' + j.date + ' ' + j.slot,
+      targetId: jobId,
+      summary: '모집중 → 모집 대기 · 알바생 앱 노출 중단',
+    });
+    alert('모집 대기로 전환했습니다.');
+    const active = document.querySelector('.jf-nav-item.active');
+    const page = active ? active.getAttribute('data-page') : null;
+    if (page === 'jobs') {
+      if (jobsState.tab === 'list') renderJobsList();
+      else renderJobDetail(jobId);
+    }
   };
   window.__jobsDelete = function(jobId) {
     const j = findJob(jobId); if (!j) return;
@@ -5481,6 +5665,7 @@
     useContract: true,
     useSafety: true,
     showHolidayPopup: true,
+    publishNow: true,   // false면 pending(모집 대기) 상태로 저장
     calYear: 2026,
     calMonth: 4,
   };
@@ -5668,6 +5853,14 @@
                 </div>
                 <div class="jf-toggle-sub">신청 시 이번 주 N회 만근 상태에 따라 자동 안내 — CJ/롯데 4회, 컨벤션 2일</div>
               </div>
+              <div style="padding-top:6px; border-top:0.5px solid rgba(0,0,0,0.06); margin-top:4px;">
+                <label class="jf-toggle">
+                  <input type="checkbox" ${(f.publishNow!==false)?'checked':''} onchange="window.__jfSet('publishNow', this.checked)">
+                  <span class="jf-toggle-switch"></span>
+                  <span class="jf-toggle-text"><strong>등록 즉시 모집 시작</strong></span>
+                </label>
+                <div class="jf-toggle-sub" style="color:${(f.publishNow!==false)?'#6B7684':'#9D174D'};">${(f.publishNow!==false) ? '등록 즉시 알바생 앱에 노출됨 (모집중)' : '🟣 모집 대기 상태로 저장 — 나중에 [모집 시작] 버튼으로 게시 (수정사항 점검·일정 조정 시 권장)'}</div>
+              </div>
             </div>
           </div>
         </div>
@@ -5677,7 +5870,7 @@
         <button onclick="window.__jfCancel()">취소</button>
         <button onclick="window.__jfDraftSave()">임시저장</button>
         <button onclick="window.__jfDraftLoad()">임시본 불러오기</button>
-        <button class="btn-primary" onclick="window.__jfSubmit()">공고 등록</button>
+        <button class="btn-primary" onclick="window.__jfSubmit()">${(f.publishNow!==false) ? '공고 등록' : '🟣 모집 대기로 저장'}</button>
       </div>
     `;
   }
@@ -6040,29 +6233,32 @@
       f.slots.forEach(s => {
         const newId = 'j' + String(jobs.length + created + 1).padStart(3, '0');
         const slotPoint = (typeof s.point === 'number' && s.point > 0) ? s.point : DEFAULT_POINT_REWARD;
+        const isPending = f.publishNow === false;
         jobs.push({
           id: newId, siteId: f.siteId,
           date, slot: s.slot, start: s.start, end: s.end,
           cap: s.cap, apply: 0, wage: s.wage, wageType: s.wageType, point: slotPoint,
           contact: f.contact, contract: f.useContract, safety: f.useSafety,
+          pending: isPending,
         });
         const isCustomPoint = slotPoint !== DEFAULT_POINT_REWARD;
         logAudit({
-          category: 'job', action: 'create',
+          category: 'job', action: isPending ? 'create_pending' : 'create',
           target: site.site.name + ' ' + date + ' ' + s.slot,
           targetId: newId,
-          summary: '모집 ' + s.cap + '명 · ' + s.wage.toLocaleString() + '원 · ' + s.start + '~' + s.end + ' · 포인트 ' + slotPoint.toLocaleString() + 'P' + (isCustomPoint?' (수동)':'') + (f.useContract?' · 계약서':'') + (f.useSafety?' · 안전교육':''),
+          summary: (isPending?'[모집 대기로 저장] ':'') + '모집 ' + s.cap + '명 · ' + s.wage.toLocaleString() + '원 · ' + s.start + '~' + s.end + ' · 포인트 ' + slotPoint.toLocaleString() + 'P' + (isCustomPoint?' (수동)':'') + (f.useContract?' · 계약서':'') + (f.useSafety?' · 안전교육':''),
         });
         created++;
       });
     });
-    alert(`공고 ${created}건 등록 완료!\n\n근무지: ${site.site.name}\n날짜 ${f.dates.length}일 × 시간대 ${f.slots.length}개\n\n담당자: ${f.contact}\n계약서: ${f.useContract?'ON':'OFF'} / 안전교육: ${f.useSafety?'ON':'OFF'} / 주휴수당 팝업: ${f.showHolidayPopup?'ON':'OFF'}`);
+    const publishMsg = f.publishNow === false ? '\n\n🟣 모집 대기 상태로 저장됨 — 알바생에게 노출되지 않으며, 공고 리스트/상세에서 [모집 시작] 클릭 시 게시됩니다.' : '';
+    alert(`공고 ${created}건 등록 완료!\n\n근무지: ${site.site.name}\n날짜 ${f.dates.length}일 × 시간대 ${f.slots.length}개\n\n담당자: ${f.contact}\n계약서: ${f.useContract?'ON':'OFF'} / 안전교육: ${f.useSafety?'ON':'OFF'} / 주휴수당 팝업: ${f.showHolidayPopup?'ON':'OFF'}` + publishMsg);
     // 폼 초기화 + 리스트 탭 이동
     Object.assign(jobFormState, {
       partnerKey: '', siteId: '', title: '', description: '',
       dates: [],
       slots: [{ slot: '주간', start: '07:00', end: '15:00', cap: 30, wageType: '일급', wage: 110000, point: POINT_REWARDS['주간'] }],
-      contact: '', useContract: true, useSafety: true, showHolidayPopup: true,
+      contact: '', useContract: true, useSafety: true, showHolidayPopup: true, publishNow: true,
     });
     jobsState.tab = 'list';
     renderJobs();
@@ -8184,7 +8380,7 @@
           const site = findSite(j.siteId);
           const sum = attendanceSummary(j.id);
           const st = jobStatus(j);
-          const stColor = { open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#9CA3AF' }[st];
+          const stColor = { pending:'#8B5CF6', open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#9CA3AF' }[st];
           return `
             <div class="app-card" onclick="window.__maTab('attendance')" style="cursor:pointer;">
               <div style="display:flex; justify-content:space-between; align-items:center;">
