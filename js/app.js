@@ -2574,12 +2574,28 @@
       });
       if (!result) { alert('정정 적용 실패'); return; }
       overlay.remove();
+
+      // 같이하기 짝꿓 보너스 트리거 — 본인 + 짝꿓 모두 출퇴근 완료 시 +3,000P × 2
+      let buddyBonusInfo = null;
+      if (!result.pending) {
+        const myApp = applications.find(ap => ap.jobId === jobId && ap.workerId === workerId && ap.status === 'approved');
+        if (myApp && myApp.buddyAppId) {
+          const bonusResult = tryGrantBuddyBonus(myApp.id, me.name);
+          if (bonusResult) buddyBonusInfo = bonusResult;
+        }
+      }
+
       if (result.pending) {
         alert('출결 정정 신청 완료.\n1등급/마스터의 승인을 기다립니다.\n알바생에게 임시 알림이 발송됩니다.');
       } else {
-        const msg = result.rewardGiven > 0
+        let msg = result.rewardGiven > 0
           ? `출결 정정 적용 완료.\n포인트 ${result.rewardGiven.toLocaleString()}P 자동 지급되었고 알바생에게 알림이 발송되었습니다.`
           : '출결 정정 적용 완료.\n알바생에게 알림이 발송되었습니다.';
+        if (buddyBonusInfo) {
+          const wA = findWorker(buddyBonusInfo.a.workerId);
+          const wB = findWorker(buddyBonusInfo.b.workerId);
+          msg += `\n\n🤝 같이하기 보너스 자동 지급!\n${wA?.name} + ${wB?.name} 양쪽에게 각자 ${buddyBonusInfo.amount.toLocaleString()}P 지급 (총 ${(buddyBonusInfo.amount * 2).toLocaleString()}P).`;
+        }
         alert(msg);
       }
       // 현재 페이지 리렌더
@@ -3912,12 +3928,29 @@
 
     // 우선순위 정렬: 6h 초과 > 협의대상 > 경고3회 > 12h이내, 동순위는 신청시간 오래된 것 우선
     const reasonPriority = { neg: 1, warn3: 2, urgent: 3, normal: 4 };
-    const sorted = [...filtered].sort((a, b) => {
+    let sorted = [...filtered].sort((a, b) => {
       const aOver = appDwell(a).over ? 0 : 5;
       const bOver = appDwell(b).over ? 0 : 5;
       return (aOver + (reasonPriority[a.reason] ?? 9)) - (bOver + (reasonPriority[b.reason] ?? 9))
         || a.appliedAt.localeCompare(b.appliedAt);
     });
+
+    // 같이하기 짝꿓 인접 정렬 — buddy를 메인 카드 바로 다음에 배치
+    const adjusted = [];
+    const seen = new Set();
+    sorted.forEach(a => {
+      if (seen.has(a.id)) return;
+      adjusted.push(a);
+      seen.add(a.id);
+      if (a.buddyAppId) {
+        const b = sorted.find(x => x.id === a.buddyAppId);
+        if (b && !seen.has(b.id)) {
+          adjusted.push(b);
+          seen.add(b.id);
+        }
+      }
+    });
+    sorted = adjusted;
 
     let html = `
       <div class="jf-header">
@@ -3995,8 +4028,23 @@
           ${sc.tier && sc.tier !== 'unknown' ? '<span style="font-size:9px; opacity:0.85;">'+sc.tier+'</span>' : ''}
           ${sc.label}
         </span>`;
+
+        // 같이하기 짝꿓 정보
+        const buddyApp = a.buddyAppId ? findApp(a.buddyAppId) : null;
+        const buddyW = buddyApp ? findWorker(buddyApp.workerId) : null;
+        const buddyBadge = buddyW
+          ? `<span class="apv-badge" style="background:#FCE7F3; color:#9D174D; font-size:10px; padding:2px 6px; display:inline-flex; align-items:center; gap:3px;" title="같이하기 짝꿓: ${esc(buddyW.name)} (${esc(buddyW.phone)})">🤝 ${esc(buddyW.name)}와 함께</span>`
+          : '';
+        const buddyRoleBadge = a.buddyRole === 'inviter'
+          ? '<span style="font-size:9px; padding:1px 5px; background:#F3F4F6; color:#6B7684; border-radius:3px; margin-left:3px;">초대</span>'
+          : a.buddyRole === 'invitee'
+          ? '<span style="font-size:9px; padding:1px 5px; background:#F3F4F6; color:#6B7684; border-radius:3px; margin-left:3px;">수락</span>'
+          : '';
+        const buddyCardStyle = buddyW ? 'border-left: 3px solid #EC4899;' : '';
+        if (buddyW) badges.push(`<span class="apv-badge" style="background:#FCE7F3; color:#9D174D;">🤝 같이하기 (+3,000P)</span>`);
+
         html += `
-          <div class="apv-card ${cardCls}${overClass}">
+          <div class="apv-card ${cardCls}${overClass}" style="${buddyCardStyle}">
             <div class="apv-worker">
               <div class="apv-worker-name">
                 ${w.name}
@@ -4005,6 +4053,7 @@
               </div>
               <div class="apv-worker-phone">${w.phone}</div>
               <div class="apv-worker-stat">누적 근무 <strong>${w.total}</strong>회 · ${warnStat} · ${noshow}</div>
+              ${buddyW ? `<div style="font-size:11px; color:#9D174D; margin-top:4px; padding:4px 8px; background:#FDF2F8; border-radius:4px; line-height:1.4;">🤝 ${esc(buddyW.name)} (${esc(buddyW.phone)})와 함께${buddyRoleBadge}<br><span style="color:#6B7684; font-size:10px;">한쪽 거절 시 짝꿓도 자동 거절 · 양쪽 출퇴근 완료 시 +3,000P</span></div>` : ''}
             </div>
             <div class="apv-job">
               <div class="apv-job-title">${site.site.name} <span class="ws-mini-tag" style="font-size:10px;">${site.partner}</span></div>
@@ -4044,10 +4093,19 @@
     const w = findWorker(a.workerId);
     const j = findJob(a.jobId);
     const site = findSite(j.siteId);
-    if (!confirm(`${w.name} (${w.phone}) 님의 신청을 승인하시겠습니까?\n\n근무지: ${site.site.name}\n일시: ${j.date} ${j.slot} ${j.start}~${j.end}`)) return;
+    const buddy = a.buddyAppId ? findApp(a.buddyAppId) : null;
+    const buddyW = buddy ? findWorker(buddy.workerId) : null;
+    const me = currentAdmin();
+
+    let confirmMsg = `${w.name} (${w.phone}) 님의 신청을 승인하시겠습니까?\n\n근무지: ${site.site.name}\n일시: ${j.date} ${j.slot} ${j.start}~${j.end}`;
+    if (buddy && buddy.status === 'pending' && buddyW) {
+      confirmMsg += `\n\n🤝 같이하기 짝꿓 ${buddyW.name} 님도 함께 자동 승인됩니다.\n양쪽 출퇴근 완료 시 각자 +3,000P 보너스 지급.`;
+    }
+    if (!confirm(confirmMsg)) return;
+
     a.status = 'approved';
     a.processedAt = TODAY + ' ' + new Date().toTimeString().slice(0,5);
-    a.processedBy = '테스트(마스터)';
+    a.processedBy = me.name;
     j.apply = Math.min(j.apply + 1, j.cap); // 공고 모집인원 업데이트
     logAudit({
       category: 'application', action: 'approve',
@@ -4055,23 +4113,39 @@
       targetId: appId,
       summary: a.reason ? '플래그: ' + a.reason : '정상 승인',
     });
+    // 짝꿓 자동 승인
+    let buddyApproved = null;
+    if (buddy && buddy.status === 'pending') {
+      buddyApproved = cascadeBuddyApprove(appId, me.name, me.role);
+    }
     updateApprovalBadge();
     renderApproval();
+    if (buddyApproved && buddyW) {
+      alert(`✅ 승인 완료\n\n${w.name} 님과 짝꿓 ${buddyW.name} 님 모두 자동 승인되었습니다.\n양쪽 출퇴근 완료 시 각자 +3,000P 보너스가 자동 지급됩니다.`);
+    }
   };
   window.__apvReject = function(appId) {
     const a = findApp(appId); if (!a) return;
     const w = findWorker(a.workerId); const j = findJob(a.jobId);
     const site = j ? findSite(j.siteId) : null;
+    const buddy = a.buddyAppId ? findApp(a.buddyAppId) : null;
+    const buddyW = buddy ? findWorker(buddy.workerId) : null;
+    const me = currentAdmin();
+
+    const buddyHint = buddy && buddy.status === 'pending' && buddyW
+      ? `<div style="margin-top:8px; padding:10px 12px; background:#FEF2F2; border:1px solid #FCA5A5; border-radius:6px; font-size:12px; color:#991B1B; line-height:1.6;">⚠ <strong>같이하기 짝꿓 ${esc(buddyW.name)} 님도 자동 거절</strong>됩니다.<br>양쪽 알바생에게 "같이하기가 거절되었어요" 알림이 발송됩니다.</div>`
+      : '';
+
     promptModal({
-      title: '신청 거절',
-      subtitle: `<strong>${esc(w.name)}</strong> · ${site ? esc(site.site.name) : ''} ${j ? j.date+' '+j.slot : ''}`,
+      title: '신청 거절' + (buddy && buddy.status === 'pending' ? ' (짝꿓 함께 거절)' : ''),
+      subtitle: `<strong>${esc(w.name)}</strong> · ${site ? esc(site.site.name) : ''} ${j ? j.date+' '+j.slot : ''}` + buddyHint,
       fields: [{ key: 'reason', label: '거절 사유', type: 'textarea', required: true, placeholder: '알바생에게 알림으로 발송됩니다', hint: '예: 협의대상 이력 / 주 4일 초과 / 시간대 중복 등' }],
-      submitLabel: '거절',
+      submitLabel: buddy && buddy.status === 'pending' ? '양쪽 거절' : '거절',
       danger: true,
       onSubmit: (vals) => {
         a.status = 'rejected';
         a.processedAt = nowStamp();
-        a.processedBy = '테스트(마스터)';
+        a.processedBy = me.name;
         a.rejectReason = vals.reason;
         logAudit({
           category: 'application', action: 'reject',
@@ -4079,11 +4153,65 @@
           targetId: appId,
           summary: '사유: ' + vals.reason,
         });
+        // 짝꿓 자동 거절
+        let buddyRejected = null;
+        if (buddy && buddy.status === 'pending') {
+          buddyRejected = cascadeBuddyReject(appId, vals.reason, me.name, me.role);
+        }
         updateApprovalBadge();
         renderApproval();
+        // 거절 결과 팝업 — 같이하기 거절 시 alert 모달
+        if (buddyRejected && buddyW) {
+          showBuddyRejectAlert(w, buddyW, vals.reason, j, site);
+        }
       },
     });
   };
+
+  // "같이하기가 거절되었어요" 알림 발송 시뮬 — 양쪽 알바생 폰에 도달하는 푸시 알림 미리보기
+  function showBuddyRejectAlert(w1, w2, reason, j, site) {
+    document.querySelectorAll('.jf-modal-overlay.buddy-reject').forEach(el => el.remove());
+    const overlay = document.createElement('div');
+    overlay.className = 'jf-modal-overlay buddy-reject';
+    overlay.innerHTML = `
+      <div class="jf-modal" style="max-width: 520px;" onclick="event.stopPropagation()">
+        <div class="jf-modal-head">
+          <div class="jf-modal-title">📣 같이하기 거절 알림 발송됨</div>
+          <button class="jf-modal-close" onclick="this.closest('.jf-modal-overlay').remove()">×</button>
+        </div>
+        <div class="jf-modal-body">
+          <div style="font-size:12px; color:#6B7684; margin-bottom:14px;">두 알바생에게 동일 알림이 발송되었습니다 (시뮬).</div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            ${[w1, w2].map(w => `
+              <div style="background:linear-gradient(155deg, #4F46E5 0%, #1E40AF 50%, #1E1B4B 100%); border-radius:14px; padding:18px 10px 14px; min-height:200px; position:relative; overflow:hidden;">
+                <div style="text-align:center; font-size:11px; color:rgba(255,255,255,0.85); margin-bottom:14px;">${esc(w.name)} 님의 폰</div>
+                <div style="background:rgba(255,255,255,0.92); border-radius:12px; padding:10px 12px; margin:0 4px;">
+                  <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                    <div style="width:18px; height:18px; background:linear-gradient(135deg,#2563EB,#1E40AF); border-radius:5px; color:#fff; font-size:9px; font-weight:700; text-align:center; line-height:18px;">잡</div>
+                    <div style="font-size:10px; color:#6B7280; font-weight:500; flex:1; text-transform:uppercase; letter-spacing:0.5px;">잡핏 · <span style="color:#EC4899; font-weight:600;">알림</span></div>
+                    <div style="font-size:10px; color:#6B7280;">방금</div>
+                  </div>
+                  <div style="font-size:12px; font-weight:600; color:#111827; line-height:1.3;">😢 같이하기가 거절되었어요</div>
+                  <div style="font-size:11px; color:#374151; line-height:1.4; margin-top:3px;">
+                    ${esc(site?.site.name || '')} ${j?.date || ''} ${j?.slot || ''} 신청이 거절되었어요.<br>
+                    사유: ${esc(reason).slice(0, 60)}${reason.length > 60 ? '...' : ''}
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+          <div style="margin-top:14px; padding:10px 12px; background:#F0F9FF; border-radius:6px; font-size:11px; color:#1E40AF; line-height:1.5;">
+            ℹ <strong>A안 정책</strong>: 같이하기는 짝꿓 묶음 처리 — 한쪽 거절 시 다른 쪽도 자동 거절됩니다. 알바생은 단독으로 다시 신청할 수 있습니다.
+          </div>
+          <div style="display:flex; justify-content:flex-end; margin-top:14px;">
+            <button class="btn-primary" onclick="this.closest('.jf-modal-overlay').remove()">확인</button>
+          </div>
+        </div>
+      </div>
+    `;
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  }
 
   // ───────────────────────────────────────────────────────
   // 공고 관리 페이지
@@ -4877,11 +5005,26 @@
                   const w = findWorker(a.workerId);
                   const stColor = { pending: '#F59E0B', approved: '#22C55E', rejected: '#EF4444' }[a.status];
                   const stLabel = { pending: '대기', approved: '승인', rejected: '거절' }[a.status];
+                  const buddy = a.buddyAppId ? findApp(a.buddyAppId) : null;
+                  const buddyW = buddy ? findWorker(buddy.workerId) : null;
+                  let buddyStatusBadge = '';
+                  if (buddyW) {
+                    if (a.buddyBonusGiven) {
+                      buddyStatusBadge = '<span style="display:inline-block; font-size:9px; padding:2px 6px; background:#DCFCE7; color:#166534; border-radius:3px; margin-left:4px;">🤝 +3,000P 지급됨</span>';
+                    } else if (a.status === 'approved' && buddy.status === 'approved') {
+                      buddyStatusBadge = '<span style="display:inline-block; font-size:9px; padding:2px 6px; background:#FEF3C7; color:#92400E; border-radius:3px; margin-left:4px;">🤝 보너스 대기</span>';
+                    } else if (a.status === 'rejected' && a.rejectReason && a.rejectReason.includes('짝꿓')) {
+                      buddyStatusBadge = '<span style="display:inline-block; font-size:9px; padding:2px 6px; background:#FEE2E2; color:#991B1B; border-radius:3px; margin-left:4px;">🤝 짝꿓 자동 거절</span>';
+                    } else {
+                      buddyStatusBadge = `<span style="display:inline-block; font-size:9px; padding:2px 6px; background:#FCE7F3; color:#9D174D; border-radius:3px; margin-left:4px;">🤝 ${esc(buddyW.name)}와 함께</span>`;
+                    }
+                  }
                   return `
-                    <div style="display:grid; grid-template-columns: 1.2fr 1fr auto auto; gap:10px; align-items:center; padding:10px 0; border-bottom:0.5px solid rgba(0,0,0,0.06);">
+                    <div style="display:grid; grid-template-columns: 1.2fr 1fr auto auto; gap:10px; align-items:center; padding:10px 0; border-bottom:0.5px solid rgba(0,0,0,0.06); ${buddyW ? 'background: linear-gradient(90deg, #FDF2F8 0%, transparent 60%);' : ''}">
                       <div>
                         <div style="font-weight:500; font-size:13px;">${w.name}
                           ${w.negotiation ? '<span class="apv-badge apv-badge-neg" style="font-size:10px; padding:2px 6px;">협의대상</span>' : ''}
+                          ${buddyStatusBadge}
                         </div>
                         <div style="font-family:'SF Mono',Monaco,monospace; font-size:11px; color:#6B7684;">${w.phone}</div>
                       </div>
@@ -5013,11 +5156,24 @@
               const gpsReq = gpsRequests.find(g => g.status === 'pending' && g.workerId === a.worker.id && g.jobId === j.id);
               const gpsBadge = gpsReq ? `<span class="gps-roster-badge" title="${gpsReq.reason.replace(/"/g,'&quot;')}">🛰 GPS 대기 ${gpsReq.distance}m</span>` : '';
               const ovBadge = a.overridden ? '<span style="display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:1px 6px; background:#E0F2FE; color:#0369A1; border-radius:4px; font-weight:500; margin-left:6px;" title="관리자 정정됨">🔧 정정됨</span>' : '';
+              // 같이하기 짝꿓 표시 (이 공고에 신청한 application 중 buddy 매칭)
+              const myApp = myApps.find(ap => ap.workerId === a.worker.id && ap.status === 'approved');
+              const buddyApp = myApp && myApp.buddyAppId ? findApp(myApp.buddyAppId) : null;
+              const buddyW = buddyApp ? findWorker(buddyApp.workerId) : null;
+              let buddyBadge = '';
+              if (buddyW) {
+                if (myApp.buddyBonusGiven) {
+                  buddyBadge = `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:1px 6px; background:#DCFCE7; color:#166534; border-radius:4px; font-weight:500; margin-left:6px;" title="${esc(buddyW.name)}와 함께 — 보너스 +3,000P 지급 완료">🤝 +3,000P</span>`;
+                } else {
+                  buddyBadge = `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:1px 6px; background:#FCE7F3; color:#9D174D; border-radius:4px; font-weight:500; margin-left:6px;" title="${esc(buddyW.name)}와 함께 — 양쪽 출퇴근 완료 시 +3,000P">🤝 ${esc(buddyW.name)}</span>`;
+                }
+              }
+              const rowBg = buddyW ? 'background: linear-gradient(90deg, #FDF2F8 0%, transparent 50%);' : '';
               return `
-                <div class="ctrl-roster-row" style="grid-template-columns: 30px 1.5fr 1fr 1fr 0.9fr 200px;" onclick="window.__ctrlContract('${j.id}','${a.worker.id}')">
+                <div class="ctrl-roster-row" style="grid-template-columns: 30px 1.5fr 1fr 1fr 0.9fr 200px; ${rowBg}" onclick="window.__ctrlContract('${j.id}','${a.worker.id}')">
                   <div><span class="ctrl-roster-dot ${dotCls}"></span></div>
                   <div>
-                    <div style="font-weight:500;">${a.worker.name}${gpsBadge}${ovBadge}</div>
+                    <div style="font-weight:500;">${a.worker.name}${gpsBadge}${ovBadge}${buddyBadge}</div>
                     <div style="font-size:11px; color:#6B7684; font-family:'SF Mono',Monaco,monospace;">${a.worker.phone}</div>
                   </div>
                   <div style="font-size:12px; color:${a.checkin ? '#111827' : '#D1D5DB'};">${a.checkin || '-'}</div>
