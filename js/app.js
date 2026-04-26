@@ -6717,7 +6717,6 @@
       <div class="app-section-title">탑승 안내</div>
       <div class="app-card" style="font-size:10px; color:#6B7684; line-height:1.6;">
         • 출발 5분 전까지 도착<br>
-        • 신분증 없이 <b>잡핏 앱 QR</b>로 탑승 확인<br>
         • 지각·불참 시 통근버스 담당에게 연락
       </div>
       <button style="background:#2563EB; color:#fff; border:none; border-radius:8px; padding:10px; font-size:11px; width:100%; margin-top:8px; font-weight:500;">📞 담당자 ${data.contact}</button>
