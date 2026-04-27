@@ -1472,29 +1472,83 @@ function _addDays(dateStr, n) {
 function _seedApplicationsForJobs() {
   const startId = applications.length + 1;
   let nextNum = startId;
+
+  // 정책 적용 — 알바생 앱이 자동 차단하는 한도를 시드에서도 준수
+  // 1. CJ/롯데 — 파트너사별 주 4일 한도 (POLICY 정책)
+  // 2. 알바생 하루 1건 신청 — 같은 알바생이 같은 날짜 다른 공고에 안 들어감
+  const partnerWeekDays = {};   // workerId|weekStart|partnerKey → Set<date>
+  const workerDayUsed = {};      // workerId|date → bool
+
+  // 기존 매뉴얼 시드 application도 한도 카운트에 포함
+  applications.forEach(a => {
+    const j = findJob(a.jobId); if (!j) return;
+    const pk = (function () {
+      for (const k in worksites) {
+        if (worksites[k].sites.find(s => s.id === j.siteId)) return k;
+      }
+      return null;
+    })();
+    if (a.status !== 'rejected' && a.status !== 'cancelled') {
+      workerDayUsed[a.workerId + '|' + j.date] = true;
+      if (pk && pk !== 'convention') {
+        const key = a.workerId + '|' + weekStartOf(j.date) + '|' + pk;
+        if (!partnerWeekDays[key]) partnerWeekDays[key] = new Set();
+        partnerWeekDays[key].add(j.date);
+      }
+    }
+  });
+
   for (const j of jobs) {
+    if (j.pending) continue;  // 모집 대기는 시드 신청 생성 안 함
     const existing = applications.filter(a => a.jobId === j.id).length;
     const need = Math.max(0, j.apply - existing);
     if (need === 0) continue;
+
+    const partnerKey = (function () {
+      for (const k in worksites) {
+        if (worksites[k].sites.find(s => s.id === j.siteId)) return k;
+      }
+      return null;
+    })();
+    const ws = weekStartOf(j.date);
 
     const seed = _seedFromString(j.id);
     const usedWorkerIds = new Set(applications.filter(a => a.jobId === j.id).map(a => a.workerId));
     const candidates = _shuffleDeterministic(workers, seed)
       .filter(w => !w.negotiation && !usedWorkerIds.has(w.id))
+      // 하루 1건 신청 한도
+      .filter(w => !workerDayUsed[w.id + '|' + j.date])
+      // CJ/롯데: 파트너사별 주 4일 한도 (컨벤션은 미적용)
+      .filter(w => {
+        if (!partnerKey || partnerKey === 'convention') return true;
+        const key = w.id + '|' + ws + '|' + partnerKey;
+        const days = partnerWeekDays[key]?.size || 0;
+        return days < 4;
+      })
       .slice(0, need);
 
+    // 실제 채워진 인원으로 j.apply 동기화 (한도로 못 채운 공고는 부분 충원)
+    if (candidates.length < need) {
+      j.apply = existing + candidates.length;
+    }
+
     candidates.forEach((w, i) => {
-      // 신청 시각: 근무 1~7일 전, 결정적 분산
+      // 한도 카운터 갱신
+      workerDayUsed[w.id + '|' + j.date] = true;
+      if (partnerKey && partnerKey !== 'convention') {
+        const key = w.id + '|' + ws + '|' + partnerKey;
+        if (!partnerWeekDays[key]) partnerWeekDays[key] = new Set();
+        partnerWeekDays[key].add(j.date);
+      }
+
       const daysBefore = ((seed + i * 11) % 7) + 1;
       const appliedDate = _addDays(j.date, -daysBefore);
-      const hh = ((seed + i * 17) % 14) + 8;          // 08~21
+      const hh = ((seed + i * 17) % 14) + 8;
       const mm = ((seed + i * 7) % 60);
       const appliedAt = appliedDate + ' ' + String(hh).padStart(2,'0') + ':' + String(mm).padStart(2,'0');
-      // 상태: 과거(done) / 오늘(progress) 공고는 모두 approved
-      // 미래 공고는 대부분 approved (자동승인) + 일부 pending/rejected 분산은 이미 별도 테스트용
       const status = 'approved';
       const reason = ((seed + i) % 10 === 0) ? 'urgent' : 'normal';
-      const processedAt = appliedAt;  // 자동 승인이므로 동시
+      const processedAt = appliedAt;
       applications.push({
         id: 'a' + String(nextNum++).padStart(3, '0'),
         workerId: w.id,
