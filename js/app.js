@@ -6119,11 +6119,11 @@
   // 주휴수당 팝업 미리보기 — 알바생 앱에서 실제 어떻게 보이는지 모바일 프레임으로 시뮬
   // 파트너사에 따라 규칙 상이: 컨벤션=이번 주 2일째 · CJ/롯데=이번 주 4일 만근 안내
   const HOLIDAY_SCENARIOS = [
-    { key: 'cj_3of4',      partner: 'CJ대한통운',   site: 'CJ대한통운 곤지암 MegaHub',  done: 3, need: 4, sub: '이번 주 이미 3일 출근 · 1일만 더 하면 만근!' },
-    { key: 'cj_2of4',      partner: 'CJ대한통운',   site: 'CJ대한통운 이천 MpHub',      done: 2, need: 4, sub: '이번 주 2일 출근 · 4일 만근 시 주휴수당 대상' },
-    { key: 'lotte_3of4',   partner: '롯데택배',     site: '롯데택배 진천 MegaHub',       done: 3, need: 4, sub: '이번 주 이미 3일 출근 · 1일만 더 하면 만근!' },
-    { key: 'conv_1of2',    partner: '컨벤션',       site: 'L타워 웨딩홀',                done: 1, need: 2, sub: '이번 주 1일 근무 완료 · 이 공고까지 하면 2일 = 주휴수당 대상' },
-    { key: 'conv_0of2',    partner: '컨벤션',       site: 'W힐스 웨딩홀',                done: 0, need: 2, sub: '이번 주 첫 근무 · 한 번 더 하면 주휴수당 대상' },
+    { key: 'cj_3of4',      partner: 'CJ대한통운',   site: 'CJ대한통운 곤지암 MegaHub',  done: 3, need: 4, avgDaily: 110000, sub: '이번 주 이미 3일 출근 · 1일만 더 하면 만근!' },
+    { key: 'cj_2of4',      partner: 'CJ대한통운',   site: 'CJ대한통운 이천 MpHub',      done: 2, need: 4, avgDaily: 105000, sub: '이번 주 2일 출근 · 4일 만근 시 주휴수당 대상' },
+    { key: 'lotte_3of4',   partner: '롯데택배',     site: '롯데택배 진천 MegaHub',       done: 3, need: 4, avgDaily: 115000, sub: '이번 주 이미 3일 출근 · 1일만 더 하면 만근!' },
+    { key: 'conv_1of2',    partner: '컨벤션',       site: 'L타워 웨딩홀',                done: 1, need: 2, avgDaily: 120000, sub: '이번 주 1일 근무 완료 · 이 공고까지 하면 2일 = 주휴수당 대상' },
+    { key: 'conv_0of2',    partner: '컨벤션',       site: 'W힐스 웨딩홀',                done: 0, need: 2, avgDaily: 125000, sub: '이번 주 첫 근무 · 한 번 더 하면 주휴수당 대상' },
   ];
 
   let holidayPreviewScenario = 'cj_3of4';
@@ -6195,6 +6195,16 @@
                       <div class="mp-hp-progress">
                         <div class="mp-hp-dots">${dotsHtml}</div>
                         <div class="mp-hp-progress-label">이번 주 <strong>${sc.done}${sc.partner === '컨벤션' ? '일' : '회'} 완료</strong> · <strong>${sc.need}${sc.partner === '컨벤션' ? '일' : '회'} 만근</strong>까지 ${sc.need - sc.done}${sc.partner === '컨벤션' ? '일' : '회'} 남음</div>
+                      </div>
+                      <div style="background:#FEF3C7; border:1px solid #FCD34D; border-radius:10px; padding:10px 12px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                          <div style="font-size:10px; color:#92400E; font-weight:500;">예상 주휴수당 (참고)</div>
+                          <div style="font-size:9px; color:#92400E; opacity:0.7; margin-top:1px;">평균 일급 × 1일분 추정</div>
+                        </div>
+                        <div style="text-align:right;">
+                          <div style="font-size:16px; font-weight:700; color:#92400E;">약 ${sc.avgDaily.toLocaleString()}원</div>
+                          <div style="font-size:9px; color:#92400E; opacity:0.7;">정확한 금액은 파트너사 정산 시 결정</div>
+                        </div>
                       </div>
                       <div class="mp-hp-info">
                         <strong>주휴수당이란?</strong><br>
@@ -9148,6 +9158,185 @@
   };
 
   // ───────────────────────────────────────────────────────
+  // 파트너사 정산 리포트 — 기간별 알바비/주휴수당/포인트 집계
+  // 파트너사 송금 시 참고 자료 (잡핏은 안내만, 실 지급은 파트너사)
+  // ───────────────────────────────────────────────────────
+  const settlementState = {
+    partnerKey: '',           // '' = 전체 / 'cj' / 'lotte' / 'convention'
+    period: 'thisMonth',      // 'thisMonth' / 'lastMonth' / 'last7d' / 'last30d' / 'custom'
+    customStart: '',
+    customEnd: '',
+  };
+
+  function settlementPeriodRange() {
+    const todayD = new Date(TODAY);
+    if (settlementState.period === 'custom' && settlementState.customStart && settlementState.customEnd) {
+      return { start: settlementState.customStart, end: settlementState.customEnd };
+    }
+    if (settlementState.period === 'last7d') {
+      const s = new Date(todayD); s.setDate(s.getDate() - 6);
+      return { start: s.toISOString().slice(0,10), end: TODAY };
+    }
+    if (settlementState.period === 'last30d') {
+      const s = new Date(todayD); s.setDate(s.getDate() - 29);
+      return { start: s.toISOString().slice(0,10), end: TODAY };
+    }
+    if (settlementState.period === 'lastMonth') {
+      const s = new Date(todayD.getFullYear(), todayD.getMonth() - 1, 1);
+      const e = new Date(todayD.getFullYear(), todayD.getMonth(), 0);
+      return { start: s.toISOString().slice(0,10), end: e.toISOString().slice(0,10) };
+    }
+    // thisMonth (default)
+    const s = new Date(todayD.getFullYear(), todayD.getMonth(), 1);
+    return { start: s.toISOString().slice(0,10), end: TODAY };
+  }
+
+  function renderPartnerSettlement() {
+    const range = settlementPeriodRange();
+    const data = partnerSettlement(settlementState.partnerKey, range.start, range.end);
+
+    const partnerOpts = ['', ...Object.keys(worksites)].map(k => `
+      <option value="${k}" ${k === settlementState.partnerKey ? 'selected' : ''}>${k === '' ? '전체 파트너사' : worksites[k].name}</option>
+    `).join('');
+
+    const periodBtns = [
+      { v: 'thisMonth', label: '이번 달' },
+      { v: 'lastMonth', label: '지난 달' },
+      { v: 'last7d',    label: '최근 7일' },
+      { v: 'last30d',   label: '최근 30일' },
+    ].map(p => `<button onclick="window.__stlSet('period','${p.v}')" style="font-size:12px; ${settlementState.period===p.v?'background:#1B3A6B; color:#fff; border-color:#1B3A6B;':''}">${p.label}</button>`).join('');
+
+    const partnerName = settlementState.partnerKey ? worksites[settlementState.partnerKey].name : '전체';
+
+    let html = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">💼 파트너사 정산 리포트</div>
+          <div class="jf-subtitle">기간 · 파트너사별 알바비 / 주휴수당 / 포인트 집계 — 송금 자료 참고용</div>
+        </div>
+        <div class="ws-actions">
+          <button onclick="window.__stlExport()">📊 엑셀 다운로드</button>
+          <button onclick="window.__stlPrint()">📄 인쇄용 보기</button>
+        </div>
+      </div>
+
+      <div style="background:#FEF3C7; border-left:3px solid #F59E0B; padding:10px 14px; border-radius:6px; font-size:12px; color:#92400E; line-height:1.6; margin-bottom:14px;">
+        ⚠ <strong>참고용 자료입니다</strong> — 알바비/주휴수당의 <strong>실제 지급은 파트너사가 직접 처리</strong>하며 잡핏은 정산 책임이 없습니다. 이 리포트는 파트너사 송금 검토용 참고 자료로만 사용하세요.
+      </div>
+
+      <div class="jobs-filters">
+        <select onchange="window.__stlSet('partnerKey', this.value)" style="min-width:160px;">${partnerOpts}</select>
+        <div style="display:inline-flex; gap:4px; border:0.5px solid rgba(0,0,0,0.12); border-radius:8px; padding:3px;">${periodBtns}</div>
+        <span style="margin-left:auto; font-size:12px; color:#6B7684; align-self:center;">${range.start} ~ ${range.end}</span>
+      </div>
+
+      <div class="jf-metric-grid">
+        <div class="jf-metric"><div class="jf-metric-label">총 공고</div><div class="jf-metric-value">${data.summary.jobs}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">${esc(partnerName)} · 기간 내</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">출근 인원·건</div><div class="jf-metric-value">${data.summary.attendances}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">알바생 ${data.summary.workers}명 · ${data.summary.totalHours}시간</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">총 알바비</div><div class="jf-metric-value" style="color:#16A34A;">${Math.round(data.summary.totalWage/10000).toLocaleString()}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 만원</span></div><div class="jf-metric-hint">${data.summary.totalWage.toLocaleString()}원</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">예상 주휴수당</div><div class="jf-metric-value" style="color:#F59E0B;">${Math.round(data.summary.totalHolidayPay/10000).toLocaleString()}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 만원</span></div><div class="jf-metric-hint">참고용 추정 (${data.summary.totalHolidayPay.toLocaleString()}원)</div></div>
+      </div>
+    `;
+
+    // 파트너사별 분포 (전체 선택 시)
+    if (!settlementState.partnerKey && Object.keys(data.byPartner).length > 1) {
+      const maxWage = Math.max(...Object.values(data.byPartner).map(p => p.wage), 1);
+      html += `
+        <div class="jf-panel" style="margin-bottom: 14px;">
+          <div class="ws-section-title">파트너사별 분포</div>
+          ${Object.entries(data.byPartner).map(([pk, st]) => `
+            <div class="stat-chart-row">
+              <div class="stat-chart-label">${esc(worksites[pk]?.name || pk)}</div>
+              <div class="stat-chart-track"><div class="stat-chart-fill green" style="width:${(st.wage/maxWage*100).toFixed(1)}%;"></div></div>
+              <div class="stat-chart-value">${Math.round(st.wage/10000).toLocaleString()}만원<br><span style="font-size:10px; color:#6B7684; font-weight:400;">${st.attendances}건 · ${st.jobs}공고</span></div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // 알바생별 정산 명세표
+    if (data.workerStats.length === 0) {
+      html += `<div class="jf-placeholder"><div class="jf-placeholder-icon">📭</div><div class="jf-placeholder-title">기간 내 출근 데이터가 없습니다</div><div class="jf-placeholder-desc">기간이나 파트너사 필터를 변경해보세요.</div></div>`;
+    } else {
+      const gridCols = '0.4fr 1.2fr 1.1fr 0.7fr 0.7fr 1fr 1.1fr 0.7fr';
+      html += `
+        <div class="jf-panel" style="padding: 0;">
+          <div class="ws-section-title" style="padding: 14px 18px;">알바생별 정산 명세 <span style="font-size:11px; color:#6B7684; font-weight:400;">${data.workerStats.length}명 · 알바비+주휴수당 합계 순</span></div>
+          <div class="jf-table-head" style="grid-template-columns:${gridCols}; padding: 10px 18px;">
+            <div>#</div>
+            <div>이름</div>
+            <div>전화번호</div>
+            <div>출근 횟수</div>
+            <div>근무 시간</div>
+            <div>알바비 합계</div>
+            <div>주휴수당 (예상)</div>
+            <div style="text-align:right;">합계</div>
+          </div>
+          ${data.workerStats.map((stat, idx) => {
+            const total = stat.totalWage + stat.holidayPay;
+            return `
+              <div class="jf-table-row" style="grid-template-columns:${gridCols}; padding: 12px 18px; cursor:pointer;" onclick="window.__wrkDetail('${stat.worker.id}')">
+                <div style="color:#6B7684; font-size:11px;">${idx + 1}</div>
+                <div style="font-weight:500;">${esc(stat.worker.name)}${stat.worker.negotiation ? ' <span class="apv-badge apv-badge-neg" style="font-size:9px; padding:1px 5px;">협의대상</span>' : ''}</div>
+                <div style="font-family:'SF Mono',Monaco,monospace; font-size:12px; color:#6B7684;">${esc(stat.worker.phone)}</div>
+                <div><strong>${stat.jobs.length}</strong><span style="color:#6B7684; font-size:11px;">건</span></div>
+                <div>${Math.round(stat.totalHours * 10) / 10}<span style="color:#6B7684; font-size:11px;">시간</span></div>
+                <div style="color:#16A34A; font-weight:500;">${stat.totalWage.toLocaleString()}<span style="color:#6B7684; font-size:11px;">원</span></div>
+                <div style="color:${stat.holidayPay > 0 ? '#D97706' : '#9CA3AF'}; font-weight:${stat.holidayPay > 0 ? '500' : '400'};">${stat.holidayPay > 0 ? stat.holidayPay.toLocaleString() + '원' : '<span style="font-size:11px;">미충족</span>'}</div>
+                <div style="text-align:right; font-weight:600; color:#111827;">${total.toLocaleString()}<span style="color:#6B7684; font-size:11px;">원</span></div>
+              </div>
+            `;
+          }).join('')}
+          <div class="jf-table-row" style="grid-template-columns:${gridCols}; padding: 14px 18px; background:#F5F7FA; font-weight:600;">
+            <div></div>
+            <div colspan="2">합계 (${data.workerStats.length}명)</div>
+            <div></div>
+            <div>${data.summary.attendances}건</div>
+            <div>${data.summary.totalHours}h</div>
+            <div style="color:#16A34A;">${data.summary.totalWage.toLocaleString()}원</div>
+            <div style="color:#D97706;">${data.summary.totalHolidayPay.toLocaleString()}원</div>
+            <div style="text-align:right; color:#1B3A6B; font-size:14px;">${(data.summary.totalWage + data.summary.totalHolidayPay).toLocaleString()}원</div>
+          </div>
+        </div>
+      `;
+    }
+
+    html += `
+      <div class="jf-panel" style="margin-top: 14px; border-left: 3px solid #2563EB;">
+        <div class="ws-section-title">계산 기준</div>
+        <ul style="font-size: 12px; color: #374151; line-height: 1.8; padding-left: 20px;">
+          <li><strong>알바비</strong>: 출근/지각 처리된 알바생의 공고별 일급(또는 시급) 합계 (결근 제외)</li>
+          <li><strong>주휴수당 추정</strong>: 한국 노동법 기준 — <strong>주 15시간 이상 + 만근</strong> 시 1주일에 1일분 임금
+            <ul style="padding-left: 18px; margin-top: 4px;">
+              <li>CJ대한통운·롯데택배: <strong>주 4일 만근</strong> 기준</li>
+              <li>컨벤션: <strong>주 2일 출근</strong> 기준</li>
+              <li>1일분 = 그 주 평균 일급 (참고용 추정 — 정확한 금액은 파트너사 정산 시 결정)</li>
+            </ul>
+          </li>
+          <li><strong>잡핏 포인트</strong>: 별도 (잡핏이 직접 알바생에게 지급, 정산 대상 아님)</li>
+          <li>모집 대기·만료 공고 / 외부 구인 인원 / 결근 / 미정산 알바생은 자동 제외</li>
+        </ul>
+      </div>
+    `;
+
+    main.innerHTML = html;
+  }
+
+  window.__stlSet = function(key, val) {
+    settlementState[key] = val;
+    renderPartnerSettlement();
+  };
+  window.__stlExport = function() {
+    const range = settlementPeriodRange();
+    const partnerName = settlementState.partnerKey ? worksites[settlementState.partnerKey].name : '전체';
+    alert(`정산 리포트 엑셀 다운로드 (시뮬)\n\n파일: jobfit_settlement_${range.start}_${range.end}.xlsx\n파트너사: ${partnerName}\n기간: ${range.start} ~ ${range.end}\n\n실제 앱에서는 Supabase Edge Function이 알바생 명세표를 XLSX로 생성하여 다운로드합니다.`);
+  };
+  window.__stlPrint = function() {
+    window.print();
+  };
+
+  // ───────────────────────────────────────────────────────
   // 처리 이력 전체 보기 (신청/협의대상/포인트 통합)
   // ───────────────────────────────────────────────────────
   const historyState = {
@@ -9881,6 +10070,7 @@
     apppreview: renderAppPreview,
     mobileadmin: renderMobileAdmin,
     busmap: renderBusMap,
+    settlement: renderPartnerSettlement,
     audit: renderAuditLog,
   };
 
@@ -9901,7 +10091,7 @@
   });
 
   function pageNameFor(page) {
-    const names = { home: '홈', home2: '홈 (재설계)', jobs: '공고 관리', approval: '신청 승인', waitlistapv: '대기열 승인', gpsapproval: '퇴근 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정', stats: '통계 리포트', apppreview: '앱 미리보기', mobileadmin: '모바일 관리자 뷰', busmap: '통근버스 길찾기', audit: '감사로그' };
+    const names = { home: '홈', home2: '홈 (재설계)', jobs: '공고 관리', approval: '신청 승인', waitlistapv: '대기열 승인', gpsapproval: '퇴근 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정', stats: '통계 리포트', settlement: '파트너사 정산', apppreview: '앱 미리보기', mobileadmin: '모바일 관리자 뷰', busmap: '통근버스 길찾기', audit: '감사로그' };
     return names[page] || '';
   }
 

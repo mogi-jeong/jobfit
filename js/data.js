@@ -1227,6 +1227,155 @@ function grantBuddyBonusManual(appId, by, byRole) {
   return _grantBuddyBonusInternal({ a: elig.a, b: elig.b, j: elig.j, by, byRole, mode: 'manual' });
 }
 
+// ───────────────────────────────────────────────────────────
+// 주휴수당 추정 + 파트너사 정산 — 참고용 계산
+// ⚠ 실 지급은 파트너사 정산 시 결정 — 잡핏은 안내·통계만
+// 한국 노동법: 주 15시간 이상 + 만근 시 1주일에 1일분 임금 추가
+// ───────────────────────────────────────────────────────────
+
+// 한 공고의 근무 시간 (시간 단위, 야간 자정 넘는 케이스 처리)
+function jobHours(j) {
+  if (!j || !j.start || !j.end) return 0;
+  const [sh, sm] = j.start.split(':').map(Number);
+  const [eh, em] = j.end.split(':').map(Number);
+  let total = (eh * 60 + em) - (sh * 60 + sm);
+  if (total <= 0) total += 24 * 60;
+  return total / 60;
+}
+
+// 주의 시작 (월요일) 계산 — 'YYYY-MM-DD' 입력 → 'YYYY-MM-DD' 반환
+function weekStartOf(dateStr) {
+  const d = new Date(dateStr);
+  const day = d.getDay();   // 0=일요일, 1=월요일, ...
+  const offset = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + offset);
+  return d.toISOString().slice(0, 10);
+}
+
+function addDaysStr(dateStr, n) {
+  const d = new Date(dateStr); d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// 알바생 특정 주의 주휴수당 추정
+// 반환: { weekStart, weekEnd, days, need, totalHours, totalWage, eligible, estimated, reason }
+function estimateHolidayPayForWeek(workerId, dateRefStr) {
+  const weekStart = weekStartOf(dateRefStr);
+  const weekEnd = addDaysStr(weekStart, 6);
+  const completed = applications
+    .filter(a => a.workerId === workerId && a.status === 'approved')
+    .map(a => ({ a, j: findJob(a.jobId) }))
+    .filter(({ j }) => j && j.date >= weekStart && j.date <= weekEnd);
+  const days = new Set(completed.map(({ j }) => j.date)).size;
+  const totalHours = completed.reduce((s, { j }) => s + jobHours(j), 0);
+  const totalWage  = completed.reduce((s, { j }) => s + (j.wage || 0), 0);
+
+  // 만근 기준 — 파트너사별 (컨벤션 2일, 그 외 4일). 혼합 시 다수 기준 사용
+  const partnerCount = {};
+  completed.forEach(({ j }) => {
+    const pk = findSite(j.siteId)?.partnerKey;
+    if (pk) partnerCount[pk] = (partnerCount[pk] || 0) + 1;
+  });
+  const dominantPartner = Object.keys(partnerCount).sort((a, b) => partnerCount[b] - partnerCount[a])[0];
+  const need = dominantPartner === 'convention' ? 2 : 4;
+
+  // 자격: 주 15시간 이상 + 만근 일수 충족
+  const eligible = totalHours >= 15 && days >= need;
+  const reason = !eligible
+    ? (totalHours < 15 ? '주 15시간 미만' : `${need}일 만근 미달 (${days}/${need}일)`)
+    : '주 15시간 + 만근 충족';
+  // 1일분 = 평균 일급 (참고용 추정)
+  const avgDaily = days > 0 ? Math.round(totalWage / days) : 0;
+  const estimated = eligible ? avgDaily : 0;
+
+  return { weekStart, weekEnd, days, need, totalHours: Math.round(totalHours * 10)/10, totalWage, eligible, estimated, reason };
+}
+
+// 파트너사 정산 데이터 — 기간 + 파트너사별
+// partnerKey: '' (전체) | 'cj' | 'lotte' | 'convention'
+function partnerSettlement(partnerKey, dateStart, dateEnd) {
+  const sites = partnerKey
+    ? (worksites[partnerKey]?.sites || [])
+    : Object.values(worksites).flatMap(p => p.sites);
+  const siteIds = new Set(sites.map(s => s.id));
+  const periodJobs = jobs.filter(j =>
+    siteIds.has(j.siteId) && j.date >= dateStart && j.date <= dateEnd && j.date <= TODAY && !j.pending
+  );
+
+  // 알바생별 집계 (출근/지각만 카운트 — 결근은 제외)
+  const workerStats = {};
+  periodJobs.forEach(j => {
+    const att = getAttendance(j.id);
+    att.forEach(a => {
+      if (a.status !== '출근' && a.status !== '지각') return;
+      const wid = a.worker.id;
+      if (!workerStats[wid]) {
+        workerStats[wid] = {
+          worker: a.worker, jobs: [], totalWage: 0, totalHours: 0,
+          holidayPay: 0, holidayWeeks: [],
+        };
+      }
+      workerStats[wid].jobs.push(j);
+      workerStats[wid].totalWage += j.wage || 0;
+      workerStats[wid].totalHours += jobHours(j);
+    });
+  });
+
+  // 알바생별 주별 주휴수당 추정 (해당 파트너사 한정)
+  Object.values(workerStats).forEach(stat => {
+    const weeks = new Set(stat.jobs.map(j => weekStartOf(j.date)));
+    weeks.forEach(ws => {
+      // 해당 주의 출근만 합산해서 자격 검증 (전체 ​데이터로 추정 — 정확도 한계)
+      const est = estimateHolidayPayForWeek(stat.worker.id, ws);
+      // 정산 대상 파트너사가 우세할 때만 카운트
+      if (est.eligible) {
+        const pkOfWeek = (() => {
+          const pks = stat.jobs
+            .filter(j => weekStartOf(j.date) === ws)
+            .map(j => findSite(j.siteId)?.partnerKey)
+            .filter(Boolean);
+          return pks.length > 0 ? pks.sort((a,b) => pks.filter(x => x===a).length - pks.filter(x => x===b).length).pop() : null;
+        })();
+        if (!partnerKey || pkOfWeek === partnerKey) {
+          stat.holidayPay += est.estimated;
+          stat.holidayWeeks.push({ week: ws, amount: est.estimated, days: est.days, hours: est.totalHours });
+        }
+      }
+    });
+  });
+
+  // 파트너사별 분포 (전체 선택 시 차트용)
+  const byPartner = {};
+  periodJobs.forEach(j => {
+    const pk = findSite(j.siteId)?.partnerKey;
+    if (!pk) return;
+    if (!byPartner[pk]) byPartner[pk] = { jobs: 0, attendances: 0, wage: 0 };
+    byPartner[pk].jobs++;
+  });
+  Object.values(workerStats).forEach(stat => {
+    stat.jobs.forEach(j => {
+      const pk = findSite(j.siteId)?.partnerKey;
+      if (pk && byPartner[pk]) {
+        byPartner[pk].attendances++;
+        byPartner[pk].wage += j.wage || 0;
+      }
+    });
+  });
+
+  const summary = {
+    jobs: periodJobs.length,
+    workers: Object.keys(workerStats).length,
+    attendances: Object.values(workerStats).reduce((s, x) => s + x.jobs.length, 0),
+    totalWage: Object.values(workerStats).reduce((s, x) => s + x.totalWage, 0),
+    totalHours: Math.round(Object.values(workerStats).reduce((s, x) => s + x.totalHours, 0) * 10) / 10,
+    totalHolidayPay: Object.values(workerStats).reduce((s, x) => s + x.holidayPay, 0),
+  };
+  return {
+    partnerKey, dateStart, dateEnd, summary, byPartner,
+    workerStats: Object.values(workerStats).sort((a, b) => (b.totalWage + b.holidayPay) - (a.totalWage + a.holidayPay)),
+  };
+}
+
 // 알바생 성실도 점수 (0~100) — 출근/지각/결근/경고/협의대상 종합
 // 신청 승인 시 우선순위 판단 보조 + 근무자 관리 시각화
 function workerScore(w) {
