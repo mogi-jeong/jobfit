@@ -2792,9 +2792,16 @@
         // 가용성 — 최근 7일 활동 (0~25)
         const recentDate = (() => { const d = new Date(TODAY); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10); })();
         const aScore = (w.lastWorked && w.lastWorked >= recentDate) ? 25 : (w.lastWorked && w.lastWorked >= TODAY.slice(0, 7) + '-01' ? 15 : 5);
-        const total = Math.round(sScore + pScore + aScore);
+        // 이 근무지 출근 횟수 (승인된 신청 중 이 site의 공고 수)
+        const siteVisits = applications.filter(a =>
+          a.workerId === w.id && a.status === 'approved' &&
+          findJob(a.jobId)?.siteId === j.siteId
+        ).length;
+        // 같은 근무지 단골 보너스 (점수 가산 +0~10)
+        const visitBonus = siteVisits >= 10 ? 10 : siteVisits >= 5 ? 7 : siteVisits >= 2 ? 4 : 0;
+        const total = Math.round(sScore + pScore + aScore + visitBonus);
         return {
-          worker: w, score: total, sc, pScore, aScore,
+          worker: w, score: total, sc, pScore, aScore, siteVisits,
           reasons: [
             sc.score == null ? '신규' : `성실도 ${sc.label}`,
             (Array.isArray(w.favParts) && w.favParts.includes(partnerKey)) ? `${site.partner} ${(w.total > 30 ? '단골' : '경험')}` : '',
@@ -2824,6 +2831,12 @@
         const w = r.worker;
         const sc = r.sc;
         const isPicked = selected.has(w.id);
+        // 이 근무지 출근 이력 표시 — 횟수 + 단골/경험 라벨
+        const visitColor = r.siteVisits >= 5 ? '#0F766E' : r.siteVisits >= 2 ? '#2563EB' : r.siteVisits >= 1 ? '#6B7684' : '#9CA3AF';
+        const visitLabel = r.siteVisits >= 10 ? '⭐ 베테랑' : r.siteVisits >= 5 ? '⭐ 단골' : r.siteVisits >= 2 ? '경험' : r.siteVisits === 1 ? '1회' : '처음';
+        const visitText  = r.siteVisits > 0
+          ? `📍 이 근무지 <strong>${r.siteVisits}회</strong> 출근 · ${visitLabel}`
+          : `📍 이 근무지 첫 방문`;
         return `
           <div onclick="window.__recToggle('${w.id}')" style="display:grid; grid-template-columns: 30px 1.4fr 1fr 1.6fr 60px; gap:10px; padding:10px 12px; align-items:center; border-bottom:0.5px solid rgba(0,0,0,0.05); cursor:pointer; background:${isPicked?'#EFF6FF':'#fff'};">
             <div style="text-align:center;">
@@ -2832,6 +2845,7 @@
             <div>
               <div style="font-weight:500; font-size:13px;">${esc(w.name)}</div>
               <div style="font-size:11px; color:#6B7684; font-family:'SF Mono',Monaco,monospace;">${esc(w.phone)}</div>
+              <div style="font-size:10px; color:${visitColor}; margin-top:3px;">${visitText}</div>
             </div>
             <div>
               <span style="display:inline-flex; align-items:center; gap:3px; padding:2px 8px; border-radius:10px; background:${sc.color}1A; color:${sc.color}; font-size:11px; font-weight:600;">
