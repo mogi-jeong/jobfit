@@ -421,6 +421,42 @@ const applications = [
   // Pair 7: 한쪽 지각 케이스 (정책 #4 시연 — 자동 X, 관리자 판단 수동 지급 가능, j025 이천 4/23 진행 중)
   { id: 'a023', workerId: 'w038', jobId: 'j025', appliedAt: '2026-04-22 12:00', status: 'approved', reason: 'normal', processedAt: '2026-04-22 12:01', processedBy: '자동', buddyAppId: 'a024', buddyRole: 'inviter' },
   { id: 'a024', workerId: 'w039', jobId: 'j025', appliedAt: '2026-04-22 12:02', status: 'approved', reason: 'normal', processedAt: '2026-04-22 12:03', processedBy: '자동', buddyAppId: 'a023', buddyRole: 'invitee' },
+
+  // ──── 취소 승인 대기 (12h 이내 알바생 취소 요청) ────
+  // status: 'cancel_pending' — 관리자 검토 대기 (사유별 차감/면제/반려 결정)
+  // priorStatus: 'approved' — 검토 반려 시 복원할 원래 상태
+  { id: 'a025', workerId: 'w007', jobId: 'j028', appliedAt: '2026-04-22 14:30', status: 'cancel_pending', priorStatus: 'approved', reason: 'normal', processedAt: '2026-04-22 14:31', processedBy: '자동',
+    cancelRequestedAt: '2026-04-23 15:10', cancelReasonType: 'normal',
+    cancelReason: '갑자기 다른 약속이 생겼어요. 죄송합니다.' },
+  { id: 'a026', workerId: 'w020', jobId: 'j029', appliedAt: '2026-04-22 11:00', status: 'cancel_pending', priorStatus: 'approved', reason: 'normal', processedAt: '2026-04-22 11:01', processedBy: '자동',
+    cancelRequestedAt: '2026-04-23 14:45', cancelReasonType: 'sick',
+    cancelReason: '오후부터 발열 38.5도 — 동네 의원 진료 받고 왔어요. 진료 영수증 첨부 가능합니다.' },
+  { id: 'a027', workerId: 'w044', jobId: 'j002', appliedAt: '2026-04-22 09:30', status: 'cancel_pending', priorStatus: 'approved', reason: 'normal', processedAt: '2026-04-22 09:31', processedBy: '자동',
+    cancelRequestedAt: '2026-04-23 13:20', cancelReasonType: 'family',
+    cancelReason: '어머니가 갑자기 입원하셔서 보호자로 가야 합니다. 다른 가족이 없어서요.' },
+  { id: 'a028', workerId: 'w027', jobId: 'j005', appliedAt: '2026-04-21 18:00', status: 'cancel_pending', priorStatus: 'approved', reason: 'normal', processedAt: '2026-04-21 18:01', processedBy: '자동',
+    cancelRequestedAt: '2026-04-23 14:00', cancelReasonType: 'transport',
+    cancelReason: '전철 1호선 사고 안내 받았는데 통근버스 시간에 못 맞춥니다.' },
+  { id: 'a029', workerId: 'w033', jobId: 'j014', appliedAt: '2026-04-22 20:00', status: 'cancel_pending', priorStatus: 'approved', reason: 'normal', processedAt: '2026-04-22 20:01', processedBy: '자동',
+    cancelRequestedAt: '2026-04-23 12:00', cancelReasonType: 'other',
+    cancelReason: '실수로 같은 시간 다른 알바도 신청해버렸어요. 한쪽은 거절 받아야 해서요.' },
+
+  // ──── 취소 승인 처리 이력 (검토 완료) ────
+  // 차감 승인 (단순 변심) — 1,000P 차감 + cancelled 처리
+  { id: 'a030', workerId: 'w014', jobId: 'j017', appliedAt: '2026-04-21 09:00', status: 'cancelled', priorStatus: 'approved', reason: 'normal', processedAt: '2026-04-21 09:01', processedBy: '자동',
+    cancelRequestedAt: '2026-04-22 02:30', cancelReasonType: 'normal',
+    cancelReason: '컨디션이 안 좋아서 빠지고 싶어요.',
+    cancelReviewedAt: '2026-04-22 03:05', cancelReviewedBy: '테스트(마스터)', cancelDecision: 'deducted', cancelDeduct: 1000 },
+  // 면제 승인 (천재지변) — 차감 없이 cancelled 처리
+  { id: 'a031', workerId: 'w017', jobId: 'j018', appliedAt: '2026-04-21 12:00', status: 'cancelled', priorStatus: 'approved', reason: 'normal', processedAt: '2026-04-21 12:01', processedBy: '자동',
+    cancelRequestedAt: '2026-04-22 18:00', cancelReasonType: 'weather',
+    cancelReason: '폭설 경보로 진천까지 갈 수가 없습니다. 도로가 통제 중이에요.',
+    cancelReviewedAt: '2026-04-22 18:30', cancelReviewedBy: '테스트(마스터)', cancelDecision: 'exempted', cancelDeduct: 0 },
+  // 반려 (사유 부족) — 신청 복원 (status='approved')
+  { id: 'a032', workerId: 'w023', jobId: 'j020', appliedAt: '2026-04-20 14:00', status: 'approved', priorStatus: 'approved', reason: 'normal', processedAt: '2026-04-20 14:01', processedBy: '자동',
+    cancelRequestedAt: '2026-04-21 10:00', cancelReasonType: 'other',
+    cancelReason: '그냥 가기 싫어요.',
+    cancelReviewedAt: '2026-04-21 10:20', cancelReviewedBy: '테스트(마스터)', cancelDecision: 'rejected', cancelDeduct: 0 },
 ];
 
 function findJob(id) { return jobs.find(j => j.id === id); }
@@ -459,6 +495,8 @@ const pointTxs = [
   { id: 'p010', workerId: 'w002', type: 'deduct', status: 'done', amount: -5000,  reason: '무단결근 후 수동 회수 — 마스터 처리', requestedAt: '2026-04-10 15:30', processedBy: '테스트(마스터)' },
   { id: 'p011', workerId: 'w006', type: 'deduct', status: 'done', amount: -3000,  reason: '단순 변심 취소 자동 차감',         requestedAt: '2026-03-28 09:20', processedBy: '시스템' },
   { id: 'p012', workerId: 'w009', type: 'deduct', status: 'done', amount: -1000,  reason: '단순 변심 취소 자동 차감',         requestedAt: '2026-04-05 18:00', processedBy: '시스템' },
+  // 취소 승인 시 차감 (cancelDecision='deducted' 연동)
+  { id: 'p013', workerId: 'w014', type: 'deduct', status: 'done', amount: -1000,  reason: '취소 승인 차감 — 단순 변심 (a030)',  requestedAt: '2026-04-22 03:05', processedBy: '테스트(마스터)' },
 ];
 function findTx(id) { return pointTxs.find(t => t.id === id); }
 
@@ -478,15 +516,164 @@ function findAdmin(id) { return admins.find(a => a.id === id); }
 
 // 문의 — category: general(일반) / bug(앱버그) / point(포인트/결제) / account(계정)
 // status: pending(대기) / answered(답변완료)
+// 문의 — 하이브리드 구조 (게시판 + 1:1 스레드)
+// status: pending(첫 응답 대기) / in_progress(추가 답변 대기) / closed(종결)
+// priority: normal / urgent
+// messages[]: { from: 'worker'|'admin', text, at, by? }
 const inquiries = [
-  { id: 'q001', category: 'bug',     title: '출근 버튼이 눌리지 않아요',            body: '곤지암 근무지인데 GPS는 켜놨는데도 출근 버튼이 회색이에요. 영역 안에 있는 거 확인했습니다.',         workerId: 'w001', createdAt: '2026-04-23 07:05', status: 'pending', answer: '', answeredBy: '', answeredAt: '' },
-  { id: 'q002', category: 'point',   title: '출금 신청했는데 입금이 안 됐어요',   body: '어제 3만 포인트 출금 신청했는데 아직 입금이 안 들어왔습니다. 확인 부탁드려요.',                workerId: 'w005', createdAt: '2026-04-23 10:22', status: 'pending', answer: '', answeredBy: '', answeredAt: '' },
-  { id: 'q003', category: 'general', title: '통근버스 탑승 위치가 궁금해요',       body: '이천 MpHub 근무 신청했는데 통근버스 탑승 위치가 어디인가요? 지도상 가까운 곳으로 알려주세요.',     workerId: 'w004', createdAt: '2026-04-22 19:40', status: 'pending', answer: '', answeredBy: '', answeredAt: '' },
-  { id: 'q004', category: 'account', title: '전화번호 변경하고 싶어요',             body: '번호를 바꿨습니다. 어떻게 변경하나요?',                                                        workerId: 'w010', createdAt: '2026-04-22 14:10', status: 'answered', answer: '앱 내 "내 정보 > 전화번호 변경"에서 인증 후 변경 가능합니다. 협의대상 이력은 기존 번호 기준으로 유지됩니다.', answeredBy: '테스트(마스터)', answeredAt: '2026-04-22 15:30' },
-  { id: 'q005', category: 'general', title: '주휴수당 조건 질문',                   body: 'CJ에서 이번 주 이미 3일 만근했는데 4일차 신청하면 주휴수당 받을 수 있나요?',                      workerId: 'w007', createdAt: '2026-04-22 11:05', status: 'answered', answer: '네, 4회 만근하시면 주휴수당 대상입니다. 신청 시 팝업으로도 안내됩니다.',                                                         answeredBy: '테스트(마스터)', answeredAt: '2026-04-22 12:00' },
-  { id: 'q006', category: 'bug',     title: '계약서 서명 화면에서 튕겨요',         body: 'iPhone 15 Pro에서 계약서 서명할 때 앱이 자주 종료됩니다. 이번 근무 서명 못했어요.',           workerId: 'w003', createdAt: '2026-04-21 22:15', status: 'answered', answer: '개발팀에 전달했습니다. 다음 업데이트 (v1.0.3)에서 수정 예정입니다. 임시로 웹 버전 이용 부탁드립니다.', answeredBy: '테스트(마스터)', answeredAt: '2026-04-22 09:00' },
+  // 1) 미답변 — 단일 메시지 (출결 GPS 불량)
+  { id: 'q001', category: 'bug', title: '출근 버튼이 눌리지 않아요',
+    workerId: 'w001', createdAt: '2026-04-23 07:05', updatedAt: '2026-04-23 07:05',
+    status: 'pending', priority: 'urgent',
+    messages: [
+      { from: 'worker', at: '2026-04-23 07:05', text: '곤지암 근무지인데 GPS는 켜놨는데도 출근 버튼이 회색이에요. 영역 안에 있는 거 확인했습니다.' },
+    ],
+  },
+  // 2) 미답변 — 단일 메시지 (포인트 출금 지연)
+  { id: 'q002', category: 'point', title: '출금 신청했는데 입금이 안 됐어요',
+    workerId: 'w005', createdAt: '2026-04-23 10:22', updatedAt: '2026-04-23 10:22',
+    status: 'pending', priority: 'normal',
+    messages: [
+      { from: 'worker', at: '2026-04-23 10:22', text: '어제 3만 포인트 출금 신청했는데 아직 입금이 안 들어왔습니다. 확인 부탁드려요.' },
+    ],
+  },
+  // 3) 미답변 — 단일 메시지 (통근버스 위치)
+  { id: 'q003', category: 'general', title: '통근버스 탑승 위치가 궁금해요',
+    workerId: 'w004', createdAt: '2026-04-22 19:40', updatedAt: '2026-04-22 19:40',
+    status: 'pending', priority: 'normal',
+    messages: [
+      { from: 'worker', at: '2026-04-22 19:40', text: '이천 MpHub 근무 신청했는데 통근버스 탑승 위치가 어디인가요? 지도상 가까운 곳으로 알려주세요.' },
+    ],
+  },
+  // 4) 종결 — 1회 핑퐁 (전화번호 변경)
+  { id: 'q004', category: 'account', title: '전화번호 변경하고 싶어요',
+    workerId: 'w010', createdAt: '2026-04-22 14:10', updatedAt: '2026-04-22 15:30',
+    status: 'closed', priority: 'normal', closedAt: '2026-04-22 15:30', closedBy: '테스트(마스터)',
+    messages: [
+      { from: 'worker', at: '2026-04-22 14:10', text: '번호를 바꿨습니다. 어떻게 변경하나요?' },
+      { from: 'admin',  at: '2026-04-22 15:30', by: '테스트(마스터)', text: '앱 내 "내 정보 > 전화번호 변경"에서 인증 후 변경 가능합니다.\n협의대상 이력은 기존 번호 기준으로 유지됩니다.' },
+    ],
+  },
+  // 5) 진행 중 (in_progress) — 답변 후 알바생이 추가 질문 (시연용 핵심)
+  { id: 'q005', category: 'general', title: '주휴수당 조건 질문',
+    workerId: 'w007', createdAt: '2026-04-22 11:05', updatedAt: '2026-04-23 09:15',
+    status: 'in_progress', priority: 'normal',
+    messages: [
+      { from: 'worker', at: '2026-04-22 11:05', text: 'CJ에서 이번 주 이미 3일 만근했는데 4일차 신청하면 주휴수당 받을 수 있나요?' },
+      { from: 'admin',  at: '2026-04-22 12:00', by: '테스트(마스터)', text: '네, 4회 만근하시면 주휴수당 대상입니다. 신청 시 팝업으로도 안내됩니다.' },
+      { from: 'worker', at: '2026-04-23 09:15', text: '확인 감사합니다! 그런데 곤지암 2일 + 용인 2일도 4회로 인정되나요? 다른 근무지여도 같은 CJ면 합산되는지 궁금해요.' },
+    ],
+  },
+  // 6) 종결 — 다회 핑퐁 (서명 화면 버그 + 임시조치 + 종결)
+  { id: 'q006', category: 'bug', title: '계약서 서명 화면에서 튕겨요',
+    workerId: 'w003', createdAt: '2026-04-21 22:15', updatedAt: '2026-04-22 09:35',
+    status: 'closed', priority: 'normal', closedAt: '2026-04-22 09:35', closedBy: '테스트(마스터)',
+    messages: [
+      { from: 'worker', at: '2026-04-21 22:15', text: 'iPhone 15 Pro에서 계약서 서명할 때 앱이 자주 종료됩니다. 이번 근무 서명 못했어요.' },
+      { from: 'admin',  at: '2026-04-22 09:00', by: '테스트(마스터)', text: '확인 감사합니다. 개발팀에 전달했고 다음 업데이트(v1.0.3)에서 수정 예정입니다.\n임시로 웹 버전(jobfit.app/sign) 이용 부탁드려요.' },
+      { from: 'worker', at: '2026-04-22 09:32', text: '웹으로 서명 완료했습니다. 감사합니다!' },
+      { from: 'admin',  at: '2026-04-22 09:35', by: '테스트(마스터)', text: '확인했습니다. 좋은 근무 되세요 🙌' },
+    ],
+  },
+  // 7) 진행 중 + 긴급 — 출근 직전 갑자기 못 가는 상황 (시연: urgent 우선순위)
+  { id: 'q007', category: 'general', title: '오늘 출근 못할것 같아요 (긴급)',
+    workerId: 'w015', createdAt: '2026-04-23 13:40', updatedAt: '2026-04-23 13:40',
+    status: 'pending', priority: 'urgent',
+    messages: [
+      { from: 'worker', at: '2026-04-23 13:40', text: '4시간 전에 신청한 j029 진천 야간인데 어머니가 갑자기 응급실 가셔서 못 갈 것 같아요. 어떻게 해야 하나요?' },
+    ],
+  },
+  // 8) 종결 — 단순 정보 안내 (즐겨찾기)
+  { id: 'q008', category: 'general', title: '즐겨찾기 근무지 추가하는 법',
+    workerId: 'w012', createdAt: '2026-04-20 16:50', updatedAt: '2026-04-20 17:05',
+    status: 'closed', priority: 'normal', closedAt: '2026-04-20 17:05', closedBy: '테스트(마스터)',
+    messages: [
+      { from: 'worker', at: '2026-04-20 16:50', text: '즐겨찾기 근무지는 어떻게 등록하나요?' },
+      { from: 'admin',  at: '2026-04-20 17:05', by: '테스트(마스터)', text: '공고 카드 우측 상단 ★ 아이콘을 누르거나, 프로필 > 즐겨찾기 메뉴에서 파트너사를 선택하면 됩니다.' },
+    ],
+  },
 ];
 function findInquiry(id) { return inquiries.find(q => q.id === id); }
+
+// 문의 메시지 추가 — 알바생 또는 관리자 발화
+// from: 'worker' | 'admin' · text: 내용 · by: 관리자 이름(admin일 때)
+function addInquiryMessage(inqId, from, text, by) {
+  const it = findInquiry(inqId); if (!it) return null;
+  const trimmed = (text || '').trim();
+  if (!trimmed) return { error: '메시지 내용이 비어 있음' };
+  const msg = { from, at: nowStamp(), text: trimmed };
+  if (from === 'admin' && by) msg.by = by;
+  if (!Array.isArray(it.messages)) it.messages = [];
+  it.messages.push(msg);
+  it.updatedAt = msg.at;
+  // 상태 자동 갱신
+  // - admin 답변 시 in_progress (추가 질문 가능 상태)
+  // - worker 메시지 시: pending 또는 in_progress 유지 (closed였으면 reopen)
+  if (from === 'admin') {
+    if (it.status !== 'closed') it.status = 'in_progress';
+  } else {
+    if (it.status === 'closed') {
+      it.status = 'in_progress';
+      delete it.closedAt;
+      delete it.closedBy;
+    } else if (it.status === 'in_progress') {
+      // 알바생 추가 질문 → 다시 pending 으로 (관리자 응답 대기 강조)
+      it.status = 'pending';
+    }
+    // pending 이면 그대로
+  }
+  if (typeof logAudit === 'function' && from === 'admin') {
+    const w = findWorker(it.workerId);
+    logAudit({
+      category: 'inquiry', action: 'reply',
+      target: (w?.name || '-') + ' / ' + (it.title || ''),
+      targetId: inqId,
+      summary: trimmed.slice(0, 60) + (trimmed.length > 60 ? '...' : ''),
+      by,
+    });
+  }
+  return msg;
+}
+
+// 문의 종결 처리 (관리자 전용)
+function closeInquiry(inqId, by) {
+  const it = findInquiry(inqId); if (!it) return null;
+  it.status = 'closed';
+  it.closedAt = nowStamp();
+  it.closedBy = by || '시스템';
+  it.updatedAt = it.closedAt;
+  if (typeof logAudit === 'function') {
+    const w = findWorker(it.workerId);
+    logAudit({
+      category: 'inquiry', action: 'close',
+      target: (w?.name || '-') + ' / ' + (it.title || ''),
+      targetId: inqId,
+      summary: '문의 종결 처리',
+      by,
+    });
+  }
+  return it;
+}
+
+// 알바생이 새 문의 작성 (앱 미리보기 시뮬용)
+function createInquiry({ workerId, category, title, text }) {
+  const w = findWorker(workerId); if (!w) return null;
+  const trimmed = (text || '').trim();
+  if (!trimmed) return { error: '메시지 내용이 비어 있음' };
+  const id = uid('q');
+  const at = nowStamp();
+  const it = {
+    id, workerId,
+    category: category || 'general',
+    title: (title || trimmed.split('\n')[0]).slice(0, 40),
+    createdAt: at, updatedAt: at,
+    status: 'pending',
+    priority: 'normal',
+    messages: [{ from: 'worker', at, text: trimmed }],
+  };
+  inquiries.unshift(it);
+  return it;
+}
 
 // 대기열 — FULL 공고에 대기 신청 · 모집인원의 2배까지
 // status: waiting(대기 중) / pending_accept(자리 제안됨, 타이머 실행) / accepted(수락 완료) / auto_rejected(시간 초과) / declined(본인 거절)
@@ -753,6 +940,7 @@ const AUDIT_CATEGORIES = {
   admin:       { label: '관리자 계정', icon: '👤', color: '#6B21A8' },
   notification:{ label: '알림 발송',   icon: '📣', color: '#0891B2' },
   external:    { label: '외부 구인',   icon: '➕', color: '#0F766E' },
+  inquiry:     { label: '문의 처리',   icon: '💬', color: '#0891B2' },
 };
 
 // 감사로그 메인 배열 — 새 항목은 unshift (최신순)
@@ -934,6 +1122,105 @@ function releaseNegotiation(workerId) {
 }
 
 // ───────────────────────────────────────────────────────────
+// 취소 승인 (12h 이내 알바생 취소 요청 검토)
+// 차감 / 면제 / 반려 3개 경로
+// ───────────────────────────────────────────────────────────
+
+// 취소 사유 카테고리 — 단순 변심만 1,000P 차감 권고, 나머지는 면제 권고
+const CANCEL_REASON_TYPES = {
+  normal:    { label: '단순 변심',       hint: '특별한 사유 없음 — 1,000P 차감 권고',         recommend: 'deduct',  color: '#EF4444' },
+  sick:      { label: '본인 질병',       hint: '발열/부상 등 — 진료 영수증 등 증빙 권장',    recommend: 'exempt',  color: '#3B82F6' },
+  family:    { label: '가족 응급',       hint: '가족 입원/사고 등 — 보호자 필요',             recommend: 'exempt',  color: '#3B82F6' },
+  transport: { label: '대중교통 장애',   hint: '전철/버스 사고/지연 — 통근버스 미접속 케이스 포함', recommend: 'exempt',  color: '#3B82F6' },
+  weather:   { label: '천재지변',        hint: '폭설/태풍 등 도로 통제',                       recommend: 'exempt',  color: '#3B82F6' },
+  other:     { label: '기타',            hint: '위 항목에 없음 — 메모 확인 필요',              recommend: 'review',  color: '#6B7684' },
+};
+
+// 취소 요청 처리 — 차감 승인 (1,000P 차감 + cancelled 처리)
+function approveCancelDeduct(appId, by, memo) {
+  const a = findApp(appId); if (!a || a.status !== 'cancel_pending') return null;
+  const w = findWorker(a.workerId); const j = findJob(a.jobId);
+  if (!w || !j) return null;
+  const site = findSite(j.siteId);
+  const deduct = POLICY.POINT_CANCEL_DEDUCT;
+  a.status = 'cancelled';
+  a.cancelDecision = 'deducted';
+  a.cancelDeduct = deduct;
+  a.cancelReviewedAt = nowStamp();
+  a.cancelReviewedBy = by || '시스템';
+  if (memo) a.cancelReviewMemo = memo;
+  // 슬롯 회수
+  if (typeof j.apply === 'number' && j.apply > 0) j.apply -= 1;
+  // 포인트 차감 (잔고 0 미만 허용 안 함 — 마이너스 방지)
+  const actualDeduct = Math.min(deduct, w.points);
+  w.points = Math.max(0, w.points - deduct);
+  pointTxs.unshift({
+    id: uid('p-cnl'),
+    workerId: w.id,
+    type: 'deduct',
+    status: 'done',
+    amount: -actualDeduct,
+    reason: '취소 승인 차감 — ' + (CANCEL_REASON_TYPES[a.cancelReasonType]?.label || a.cancelReasonType) + ' (' + appId + ')',
+    requestedAt: a.cancelReviewedAt,
+    processedBy: a.cancelReviewedBy,
+  });
+  logAudit({
+    category: 'application', action: 'cancel_deduct',
+    target: w.name + ' / ' + (site?.site.name || '') + ' ' + j.date + ' ' + j.slot,
+    targetId: appId,
+    summary: '취소 승인(차감) — 사유: ' + (CANCEL_REASON_TYPES[a.cancelReasonType]?.label || '미분류') + ' · -' + actualDeduct.toLocaleString() + 'P',
+    by: a.cancelReviewedBy,
+  });
+  return { app: a, worker: w, job: j, deducted: actualDeduct };
+}
+
+// 취소 요청 처리 — 면제 승인 (차감 없이 cancelled 처리)
+function approveCancelExempt(appId, by, memo) {
+  const a = findApp(appId); if (!a || a.status !== 'cancel_pending') return null;
+  const w = findWorker(a.workerId); const j = findJob(a.jobId);
+  if (!w || !j) return null;
+  const site = findSite(j.siteId);
+  a.status = 'cancelled';
+  a.cancelDecision = 'exempted';
+  a.cancelDeduct = 0;
+  a.cancelReviewedAt = nowStamp();
+  a.cancelReviewedBy = by || '시스템';
+  if (memo) a.cancelReviewMemo = memo;
+  if (typeof j.apply === 'number' && j.apply > 0) j.apply -= 1;
+  logAudit({
+    category: 'application', action: 'cancel_exempt',
+    target: w.name + ' / ' + (site?.site.name || '') + ' ' + j.date + ' ' + j.slot,
+    targetId: appId,
+    summary: '취소 승인(면제) — 사유: ' + (CANCEL_REASON_TYPES[a.cancelReasonType]?.label || '미분류') + (memo ? ' · 메모: ' + memo : ''),
+    by: a.cancelReviewedBy,
+  });
+  return { app: a, worker: w, job: j };
+}
+
+// 취소 요청 처리 — 반려 (신청 복원, 알바생 출근 의무)
+function rejectCancelRequest(appId, by, memo) {
+  const a = findApp(appId); if (!a || a.status !== 'cancel_pending') return null;
+  const w = findWorker(a.workerId); const j = findJob(a.jobId);
+  if (!w || !j) return null;
+  const site = findSite(j.siteId);
+  // 이전 상태로 복원 (없으면 approved 가정)
+  a.status = a.priorStatus || 'approved';
+  a.cancelDecision = 'rejected';
+  a.cancelDeduct = 0;
+  a.cancelReviewedAt = nowStamp();
+  a.cancelReviewedBy = by || '시스템';
+  if (memo) a.cancelReviewMemo = memo;
+  logAudit({
+    category: 'application', action: 'cancel_reject',
+    target: w.name + ' / ' + (site?.site.name || '') + ' ' + j.date + ' ' + j.slot,
+    targetId: appId,
+    summary: '취소 반려 — 사유: ' + (CANCEL_REASON_TYPES[a.cancelReasonType]?.label || '미분류') + (memo ? ' · 메모: ' + memo : '') + ' · 출근 의무',
+    by: a.cancelReviewedBy,
+  });
+  return { app: a, worker: w, job: j };
+}
+
+// ───────────────────────────────────────────────────────────
 // 출결 정정 (Attendance Override) — 마스터/1급 직접, 2급 신청
 // GPS 신호 불량/폰 배터리/관리자 직접 확인 등으로 자동 결근 처리된 케이스 정정
 // ───────────────────────────────────────────────────────────
@@ -1057,6 +1344,39 @@ function reviewAttendanceOverride(overrideId, decision, reviewer, reviewerRole) 
 }
 
 // 보너스 포인트 지급 — 단일 또는 일괄
+// 수동 포인트 회수 (관리자 → 알바생 보유 포인트 차감)
+// 무단결근 후 발견 / 부정 출근 / 기타 정책 위반 등에 사용 — 사유는 자유 메모
+function recoverWorkerPoints({ workerId, amount, memo, by, byRole }) {
+  const w = findWorker(workerId); if (!w) return null;
+  if (!amount || amount < 1000) return { error: '최소 1,000P 이상' };
+  if (amount % 1000 !== 0)      return { error: '1,000P 단위로 입력' };
+  if (!memo || !memo.trim())    return { error: '회수 사유(메모) 필수' };
+  // 보유 포인트가 부족해도 0 미만으로 가지 않도록 — 실 차감액만 트랜잭션에 기록
+  const actual = Math.min(amount, w.points);
+  w.points = Math.max(0, w.points - amount);
+  const tx = {
+    id: uid('p-recover'),
+    workerId,
+    type: 'deduct',
+    status: 'done',
+    amount: -actual,
+    reason: '수동 회수 — ' + memo.trim(),
+    requestedAt: nowStamp(),
+    processedBy: by || '시스템',
+  };
+  pointTxs.unshift(tx);
+  if (typeof logAudit === 'function') {
+    logAudit({
+      category: 'point', action: 'recover',
+      target: w.name,
+      targetId: tx.id,
+      summary: actual.toLocaleString() + 'P 회수 — ' + memo.trim() + (actual < amount ? ` (잔액 부족: 요청 ${amount.toLocaleString()}P 중 ${actual.toLocaleString()}P만 차감)` : ''),
+      by, byRole,
+    });
+  }
+  return { tx, worker: w, deducted: actual, requested: amount };
+}
+
 function givePointBonus({ workerId, jobId, amount, reason, by, byRole }) {
   const w = findWorker(workerId); if (!w) return null;
   const j = jobId ? findJob(jobId) : null;
@@ -1656,13 +1976,13 @@ function _seedGpsRequests() {
 // 1B(3). inquiries 확장
 function _seedInquiries() {
   let nextNum = inquiries.length + 1;
-  const cats = ['account','point','attendance','bug','etc'];
+  // 카테고리는 admin UI 의 4개로 매핑 (attendance, etc → general)
+  const cats = ['account','point','general','bug','general'];
   const titles = {
-    account:    ['카카오 로그인 안 돼요','전화번호 변경 어떻게 하나요','계정 통합 가능한가요','회원 탈퇴 절차'],
-    point:      ['출금 신청했는데 안 들어와요','포인트 차감이 잘못된 것 같아요','출금 한도가 어떻게 되나요','보유 포인트가 0이 됐어요'],
-    attendance: ['지각 처리 이의 제기','GPS 안 잡혀서 출근 못 했어요','퇴근 시간 잘못 기록됨','휴게 시간 출결 처리'],
-    bug:        ['앱이 자꾸 튕겨요','공고 신청 버튼이 회색으로 안 눌려요','지도 안 보임','알림이 안 와요'],
-    etc:        ['통근버스 노선 문의','근무복 어디서 받나요','수입 신고 어떻게','사용 후기 작성 가능한가요'],
+    account: ['카카오 로그인 안 돼요','전화번호 변경 어떻게 하나요','계정 통합 가능한가요','회원 탈퇴 절차'],
+    point:   ['출금 신청했는데 안 들어와요','포인트 차감이 잘못된 것 같아요','출금 한도가 어떻게 되나요','보유 포인트가 0이 됐어요'],
+    general: ['지각 처리 이의 제기','GPS 안 잡혀서 출근 못 했어요','퇴근 시간 잘못 기록됨','휴게 시간 출결 처리','통근버스 노선 문의','근무복 어디서 받나요','수입 신고 어떻게','사용 후기 작성 가능한가요'],
+    bug:     ['앱이 자꾸 튕겨요','공고 신청 버튼이 회색으로 안 눌려요','지도 안 보임','알림이 안 와요'],
   };
   for (let i = 0; i < 24; i++) {
     const seed = i * 13 + 7;
@@ -1672,26 +1992,36 @@ function _seedInquiries() {
     const title = titleArr[seed % titleArr.length];
     const daysAgo = (seed * 3) % 90 + 1;
     const subD = new Date(TODAY); subD.setDate(subD.getDate() - daysAgo);
-    const status = (i % 3 === 0) ? 'pending' : 'answered';
-    const isUrgent = (i % 7 === 0 && status === 'pending');
+    const isClosed = i % 3 !== 0;  // 답변 완료 = closed
+    const isUrgent = (i % 7 === 0 && !isClosed);
     const submittedAt = subD.toISOString().slice(0,10) + ' ' + String((seed % 14) + 9).padStart(2,'0') + ':' + String((seed * 7) % 60).padStart(2,'0');
-    const baseObj = {
+    const messages = [
+      { from: 'worker', at: submittedAt, text: title + ' — 자세한 내용 문의드립니다.' },
+    ];
+    let updatedAt = submittedAt;
+    let closedAt, closedBy;
+    if (isClosed) {
+      const ansD = new Date(subD); ansD.setHours(ansD.getHours() + (seed % 24) + 2);
+      const answeredAt = ansD.toISOString().slice(0,10) + ' ' + String(ansD.getHours()).padStart(2,'0') + ':' + String(ansD.getMinutes()).padStart(2,'0');
+      const answerText = '안녕하세요 잡핏 운영팀입니다. 문의주신 사항 확인했고 ' + (cat === 'point' ? '포인트는 정상 처리되었습니다' : cat === 'bug' ? '해당 버그는 다음 업데이트에 반영 예정입니다' : '아래와 같이 안내드립니다') + '. 추가 문의는 답글 부탁드립니다.';
+      const answeredBy = (seed % 3 === 0) ? '김관리(1등급)' : '테스트(마스터)';
+      messages.push({ from: 'admin', at: answeredAt, by: answeredBy, text: answerText });
+      updatedAt = answeredAt;
+      closedAt = answeredAt;
+      closedBy = answeredBy;
+    }
+    inquiries.push({
       id: 'q' + String(nextNum++).padStart(3, '0'),
       workerId: w.id,
       category: cat,
       title,
-      body: title + ' — 자세한 내용 문의드립니다.',
-      submittedAt,
-      status,
-      ...(isUrgent ? { urgent: true } : {}),
-    };
-    if (status === 'answered') {
-      const ansD = new Date(subD); ansD.setHours(ansD.getHours() + (seed % 24) + 2);
-      baseObj.answer = '안녕하세요 잡핏 운영팀입니다. 문의주신 사항 확인했고 ' + (cat === 'point' ? '포인트는 정상 처리되었습니다' : cat === 'bug' ? '해당 버그는 다음 업데이트에 반영 예정입니다' : '아래와 같이 안내드립니다') + '. 추가 문의는 답글 부탁드립니다.';
-      baseObj.answeredAt = ansD.toISOString().slice(0,10) + ' ' + String(ansD.getHours()).padStart(2,'0') + ':' + String(ansD.getMinutes()).padStart(2,'0');
-      baseObj.answeredBy = (seed % 3 === 0) ? '김관리(1등급)' : '테스트(마스터)';
-    }
-    inquiries.push(baseObj);
+      createdAt: submittedAt,
+      updatedAt,
+      status: isClosed ? 'closed' : 'pending',
+      priority: isUrgent ? 'urgent' : 'normal',
+      messages,
+      ...(closedAt ? { closedAt, closedBy } : {}),
+    });
   }
 }
 

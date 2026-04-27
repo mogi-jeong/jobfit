@@ -23,6 +23,10 @@
   .jf-nav-item { padding: 10px 16px; color: #BFDBFE; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 10px; border-left: 3px solid transparent; transition: all 0.1s; }
   .jf-nav-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
   .jf-nav-item.active { background: rgba(255,255,255,0.1); color: #fff; border-left-color: #2563EB; }
+  /* 사이드바 섹션 라벨 (운영/알바생/자원·정산/도구·리포트/시스템/참고용) */
+  .jf-nav-section { padding: 14px 16px 4px; font-size: 10px; color: rgba(191,219,254,0.5); font-weight: 500; letter-spacing: 0.6px; text-transform: uppercase; user-select: none; }
+  .jf-nav-section.first { padding-top: 8px; }
+  .jf-nav-section-ref { color: rgba(191,219,254,0.35); border-top: 0.5px solid rgba(255,255,255,0.06); margin-top: 6px; padding-top: 12px; }
   .jf-nav-icon { width: 16px; height: 16px; flex-shrink: 0; }
   .jf-user { margin-top: auto; padding: 12px 16px; border-top: 0.5px solid rgba(255,255,255,0.12); font-size: 12px; color: #BFDBFE; }
   .jf-user-name { color: #fff; font-weight: 500; }
@@ -616,24 +620,36 @@
       <div class="jf-brand-sub">관리자 웹 · 프로토타입 v0.3</div>
     </div>
     <div class="jf-nav-item active" data-page="home"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7l6-5 6 5v7a1 1 0 01-1 1H3a1 1 0 01-1-1V7z"/></svg>홈</div>
-    <div class="jf-nav-item" data-page="home2"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7l6-5 6 5v7a1 1 0 01-1 1H3a1 1 0 01-1-1V7z"/><circle cx="12.5" cy="3.5" r="2" fill="#F59E0B" stroke="none"/></svg>홈 (재설계) <span style="margin-left:auto; font-size:9px; padding:1px 5px; background:#F59E0B; color:#fff; border-radius:3px;">NEW</span></div>
+
+    <div class="jf-nav-section first">운영</div>
     <div class="jf-nav-item" data-page="jobs"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="11" rx="1"/><path d="M5 1v3M11 1v3M2 7h12"/></svg>공고 관리</div>
     <div class="jf-nav-item" data-page="approval"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8l3 3 7-7"/></svg>신청 승인 <span data-role="badge" style="margin-left:auto; background:#EF4444; color:#fff; font-size:10px; padding:1px 6px; border-radius:8px;">7</span></div>
     <div class="jf-nav-item" data-page="waitlistapv"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>대기열 승인 <span data-role="wl-badge" style="margin-left:auto; background:#F59E0B; color:#fff; font-size:10px; padding:1px 6px; border-radius:8px;">0</span></div>
     <div class="jf-nav-item" data-page="gpsapproval"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5C5.2 1.5 3 3.7 3 6.5c0 3.5 5 8 5 8s5-4.5 5-8c0-2.8-2.2-5-5-5z"/><circle cx="8" cy="6.5" r="1.8"/></svg>퇴근 승인 <span data-role="gps-badge" style="margin-left:auto; background:#8B5CF6; color:#fff; font-size:10px; padding:1px 6px; border-radius:8px;">10</span></div>
+    <div class="jf-nav-item" data-page="cancelapv"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M5 5l6 6M11 5l-6 6"/></svg>취소 승인 <span data-role="cancel-badge" style="margin-left:auto; background:#F97316; color:#fff; font-size:10px; padding:1px 6px; border-radius:8px;">5</span></div>
+
+    <div class="jf-nav-section">알바생</div>
     <div class="jf-nav-item" data-page="workers"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/></svg>근무자 관리</div>
-    <div class="jf-nav-item" data-page="worksite"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1l6 3v5c0 3.5-3 6-6 6s-6-2.5-6-6V4l6-3z"/></svg>근무지 관리</div>
     <div class="jf-nav-item" data-page="negotiation"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M6 8l1.5 1.5L11 6"/></svg>협의대상</div>
+
+    <div class="jf-nav-section">자원·정산</div>
+    <div class="jf-nav-item" data-page="worksite"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1l6 3v5c0 3.5-3 6-6 6s-6-2.5-6-6V4l6-3z"/></svg>근무지 관리</div>
     <div class="jf-nav-item" data-page="points"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v6M6 7h4M6 9h4"/></svg>포인트</div>
     <div class="jf-nav-item" data-page="inquiry"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v9H5l-3 3V3z"/></svg>문의</div>
-    <div class="jf-nav-item" data-page="apppreview"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="1.5" width="8" height="13" rx="1.5"/><path d="M7 12h2"/></svg>앱 미리보기</div>
-    <div class="jf-nav-item" data-page="mobileadmin"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="1.5" width="8" height="13" rx="1.5"/><circle cx="8" cy="6" r="1.5"/><path d="M5.5 10c0-1.4 1.1-2.5 2.5-2.5s2.5 1.1 2.5 2.5"/></svg>모바일 관리자</div>
-    <div class="jf-nav-item" data-page="busmap"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4l4-2 4 2 4-2v10l-4 2-4-2-4 2V4z"/><path d="M6 2v10M10 4v10"/></svg>통근버스 길찾기 <span style="margin-left:auto; font-size:9px; padding:1px 5px; background:#14B8A6; color:#fff; border-radius:3px;">NEW</span></div>
+
+    <div class="jf-nav-section">도구·리포트</div>
     <div class="jf-nav-item" data-page="control"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg>관제 시스템 <span style="margin-left:auto; font-size:9px; opacity:0.6;">⧉</span></div>
     <div class="jf-nav-item" data-page="stats"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 14V2M2 14h12M5 11V7M8 11V4M11 11V9"/></svg>통계 리포트</div>
     <div class="jf-nav-item" data-page="settlement"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="1"/><path d="M2 7h12M5 10h2M9 10h2"/></svg>파트너사 정산 <span style="margin-left:auto; font-size:9px; padding:1px 5px; background:#F59E0B; color:#fff; border-radius:3px;">NEW</span></div>
+
+    <div class="jf-nav-section">시스템</div>
     <div class="jf-nav-item" data-page="accounts"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="2.5"/><path d="M3 13c0-2.5 2-4 5-4s5 1.5 5 4"/><circle cx="12" cy="4" r="1.5" fill="currentColor"/></svg>관리자 계정</div>
     <div class="jf-nav-item" data-page="audit"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2h8l3 3v9a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z"/><path d="M5 7h6M5 10h6M5 13h4"/></svg>감사로그 <span style="margin-left:auto; font-size:9px; padding:1px 5px; background:rgba(255,255,255,0.15); border-radius:3px; color:#fff;">M</span></div>
+
+    <div class="jf-nav-section jf-nav-section-ref">참고용 (개발자/시연)</div>
+    <div class="jf-nav-item" data-page="busmap"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4l4-2 4 2 4-2v10l-4 2-4-2-4 2V4z"/><path d="M6 2v10M10 4v10"/></svg>통근버스 길찾기</div>
+    <div class="jf-nav-item" data-page="apppreview"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="1.5" width="8" height="13" rx="1.5"/><path d="M7 12h2"/></svg>앱 미리보기</div>
+    <div class="jf-nav-item" data-page="mobileadmin"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="1.5" width="8" height="13" rx="1.5"/><circle cx="8" cy="6" r="1.5"/><path d="M5.5 10c0-1.4 1.1-2.5 2.5-2.5s2.5 1.1 2.5 2.5"/></svg>모바일 관리자</div>
     <div class="jf-user">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
         <div><span class="jf-user-name">테스트</span><span class="jf-user-badge">마스터</span></div>

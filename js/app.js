@@ -630,12 +630,14 @@
   }
 
   // ───────────────────────────────────────────────────────
-  // 문의 페이지
+  // 문의 페이지 — 하이브리드 (게시판 + 1:1 스레드)
   // ───────────────────────────────────────────────────────
   const inqState = {
     search: '',
     category: '',
-    status: '',  // '' / pending / answered
+    status: '',          // '' / pending / in_progress / closed
+    priority: '',        // '' / urgent / normal
+    detailId: null,      // 상세 화면 진입 시 문의 ID
   };
   const CAT_LABEL = { general: '일반', bug: '앱버그', point: '포인트/결제', account: '계정' };
   const CAT_STYLE = {
@@ -644,60 +646,104 @@
     point:   'background:#DBEAFE; color:#1E40AF;',
     account: 'background:#FEF3C7; color:#92400E;',
   };
+  const INQ_STATUS_META = {
+    pending:     { label: '미답변', color: '#EF4444', bg: '#FEE2E2', fg: '#991B1B' },
+    in_progress: { label: '진행중', color: '#F59E0B', bg: '#FEF3C7', fg: '#92400E' },
+    closed:      { label: '종결',   color: '#22C55E', bg: '#DCFCE7', fg: '#166534' },
+  };
+  // 마지막 알바생 메시지로부터 경과 시간 (분)
+  function inqLastWorkerWaitMin(it) {
+    const lastWorker = (it.messages || []).filter(m => m.from === 'worker').slice(-1)[0];
+    if (!lastWorker) return 0;
+    if (it.status === 'closed') return 0;
+    // 알바생 메시지 이후에 admin 응답이 있으면 0
+    const lastIdx = (it.messages || []).lastIndexOf(lastWorker);
+    const afterAdmin = (it.messages || []).slice(lastIdx + 1).some(m => m.from === 'admin');
+    if (afterAdmin) return 0;
+    const ts = new Date(lastWorker.at.replace(' ', 'T')).getTime();
+    return Math.floor((Date.now() - ts) / 60000);
+  }
+  function inqWaitLabel(it) {
+    const m = inqLastWorkerWaitMin(it);
+    if (m <= 0) return '';
+    if (m < 60) return m + 'm';
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + 'h';
+    return Math.floor(h / 24) + 'd ' + (h % 24) + 'h';
+  }
 
   function renderInquiries() {
+    if (inqState.detailId) { renderInquiryDetail(inqState.detailId); return; }
+
     const q = inqState.search.trim().toLowerCase();
     let list = inquiries.filter(it => {
-      if (q && !(it.title.toLowerCase().includes(q) || it.body.toLowerCase().includes(q))) return false;
+      const blob = (it.title + ' ' + (it.messages || []).map(m => m.text).join(' ')).toLowerCase();
+      if (q && !blob.includes(q)) return false;
       if (inqState.category && inqState.category !== it.category) return false;
       if (inqState.status && inqState.status !== it.status) return false;
+      if (inqState.priority && inqState.priority !== (it.priority || 'normal')) return false;
       return true;
     });
+    // 정렬: 긴급 + pending 먼저, 같은 상태는 updatedAt 최신순
+    const stOrder = { pending: 0, in_progress: 1, closed: 2 };
     list = list.sort((a, b) => {
-      // pending 먼저, 같은 상태는 최신순
-      if (a.status !== b.status) return a.status === 'pending' ? -1 : 1;
-      return b.createdAt.localeCompare(a.createdAt);
+      const aPri = a.priority === 'urgent' ? 0 : 1;
+      const bPri = b.priority === 'urgent' ? 0 : 1;
+      if (aPri !== bPri) return aPri - bPri;
+      const aSt = stOrder[a.status] ?? 9;
+      const bSt = stOrder[b.status] ?? 9;
+      if (aSt !== bSt) return aSt - bSt;
+      return (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt);
     });
 
-    const pending = inquiries.filter(it => it.status === 'pending').length;
-    const answered = inquiries.filter(it => it.status === 'answered').length;
-    const weekAgo = new Date(TODAY); weekAgo.setDate(weekAgo.getDate() - 6);
-    const weekStr = weekAgo.toISOString().slice(0, 10);
-    const thisWeek = inquiries.filter(it => it.createdAt >= weekStr).length;
+    const pending     = inquiries.filter(it => it.status === 'pending').length;
+    const inProgress  = inquiries.filter(it => it.status === 'in_progress').length;
+    const closed      = inquiries.filter(it => it.status === 'closed').length;
+    const urgent      = inquiries.filter(it => it.priority === 'urgent' && it.status !== 'closed').length;
 
-    // 평균 응답 시간 (시간 단위)
-    const answeredWithTimes = inquiries.filter(it => it.status === 'answered');
+    // 평균 첫 응답 시간
+    const closedItems = inquiries.filter(it => it.status === 'closed' || it.status === 'in_progress');
     let avgResp = '-';
-    if (answeredWithTimes.length > 0) {
-      const total = answeredWithTimes.reduce((s, it) => {
-        const c = new Date(it.createdAt.replace(' ', 'T'));
-        const a = new Date(it.answeredAt.replace(' ', 'T'));
-        return s + (a - c) / 3600000;
-      }, 0);
-      avgResp = (total / answeredWithTimes.length).toFixed(1) + 'h';
+    if (closedItems.length > 0) {
+      const totals = closedItems.map(it => {
+        const firstW = (it.messages || []).find(m => m.from === 'worker');
+        const firstA = (it.messages || []).find(m => m.from === 'admin');
+        if (!firstW || !firstA) return null;
+        return (new Date(firstA.at.replace(' ', 'T')) - new Date(firstW.at.replace(' ', 'T'))) / 3600000;
+      }).filter(v => v !== null);
+      if (totals.length > 0) avgResp = (totals.reduce((s,v) => s+v, 0) / totals.length).toFixed(1) + 'h';
     }
 
     let html = `
       <div class="jf-header">
         <div>
           <div class="jf-title">문의</div>
-          <div class="jf-subtitle">알바생 문의 접수 및 답변 처리</div>
+          <div class="jf-subtitle">알바생 1:1 문의 — 게시판형 리스트 + 스레드형 답변 (카카오 고객센터 패턴)</div>
         </div>
       </div>
 
       <div class="jf-metric-grid">
-        <div class="jf-metric"><div class="jf-metric-label">미답변</div><div class="jf-metric-value" style="color:${pending>0?'#EF4444':'#111827'};">${pending}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">${pending>0?'답변 필요':'모두 처리됨'}</div></div>
-        <div class="jf-metric"><div class="jf-metric-label">답변 완료</div><div class="jf-metric-value">${answered}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">전체 누적</div></div>
-        <div class="jf-metric"><div class="jf-metric-label">이번 주 신규</div><div class="jf-metric-value">${thisWeek}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">최근 7일</div></div>
-        <div class="jf-metric"><div class="jf-metric-label">평균 응답 시간</div><div class="jf-metric-value">${avgResp}</div><div class="jf-metric-hint">접수 → 답변</div></div>
+        <div class="jf-metric" ${pending>0?'style="cursor:pointer; background:#FEF2F2;" onclick="window.__inqFilter(\'status\',\'pending\')" title="미답변만 필터"':''}>
+          <div class="jf-metric-label">미답변</div>
+          <div class="jf-metric-value" style="color:${pending>0?'#EF4444':'#111827'};">${pending}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div>
+          <div class="jf-metric-hint">${urgent>0?`🚨 긴급 ${urgent}건 포함`:'운영자 첫 응답 대기'}</div>
+        </div>
+        <div class="jf-metric"><div class="jf-metric-label">진행 중</div><div class="jf-metric-value" style="color:${inProgress>0?'#F59E0B':'#111827'};">${inProgress}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">알바생 추가 질문 / 검토 중</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">종결</div><div class="jf-metric-value">${closed}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">처리 완료</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">평균 첫 응답</div><div class="jf-metric-value">${avgResp}</div><div class="jf-metric-hint">접수 → 첫 답변</div></div>
       </div>
 
+      ${urgent > 0
+        ? `<div class="ws-warn-box" style="background:#FEE2E2; color:#991B1B; border-left-color:#EF4444;">🚨 <b>긴급 문의 ${urgent}건</b> — 출근 직전 취소 / 사고 등 즉시 응답 필요한 케이스. 우선 처리 부탁드립니다.</div>`
+        : ''}
+
       <div class="jobs-filters">
-        <div class="jf-search"><input type="text" placeholder="제목 · 내용 검색" value="${inqState.search}" oninput="window.__imeInput(this, '__inqSearch')" data-imefn="__inqSearch" /></div>
+        <div class="jf-search"><input type="text" placeholder="제목 · 메시지 내용 검색" value="${esc(inqState.search)}" oninput="window.__imeInput(this, '__inqSearch')" data-imefn="__inqSearch" /></div>
         <select onchange="window.__inqFilter('status', this.value)">
           <option value="">전체 상태</option>
-          <option value="pending"  ${inqState.status==='pending'?'selected':''}>미답변</option>
-          <option value="answered" ${inqState.status==='answered'?'selected':''}>답변완료</option>
+          <option value="pending"     ${inqState.status==='pending'?'selected':''}>미답변</option>
+          <option value="in_progress" ${inqState.status==='in_progress'?'selected':''}>진행 중</option>
+          <option value="closed"      ${inqState.status==='closed'?'selected':''}>종결</option>
         </select>
         <select onchange="window.__inqFilter('category', this.value)">
           <option value="">전체 구분</option>
@@ -706,7 +752,12 @@
           <option value="point"   ${inqState.category==='point'?'selected':''}>포인트/결제</option>
           <option value="account" ${inqState.category==='account'?'selected':''}>계정</option>
         </select>
-        ${(inqState.search || inqState.category || inqState.status) ? `<button onclick="window.__inqClearFilter()" style="font-size:12px;">필터 초기화</button>` : ''}
+        <select onchange="window.__inqFilter('priority', this.value)">
+          <option value="">전체 우선순위</option>
+          <option value="urgent" ${inqState.priority==='urgent'?'selected':''}>🚨 긴급</option>
+          <option value="normal" ${inqState.priority==='normal'?'selected':''}>일반</option>
+        </select>
+        ${(inqState.search || inqState.category || inqState.status || inqState.priority) ? `<button onclick="window.__inqClearFilter()" style="font-size:12px;">필터 초기화</button>` : ''}
         <div style="margin-left:auto; font-size:12px; color:#6B7684; align-self:center;">${list.length}건 표시</div>
       </div>
     `;
@@ -714,35 +765,48 @@
     if (list.length === 0) {
       html += `<div class="jf-placeholder"><div class="jf-placeholder-icon">💬</div><div class="jf-placeholder-title">조건에 맞는 문의가 없습니다</div></div>`;
     } else {
-      const gridCols = '0.7fr 2fr 1fr 1fr 0.8fr';
+      const gridCols = '0.5fr 0.7fr 2fr 1fr 0.7fr 0.7fr';
       html += `
         <div class="jf-table">
           <div class="jf-table-head" style="grid-template-columns:${gridCols};">
+            <div>우선</div>
             <div>구분</div>
-            <div>제목</div>
+            <div>제목 · 마지막 메시지</div>
             <div>작성자</div>
-            <div>작성일</div>
+            <div>최종 갱신</div>
             <div>상태</div>
           </div>
       `;
       list.forEach(it => {
         const w = findWorker(it.workerId);
-        const stStyle = it.status === 'pending'
-          ? 'background:#FEF3C7; color:#92400E;'
-          : 'background:#DCFCE7; color:#166534;';
+        const meta = INQ_STATUS_META[it.status] || INQ_STATUS_META.pending;
+        const stStyle = `background:${meta.bg}; color:${meta.fg};`;
+        const lastMsg = (it.messages || []).slice(-1)[0];
+        const lastFromAdmin = lastMsg && lastMsg.from === 'admin';
+        const msgCount = (it.messages || []).length;
+        const wait = inqWaitLabel(it);
+        const waitWarn = inqLastWorkerWaitMin(it) >= 6 * 60;
+        const isUrgent = it.priority === 'urgent';
         html += `
-          <div class="jf-table-row" style="grid-template-columns:${gridCols};" onclick="window.__inqDetail('${it.id}')">
+          <div class="jf-table-row" style="grid-template-columns:${gridCols};${isUrgent ? ' background:#FFFBFA;' : ''}" onclick="window.__inqDetail('${it.id}')">
+            <div>${isUrgent ? '<span style="display:inline-block; padding:2px 6px; background:#FEE2E2; color:#991B1B; border-radius:4px; font-size:10px; font-weight:600;">🚨 긴급</span>' : '<span style="color:#9CA3AF; font-size:11px;">일반</span>'}</div>
             <div><span class="apv-badge" style="${CAT_STYLE[it.category]}">${CAT_LABEL[it.category]}</span></div>
             <div>
-              <div style="font-weight:500; color:#111827;">${it.title}</div>
-              <div style="font-size:11px; color:#6B7684; margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${it.body}</div>
+              <div style="font-weight:500; color:#111827; display:flex; align-items:center; gap:6px;">
+                ${esc(it.title)}
+                ${msgCount > 1 ? `<span style="font-size:10px; color:#6B7684; background:#F3F4F6; padding:1px 6px; border-radius:8px;">💬 ${msgCount}</span>` : ''}
+                ${wait ? `<span style="font-size:10px; color:${waitWarn ? '#991B1B' : '#92400E'}; font-weight:600;">⏱ ${wait} 대기</span>` : ''}
+              </div>
+              <div style="font-size:11px; color:#6B7684; margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                ${lastMsg ? (lastFromAdmin ? '<span style="color:#1E40AF;">→ 운영팀: </span>' : '<span style="color:#9D174D;">← 알바생: </span>') + esc(lastMsg.text) : ''}
+              </div>
             </div>
             <div>
-              <div style="font-size:13px;">${w ? w.name : '-'}</div>
-              <div style="font-family:'SF Mono',Monaco,monospace; font-size:11px; color:#6B7684;">${w ? w.phone : ''}</div>
+              <div style="font-size:13px;">${w ? esc(w.name) : '-'}</div>
+              <div style="font-family:'SF Mono',Monaco,monospace; font-size:11px; color:#6B7684;">${w ? esc(w.phone) : ''}</div>
             </div>
-            <div style="font-size:12px; color:#6B7684;">${it.createdAt}</div>
-            <div><span class="apv-badge" style="${stStyle}">${it.status === 'pending' ? '미답변' : '답변완료'}</span></div>
+            <div style="font-size:12px; color:#6B7684;">${esc(it.updatedAt || it.createdAt)}</div>
+            <div><span class="apv-badge" style="${stStyle}">${meta.label}</span></div>
           </div>
         `;
       });
@@ -754,87 +818,172 @@
 
   function renderInquiryDetail(inqId) {
     const it = findInquiry(inqId); if (!it) return;
+    inqState.detailId = inqId;
     const w = findWorker(it.workerId);
+    const meta = INQ_STATUS_META[it.status] || INQ_STATUS_META.pending;
+    const isClosed = it.status === 'closed';
+
+    const messagesHtml = (it.messages || []).map(m => {
+      const isAdmin = m.from === 'admin';
+      const align = isAdmin ? 'flex-end' : 'flex-start';
+      const bg    = isAdmin ? '#DBEAFE' : '#fff';
+      const color = isAdmin ? '#1E3A8A' : '#111827';
+      const border = isAdmin ? '1px solid #BFDBFE' : '0.5px solid rgba(0,0,0,0.08)';
+      const senderLabel = isAdmin ? (m.by || '운영팀') : (w?.name || '알바생');
+      return `
+        <div style="display:flex; flex-direction:column; align-items:${align}; margin:8px 0;">
+          <div style="font-size:10px; color:#6B7684; margin-bottom:3px; ${isAdmin ? 'text-align:right;' : ''}">
+            ${isAdmin ? '🛡 ' : '👤 '}${esc(senderLabel)} · ${esc(m.at)}
+          </div>
+          <div style="max-width:75%; background:${bg}; color:${color}; border:${border}; border-radius:14px; padding:10px 14px; font-size:13px; line-height:1.6; white-space:pre-wrap; word-break:break-word;">
+            ${esc(m.text)}
+          </div>
+        </div>
+      `;
+    }).join('');
 
     main.innerHTML = `
       <span class="jf-back" onclick="window.__inqBack()">← 문의 목록으로</span>
       <div class="jf-header">
         <div>
-          <div class="jf-title">${it.title}</div>
+          <div class="jf-title" style="display:flex; align-items:center; gap:8px;">
+            ${it.priority === 'urgent' ? '<span style="display:inline-block; padding:3px 8px; background:#FEE2E2; color:#991B1B; border-radius:6px; font-size:13px; font-weight:600;">🚨 긴급</span>' : ''}
+            ${esc(it.title)}
+          </div>
           <div class="jf-subtitle">
             <span class="apv-badge" style="${CAT_STYLE[it.category]}">${CAT_LABEL[it.category]}</span>
-            · 작성자 ${w ? w.name + ' (' + w.phone + ')' : '-'} · ${it.createdAt}
+            · 작성자 ${w ? esc(w.name) + ' (' + esc(w.phone) + ')' : '-'}
+            · 접수 ${esc(it.createdAt)}
+            ${it.closedAt ? ` · 종결 ${esc(it.closedAt)} (${esc(it.closedBy || '')})` : ''}
           </div>
         </div>
-        <div>
-          ${it.status === 'answered'
-            ? '<span class="apv-badge" style="background:#DCFCE7; color:#166534; font-size:13px; padding:6px 14px;">답변완료</span>'
-            : '<span class="apv-badge" style="background:#FEF3C7; color:#92400E; font-size:13px; padding:6px 14px;">미답변</span>'}
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span class="apv-badge" style="background:${meta.bg}; color:${meta.fg}; font-size:13px; padding:6px 14px;">${meta.label}</span>
+          ${!isClosed ? `<button onclick="window.__inqClose('${it.id}')" class="btn-primary" style="background:#22C55E; border-color:#22C55E;">✓ 종결 처리</button>` : `<button onclick="window.__inqReopen('${it.id}')">🔄 재오픈</button>`}
         </div>
       </div>
 
-      <div class="jf-panel" style="margin-bottom: 12px;">
-        <div class="ws-section-title">문의 내용</div>
-        <div style="padding: 12px; background: #F9FAFB; border-radius: 8px; font-size: 13px; line-height: 1.7; white-space: pre-wrap;">${it.body}</div>
-      </div>
+      <div style="display:grid; grid-template-columns: 1fr 320px; gap: 14px;">
+        <div class="jf-panel" style="padding: 14px;">
+          <div class="ws-section-title" style="margin-bottom: 6px;">
+            <span>대화 (${(it.messages || []).length}개 메시지)</span>
+            <span style="font-size:11px; color:#6B7684;">알바생 ← / → 운영팀</span>
+          </div>
+          <div id="inq-thread-scroll" style="max-height: 480px; overflow-y: auto; padding: 6px 12px; background: #F9FAFB; border-radius: 8px;">
+            ${messagesHtml || '<div style="text-align:center; padding:30px 0; color:#6B7684; font-size:12px;">메시지 없음</div>'}
+          </div>
 
-      <div class="jf-panel">
-        <div class="ws-section-title">
-          답변
-          ${it.status === 'answered' ? `<span style="font-size:11px; color:#6B7684; font-weight:400;">${it.answeredBy} · ${it.answeredAt}</span>` : ''}
+          ${isClosed ? `
+            <div style="margin-top:12px; padding:12px; background:#F0FDF4; border:1px solid #86EFAC; border-radius:8px; font-size:12px; color:#166534; text-align:center;">
+              ✓ 이 문의는 종결되었습니다 — 알바생이 새 메시지를 보내면 자동으로 재오픈됩니다.
+            </div>
+          ` : `
+            <div style="margin-top:14px; border-top: 0.5px solid rgba(0,0,0,0.08); padding-top:12px;">
+              <textarea id="inq-reply-text" placeholder="답변을 입력하세요. 보내기 시 알바생에게 푸시 알림이 발송됩니다." rows="3" style="width:100%; padding:10px 12px; border:0.5px solid rgba(0,0,0,0.15); border-radius:8px; font-family:inherit; font-size:13px; line-height:1.6; resize:vertical;"></textarea>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+                <div style="font-size:11px; color:#6B7684;">⌨ Cmd/Ctrl+Enter 로 전송</div>
+                <div style="display:flex; gap:6px;">
+                  <button onclick="window.__inqBack()">목록으로</button>
+                  <button class="btn-primary" onclick="window.__inqReply('${it.id}')">전송 & 알림 발송</button>
+                </div>
+              </div>
+            </div>
+          `}
         </div>
-        ${it.status === 'answered' ? `
-          <div style="padding: 12px; background: #F0F9FF; border-left: 3px solid #2563EB; border-radius: 4px; font-size: 13px; line-height: 1.7; white-space: pre-wrap; margin-bottom: 12px;">${it.answer}</div>
-          <div style="display:flex; gap:6px;">
-            <button onclick="window.__inqEdit('${it.id}')">답변 수정</button>
-            <button class="btn-danger" onclick="window.__inqReopen('${it.id}')">답변 삭제 / 재접수</button>
+
+        <div class="jf-panel" style="padding:14px; align-self:flex-start;">
+          <div class="ws-section-title">알바생 정보</div>
+          ${w ? `
+            <div style="font-size:12px; line-height:1.8;">
+              <div><strong style="color:#111827; font-size:14px;">${esc(w.name)}</strong>${w.negotiation ? ' <span class="apv-badge apv-badge-neg" style="font-size:10px; padding:2px 6px;">협의대상</span>' : ''}</div>
+              <div style="color:#6B7684;">${esc(w.phone)}</div>
+              <hr style="border:none; border-top:0.5px solid rgba(0,0,0,0.08); margin:8px 0;"/>
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+                <div><span style="color:#6B7684;">누적 근무</span> <strong>${w.total}회</strong></div>
+                <div><span style="color:#6B7684;">No-show</span> <strong style="color:${w.noshow>0?'#EF4444':'#111827'};">${w.noshow}회</strong></div>
+                <div><span style="color:#6B7684;">경고</span> <strong style="color:${w.warnings>0?'#F59E0B':'#111827'};">${w.warnings}회</strong></div>
+                <div><span style="color:#6B7684;">보유</span> <strong style="color:#2563EB;">${(w.points||0).toLocaleString()}P</strong></div>
+              </div>
+              <hr style="border:none; border-top:0.5px solid rgba(0,0,0,0.08); margin:8px 0;"/>
+              <button onclick="window.__inqGoWorker('${w.id}')" style="width:100%; font-size:11px; padding:6px 10px; height:auto;">근무자 상세 보기 →</button>
+            </div>
+          ` : '<div style="font-size:12px; color:#6B7684;">알바생 정보 없음</div>'}
+
+          <div class="ws-section-title" style="margin-top:14px;">문의 메타</div>
+          <div style="font-size:11px; line-height:1.8; color:#374151;">
+            <div><span style="color:#6B7684;">ID</span> <code>${esc(it.id)}</code></div>
+            <div><span style="color:#6B7684;">접수</span> ${esc(it.createdAt)}</div>
+            <div><span style="color:#6B7684;">최종 갱신</span> ${esc(it.updatedAt || '-')}</div>
+            <div><span style="color:#6B7684;">메시지 수</span> ${(it.messages||[]).length}개</div>
           </div>
-        ` : `
-          <textarea id="inq-answer-text" placeholder="답변을 입력하세요. 저장 시 알바생에게 알림이 발송됩니다." style="width:100%; min-height:140px; padding:12px; border:0.5px solid rgba(0,0,0,0.15); border-radius:8px; font-family:inherit; font-size:13px; line-height:1.6; resize:vertical;"></textarea>
-          <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:10px;">
-            <button onclick="window.__inqBack()">취소</button>
-            <button class="btn-primary" onclick="window.__inqAnswer('${it.id}')">답변 저장 & 알림 발송</button>
-          </div>
-        `}
+
+          ${!isClosed ? `
+            <div class="ws-section-title" style="margin-top:14px;">우선순위</div>
+            <div style="display:flex; gap:6px;">
+              <button onclick="window.__inqSetPriority('${it.id}','urgent')" style="flex:1; ${it.priority==='urgent' ? 'background:#FEE2E2; color:#991B1B; border-color:#FCA5A5;' : ''} font-size:11px; padding:6px; height:auto;">🚨 긴급</button>
+              <button onclick="window.__inqSetPriority('${it.id}','normal')" style="flex:1; ${(it.priority||'normal')==='normal' ? 'background:#DBEAFE; color:#1E40AF; border-color:#BFDBFE;' : ''} font-size:11px; padding:6px; height:auto;">일반</button>
+            </div>
+          ` : ''}
+        </div>
       </div>
     `;
+
+    // 스크롤 최하단으로 + Cmd+Enter 단축키
+    setTimeout(() => {
+      const sc = document.getElementById('inq-thread-scroll');
+      if (sc) sc.scrollTop = sc.scrollHeight;
+      const ta = document.getElementById('inq-reply-text');
+      if (ta) {
+        ta.focus();
+        ta.addEventListener('keydown', (e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault();
+            window.__inqReply(inqId);
+          }
+        });
+      }
+    }, 30);
   }
 
   window.__inqSearch = function(val) { inqState.search = val; renderInquiries(); };
-  window.__inqFilter = function(key, val) { inqState[key] = val; renderInquiries(); };
-  window.__inqClearFilter = function() { inqState.search = ''; inqState.category = ''; inqState.status = ''; renderInquiries(); };
-  window.__inqDetail = function(id) { renderInquiryDetail(id); };
-  window.__inqBack = function() { renderInquiries(); };
-  window.__inqAnswer = function(id) {
+  window.__inqFilter = function(key, val) { inqState[key] = val; inqState.detailId = null; renderInquiries(); };
+  window.__inqClearFilter = function() { inqState.search = ''; inqState.category = ''; inqState.status = ''; inqState.priority = ''; renderInquiries(); };
+  window.__inqDetail = function(id) { inqState.detailId = id; renderInquiryDetail(id); };
+  window.__inqBack = function() { inqState.detailId = null; renderInquiries(); };
+  window.__inqGoWorker = function(workerId) { inqState.detailId = null; const nav = document.querySelector('.jf-nav-item[data-page="workers"]'); if (nav) nav.click(); setTimeout(() => renderWorkerDetail(workerId), 30); };
+  window.__inqReply = function(id) {
     const it = findInquiry(id); if (!it) return;
-    const textarea = document.getElementById('inq-answer-text');
-    const answer = (textarea?.value || '').trim();
-    if (!answer) { alert('답변 내용을 입력해주세요.'); return; }
-    it.status = 'answered';
-    it.answer = answer;
-    it.answeredBy = '테스트(마스터)';
-    it.answeredAt = TODAY + ' ' + new Date().toTimeString().slice(0,5);
-    alert('답변이 저장되었고 알바생에게 알림이 발송되었습니다.');
+    const ta = document.getElementById('inq-reply-text');
+    const text = (ta?.value || '').trim();
+    if (!text) { alert('답변 내용을 입력해주세요.'); return; }
+    const me = currentAdmin();
+    addInquiryMessage(id, 'admin', text, me.name);
+    if (ta) ta.value = '';
     renderInquiryDetail(id);
   };
-  window.__inqEdit = function(id) {
+  window.__inqClose = function(id) {
     const it = findInquiry(id); if (!it) return;
-    promptModal({
-      title: '문의 답변 수정',
-      subtitle: esc(it.title || ''),
-      fields: [{ key: 'answer', label: '답변', type: 'textarea', required: true, value: it.answer, placeholder: '답변 내용을 입력하세요' }],
-      submitLabel: '저장',
-      onSubmit: (vals) => {
-        it.answer = vals.answer;
-        it.answeredAt = nowStamp();
-        renderInquiryDetail(id);
-      },
-    });
+    if ((it.messages || []).filter(m => m.from === 'admin').length === 0) {
+      if (!confirm('아직 운영자 답변이 없습니다. 그래도 종결 처리하시겠습니까?')) return;
+    } else {
+      if (!confirm('이 문의를 종결 처리하시겠습니까? 알바생이 다시 메시지를 보내면 자동 재오픈됩니다.')) return;
+    }
+    const me = currentAdmin();
+    closeInquiry(id, me.name);
+    renderInquiryDetail(id);
   };
   window.__inqReopen = function(id) {
     const it = findInquiry(id); if (!it) return;
-    if (!confirm('답변을 삭제하고 미답변 상태로 되돌리시겠습니까?')) return;
-    it.status = 'pending'; it.answer = ''; it.answeredBy = ''; it.answeredAt = '';
+    if (!confirm('종결된 문의를 재오픈하시겠습니까?')) return;
+    it.status = (it.messages || []).some(m => m.from === 'admin') ? 'in_progress' : 'pending';
+    delete it.closedAt;
+    delete it.closedBy;
+    it.updatedAt = nowStamp();
+    renderInquiryDetail(id);
+  };
+  window.__inqSetPriority = function(id, priority) {
+    const it = findInquiry(id); if (!it) return;
+    it.priority = priority;
     renderInquiryDetail(id);
   };
 
@@ -1666,11 +1815,6 @@
           <div class="jf-title">안녕하세요, 테스트 마스터님 👋</div>
           <div class="jf-subtitle">${TODAY} · 오늘도 좋은 하루 보내세요</div>
         </div>
-        <div class="ws-actions">
-          <button class="btn-primary" onclick="window.__navGoto('jobs')">+ 새 공고 등록</button>
-          <button onclick="window.__navGoto('approval')">신청 승인 (${pendingAll})</button>
-          <button onclick="window.__notifAll()">📣 알림 발송</button>
-        </div>
       </div>
 
       ${alerts.length > 0 ? alerts.map(a =>
@@ -1708,70 +1852,6 @@
           </div>
         </div>
       ` : ''}
-
-      <div class="jf-metric-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 12px;">
-        <div class="jf-metric" style="cursor:pointer;" onclick="window.__openControlBoard()">
-          <div class="jf-metric-label">오늘 진행 중</div>
-          <div class="jf-metric-value" style="color:#22C55E;">${todayProgress}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div>
-          <div class="jf-metric-hint">관제 시스템 →</div>
-        </div>
-        <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('approval')">
-          <div class="jf-metric-label">승인 대기</div>
-          <div class="jf-metric-value" style="color:${pendingAll>0?'#EF4444':'#111827'};">${pendingAll}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div>
-          <div class="jf-metric-hint">${pendingUrgent>0 ? '🚨 협의대상/경고 '+pendingUrgent+'건 포함' : '신청 승인 →'}</div>
-        </div>
-        <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('jobs')">
-          <div class="jf-metric-label">모집 중 공고</div>
-          <div class="jf-metric-value" style="color:#2563EB;">${openJobs}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div>
-          <div class="jf-metric-hint">이번 주 총 ${weekJobs}건</div>
-        </div>
-        <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('points')">
-          <div class="jf-metric-label">출금 대기</div>
-          <div class="jf-metric-value" style="color:${pointPending.length>0?'#F59E0B':'#111827'};">${pointPending.length}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div>
-          <div class="jf-metric-hint">${pointPendingAmt.toLocaleString()}P · 반자동 처리</div>
-        </div>
-      </div>
-
-      <div class="jf-metric-grid" style="grid-template-columns: repeat(4, 1fr);">
-        <div class="jf-metric" style="cursor:pointer;" onclick="window.__openControlBoard()">
-          <div class="jf-metric-label">오늘 출근율</div>
-          <div class="jf-metric-value">${todayRate}</div>
-          <div class="jf-metric-hint">🟢 ${todayOk} · 🟡 ${todayLate} · 🔴 ${todayNo}</div>
-        </div>
-        <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('workers')">
-          <div class="jf-metric-label">전체 근무자</div>
-          <div class="jf-metric-value">${workers.length}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div>
-          <div class="jf-metric-hint">경고 보유 ${warnHoldCount}명</div>
-        </div>
-        <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('negotiation')">
-          <div class="jf-metric-label">협의대상</div>
-          <div class="jf-metric-value" style="color:${negCount>0?'#EF4444':'#16A34A'};">${negCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span></div>
-          <div class="jf-metric-hint">해제는 마스터 전용</div>
-        </div>
-        <div class="jf-metric" style="cursor:pointer; ${wlPendingCount>0?'border-left: 3px solid #F59E0B;':''}" onclick="window.__navGoto('jobs-waitlist')">
-          <div class="jf-metric-label">대기열</div>
-          <div class="jf-metric-value" style="color:${wlPendingCount>0?'#F59E0B':'#111827'};">
-            ${wlWaiting + wlPendingCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 명</span>
-          </div>
-          <div class="jf-metric-hint">
-            ${wlPendingCount > 0 ? `⏱ 수락 대기 <strong style="color:#F59E0B;">${wlPendingCount}명</strong> · 대기 ${wlWaiting}명` : `대기 중 ${wlWaiting}명${reopenedJobs > 0 ? ' · REOPENED ' + reopenedJobs : ''}`}
-          </div>
-        </div>
-      </div>
-
-      <div class="jf-metric-grid" style="grid-template-columns: 1fr 3fr; gap: 12px; margin-top: 12px;">
-        <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('worksite')">
-          <div class="jf-metric-label">근무지</div>
-          <div class="jf-metric-value">${Object.values(worksites).reduce((s,p)=>s+p.sites.length,0)}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 곳</span></div>
-          <div class="jf-metric-hint">${noGpsSites.length>0 ? 'GPS 미설정 '+noGpsSites.length+'곳' : '전체 GPS 설정 완료'}</div>
-        </div>
-        <div class="jf-metric" style="cursor:pointer;" onclick="window.__navGoto('stats')">
-          <div class="jf-metric-label">통계 리포트 바로가기</div>
-          <div class="jf-metric-hint" style="margin-top:8px;">
-            파트너사별 출근율 · 근무지 랭킹 · 주간 트렌드 · 시간대별 분포 등 경영 지표 한눈에 →
-          </div>
-        </div>
-      </div>
 
       <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 12px; margin-top: 20px;">
         <div class="jf-panel">
@@ -1860,332 +1940,6 @@
 
     main.innerHTML = html;
   }
-
-  // ───────────────────────────────────────────────────────
-  // 홈 (재설계 후보 v2) — 3단 위계: 처리 필요 → 오늘 한눈에 → 디테일
-  // 직관성 강화 · 정보 압축 · 색상 단순화 (긴급=빨강만)
-  // ───────────────────────────────────────────────────────
-  const homeV2State = { showDemoGuide: false };
-
-  function renderHomeV2() {
-    // 데이터 집계 (renderHome과 동일 로직 — 코드 중복은 의도적: 기존 홈 보존)
-    const todayStr = TODAY;
-    const todayJobs = jobs.filter(j => j.date === todayStr);
-    const todayProgress = todayJobs.filter(j => jobStatus(j) === 'progress').length;
-    const openJobs = jobs.filter(j => jobStatus(j) === 'open').length;
-    const pending = applications.filter(a => a.status === 'pending');
-    const pendingUrgent = pending.filter(a => a.reason === 'neg' || a.reason === 'warn3').length;
-    const pendingAll = pending.length;
-    const negCount = negotiations.length;
-    const warnHoldCount = workers.filter(w => w.warnings >= 1 && !w.negotiation).length;
-    const pointPending = pointTxs.filter(t => t.type === 'withdraw' && t.status === 'pending');
-    const pointPendingAmt = pointPending.reduce((s, t) => s + t.amount, 0);
-    const pointFailed = pointTxs.filter(t => t.status === 'failed').length;
-    const noGpsSites = Object.values(worksites).flatMap(p => p.sites).filter(s => !s.gps);
-    const wlWaiting = waitlist.filter(w => w.status === 'waiting').length;
-    const wlPendingCount = waitlist.filter(w => w.status === 'pending_accept').length;
-    const reopenedJobs = jobs.filter(j => j.reopened).length;
-
-    // 오늘 출결
-    let todayOk = 0, todayLate = 0, todayNo = 0, todayWait = 0;
-    let todayCapTotal = 0, todayFilledTotal = 0;
-    todayJobs.forEach(j => {
-      const s = attendanceSummary(j.id);
-      todayOk += s.출근; todayLate += s.지각; todayNo += s.결근; todayWait += s.대기;
-      // 구인율 — 정원 vs (앱 신청 + 외부 구인)
-      todayCapTotal += j.cap;
-      const ext = Array.isArray(j.externalWorkers) ? j.externalWorkers.length : 0;
-      todayFilledTotal += j.apply + ext;
-    });
-    const todayTotal = todayOk + todayLate + todayNo;
-    const todayRate = todayTotal > 0 ? Math.round((todayOk + todayLate) / todayTotal * 100) : null;
-    const fillRate = todayCapTotal > 0 ? Math.round(Math.min(100, todayFilledTotal / todayCapTotal * 100)) : null;
-
-    // 처리 필요 — alerts + anomalies 통합
-    const todoItems = [];
-    if (pendingUrgent > 0) todoItems.push({ sev: 'high', icon: '🚨', title: '협의대상/경고 신청', text: pendingUrgent + '건 직접 검토 필요', goto: 'approval' });
-    if (pointFailed > 0)   todoItems.push({ sev: 'high', icon: '💸', title: '출금 실패',          text: pointFailed + '건 재처리 필요',         goto: 'points' });
-    if (wlPendingCount > 0)todoItems.push({ sev: 'mid',  icon: '⏱',  title: '대기열 수락 대기',   text: wlPendingCount + '명 타이머 진행 중',  goto: 'jobs-waitlist' });
-    if (noGpsSites.length > 0) todoItems.push({ sev: 'mid', icon: '📍', title: 'GPS 영역 미설정',  text: noGpsSites.length + '곳 — 공고 등록 불가', goto: 'worksite' });
-    if (reopenedJobs > 0)  todoItems.push({ sev: 'mid',  icon: '🔄', title: 'REOPENED 공고',     text: reopenedJobs + '건 재모집 상태',       goto: 'jobs-waitlist' });
-    // 이상감지 결과 추가
-    const anomalies = computeAnomalies();
-    anomalies.forEach(an => {
-      todoItems.push({ sev: an.severity, icon: an.icon, title: an.title, text: an.text, hint: an.hint, goto: an.goto });
-    });
-
-    // 큰 도넛 색상 — 출근율
-    const rateColor = todayRate === null ? '#9CA3AF' : todayRate >= 90 ? '#22C55E' : todayRate >= 75 ? '#F59E0B' : '#EF4444';
-    const rateSegments = [
-      { value: todayOk,    color: '#22C55E' },
-      { value: todayLate,  color: '#F59E0B' },
-      { value: todayNo,    color: '#EF4444' },
-      { value: Math.max(todayWait, todayTotal === 0 ? 1 : 0), color: '#E5E7EB' },
-    ];
-    // 구인율 — 정원 대비 모집 인원
-    const fillColor = fillRate === null ? '#9CA3AF' : fillRate >= 90 ? '#22C55E' : fillRate >= 70 ? '#2563EB' : fillRate >= 50 ? '#F59E0B' : '#EF4444';
-    const fillSegments = [
-      { value: todayFilledTotal,                                    color: '#2563EB' },
-      { value: Math.max(todayCapTotal - todayFilledTotal, todayCapTotal === 0 ? 1 : 0), color: '#E5E7EB' },
-    ];
-
-    // 최근 활동 (renderHome과 동일하게 mix)
-    const activities = [];
-    applications.forEach(a => {
-      if (a.processedAt) {
-        const w = findWorker(a.workerId); const j = findJob(a.jobId); const s = findSite(j.siteId);
-        activities.push({ at: a.processedAt, icon: a.status === 'approved' ? '✓' : '✕', color: a.status === 'approved' ? '#22C55E' : '#EF4444', text: `${w.name} 신청 ${a.status === 'approved' ? '승인' : '거절'} — ${s.site.name} ${j.slot}`, by: a.processedBy });
-      }
-    });
-    pointTxs.forEach(t => {
-      if (!t.processedAt) return;
-      const w = findWorker(t.workerId);
-      if (t.type === 'withdraw') activities.push({ at: t.processedAt, icon: t.status === 'done' ? '💰' : '⚠', color: t.status === 'done' ? '#2563EB' : '#EF4444', text: `${w.name} 출금 ${t.status === 'done' ? '완료' : '실패'} — ${t.amount.toLocaleString()}P`, by: t.processedBy });
-    });
-    negotiations.forEach(n => activities.push({ at: n.registeredAt, icon: '⚠', color: '#EF4444', text: `${n.name} 협의대상 등록 — ${n.sub}`, by: n.registeredBy }));
-    activities.sort((a, b) => b.at.localeCompare(a.at));
-    const recent = activities.slice(0, 8);
-
-    // ─── 렌더 ───
-    let html = `
-      <div class="jf-header">
-        <div>
-          <div class="jf-title">안녕하세요, 테스트 마스터님 👋</div>
-          <div class="jf-subtitle">${TODAY} · 홈 (재설계 후보) — 기존 홈과 비교 후 선택</div>
-        </div>
-        <div class="ws-actions">
-          <button class="btn-primary" onclick="window.__navGoto('jobs')">+ 새 공고 등록</button>
-          <button onclick="window.__navGoto('approval')">신청 승인 ${pendingAll>0 ? '('+pendingAll+')' : ''}</button>
-          <button onclick="window.__notifAll()">📣 알림 발송</button>
-        </div>
-      </div>
-    `;
-
-    // ─── 1단: 처리 필요 ───
-    if (todoItems.length === 0) {
-      html += `
-        <div class="jf-panel" style="margin-bottom: 16px; padding: 18px 20px; background: linear-gradient(180deg, #F0FDF4 0%, #fff 80%); border-left: 3px solid #22C55E; display:flex; align-items:center; gap:14px;">
-          <div style="font-size: 28px;">✅</div>
-          <div>
-            <div style="font-size: 14px; font-weight: 600; color: #166534;">모든 항목이 정상입니다</div>
-            <div style="font-size: 12px; color: #15803D; margin-top: 2px;">처리 대기 중인 긴급 안건이 없습니다 — 운영 상태 양호</div>
-          </div>
-        </div>
-      `;
-    } else {
-      const highCount = todoItems.filter(t => t.sev === 'high').length;
-      html += `
-        <div class="jf-panel" style="margin-bottom: 16px; padding: 14px 18px; border-left: 3px solid ${highCount > 0 ? '#EF4444' : '#F59E0B'}; background: ${highCount > 0 ? 'linear-gradient(180deg, #FEF2F2 0%, #fff 70%)' : 'linear-gradient(180deg, #FFFBEB 0%, #fff 70%)'};">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-            <div style="font-size:14px; font-weight:600; color:${highCount > 0 ? '#991B1B' : '#92400E'}; display:flex; align-items:center; gap:8px;">
-              ${highCount > 0 ? '🚨' : '⚠'} 처리 필요 <span style="font-size:11px; color:#6B7684; font-weight:400;">${todoItems.length}건${highCount > 0 ? ' · 긴급 ' + highCount : ''}</span>
-            </div>
-          </div>
-          <div style="display:grid; grid-template-columns: repeat(${Math.min(todoItems.length, 3)}, 1fr); gap: 10px;">
-            ${todoItems.slice(0, 6).map(t => {
-              const c = t.sev === 'high' ? '#EF4444' : '#F59E0B';
-              const bg = t.sev === 'high' ? '#FEE2E2' : '#FEF3C7';
-              return `
-                <div onclick="window.__navGoto('${t.goto}')" style="cursor:pointer; padding:10px 12px; background:${bg}; border-radius:8px; border:0.5px solid ${c}40;">
-                  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:6px; margin-bottom:3px;">
-                    <div style="font-size:12px; font-weight:600; color:${c};">${t.icon} ${t.title}</div>
-                    <span style="font-size:10px; color:${c}; opacity:0.7;">→</span>
-                  </div>
-                  <div style="font-size:12px; color:#374151; line-height:1.4;">${t.text}</div>
-                  ${t.hint ? `<div style="font-size:10px; color:#6B7684; margin-top:3px;">${t.hint}</div>` : ''}
-                </div>
-              `;
-            }).join('')}
-          </div>
-        </div>
-      `;
-    }
-
-    // ─── 2단: 오늘 한눈에 ───
-    html += `
-      <div class="jf-panel" style="margin-bottom: 16px; padding: 20px;">
-        <div style="font-size:13px; font-weight:600; color:#111827; margin-bottom: 16px; display:flex; align-items:center; gap:8px;">
-          📊 오늘 한눈에 <span style="font-size:11px; color:#6B7684; font-weight:400;">${TODAY}</span>
-        </div>
-        <div style="display:grid; grid-template-columns: 320px 1fr; gap: 24px; align-items:center;">
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-            <!-- 출근율 도넛 -->
-            <div style="position:relative; display:flex; flex-direction:column; align-items:center; cursor:pointer;" onclick="window.__openControlBoard()" title="관제 시스템에서 상세 보기">
-              <div style="position:relative;">
-                ${donutSvg(rateSegments, 140, 14)}
-                <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none;">
-                  <div style="font-size:26px; font-weight:600; color:${rateColor}; line-height:1;">${todayRate !== null ? todayRate + '%' : '-'}</div>
-                  <div style="font-size:10px; color:#6B7684; margin-top:4px;">출근율</div>
-                </div>
-              </div>
-              <div style="display:flex; gap:6px; margin-top:10px; font-size:10px;">
-                <span style="color:#166534; font-weight:500;">🟢${todayOk}</span>
-                <span style="color:#92400E; font-weight:500;">🟡${todayLate}</span>
-                <span style="color:#991B1B; font-weight:500;">🔴${todayNo}</span>
-                <span style="color:#6B7684;">⚪${todayWait}</span>
-              </div>
-            </div>
-            <!-- 구인율 도넛 -->
-            <div style="position:relative; display:flex; flex-direction:column; align-items:center; cursor:pointer;" onclick="window.__navGoto('jobs')" title="공고 관리로 이동">
-              <div style="position:relative;">
-                ${donutSvg(fillSegments, 140, 14)}
-                <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none;">
-                  <div style="font-size:26px; font-weight:600; color:${fillColor}; line-height:1;">${fillRate !== null ? fillRate + '%' : '-'}</div>
-                  <div style="font-size:10px; color:#6B7684; margin-top:4px;">구인율</div>
-                </div>
-              </div>
-              <div style="margin-top:10px; font-size:10px; color:#374151;">
-                <strong style="color:#2563EB;">${todayFilledTotal}</strong> / ${todayCapTotal} 명
-              </div>
-            </div>
-          </div>
-
-          <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
-            <div onclick="window.__navGoto('approval')" style="cursor:pointer; padding:16px 18px; border-radius:10px; background:${pendingAll>0?'#FEF2F2':'#F9FAFB'}; border:0.5px solid ${pendingAll>0?'#FCA5A5':'rgba(0,0,0,0.06)'}; transition:transform 0.1s;" onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform='translateY(0)'">
-              <div style="font-size:11px; color:#6B7684; font-weight:500;">승인 대기</div>
-              <div style="font-size:32px; font-weight:600; margin-top:4px; color:${pendingAll>0?'#EF4444':'#111827'};">${pendingAll}</div>
-              <div style="font-size:11px; color:${pendingAll>0?'#991B1B':'#6B7684'}; margin-top:4px;">${pendingUrgent>0 ? '🚨 긴급 ' + pendingUrgent + '건' : pendingAll === 0 ? '대기 없음' : '검토 대기'}</div>
-            </div>
-            <div onclick="window.__openControlBoard()" style="cursor:pointer; padding:16px 18px; border-radius:10px; background:#F0FDF4; border:0.5px solid rgba(34,197,94,0.25); transition:transform 0.1s;" onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform='translateY(0)'">
-              <div style="font-size:11px; color:#6B7684; font-weight:500;">진행 중 공고</div>
-              <div style="font-size:32px; font-weight:600; margin-top:4px; color:#16A34A;">${todayProgress}</div>
-              <div style="font-size:11px; color:#6B7684; margin-top:4px;">관제 시스템 →</div>
-            </div>
-            <div onclick="window.__navGoto('points')" style="cursor:pointer; padding:16px 18px; border-radius:10px; background:${pointPending.length>0?'#FFFBEB':'#F9FAFB'}; border:0.5px solid ${pointPending.length>0?'#FCD34D':'rgba(0,0,0,0.06)'}; transition:transform 0.1s;" onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform='translateY(0)'">
-              <div style="font-size:11px; color:#6B7684; font-weight:500;">출금 대기</div>
-              <div style="font-size:32px; font-weight:600; margin-top:4px; color:${pointPending.length>0?'#D97706':'#111827'};">${pointPending.length}</div>
-              <div style="font-size:11px; color:#6B7684; margin-top:4px;">${pointPendingAmt > 0 ? pointPendingAmt.toLocaleString() + 'P · 반자동' : '대기 없음'}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-
-    // ─── 3단: 보조 KPI 칩 (한 줄) ───
-    html += `
-      <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 16px;">
-        <div onclick="window.__navGoto('jobs')" style="cursor:pointer; padding:10px 14px; background:#fff; border:0.5px solid rgba(0,0,0,0.08); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:12px; color:#6B7684;">📋 모집 중</span>
-          <strong style="font-size:14px; color:#2563EB;">${openJobs}</strong>
-        </div>
-        <div onclick="window.__navGoto('workers')" style="cursor:pointer; padding:10px 14px; background:#fff; border:0.5px solid rgba(0,0,0,0.08); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:12px; color:#6B7684;">👥 근무자</span>
-          <strong style="font-size:14px;">${workers.length}<span style="font-size:11px; color:#6B7684; font-weight:400;"> · 경고 ${warnHoldCount}</span></strong>
-        </div>
-        <div onclick="window.__navGoto('negotiation')" style="cursor:pointer; padding:10px 14px; background:#fff; border:0.5px solid rgba(0,0,0,0.08); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:12px; color:#6B7684;">🚫 협의대상</span>
-          <strong style="font-size:14px; color:${negCount>0?'#EF4444':'#16A34A'};">${negCount}</strong>
-        </div>
-        <div onclick="window.__navGoto('jobs-waitlist')" style="cursor:pointer; padding:10px 14px; background:#fff; border:0.5px solid rgba(0,0,0,0.08); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:12px; color:#6B7684;">⏱ 대기열</span>
-          <strong style="font-size:14px; color:${wlPendingCount>0?'#F59E0B':'#111827'};">${wlWaiting + wlPendingCount}</strong>
-        </div>
-        <div onclick="window.__navGoto('worksite')" style="cursor:pointer; padding:10px 14px; background:#fff; border:0.5px solid rgba(0,0,0,0.08); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:12px; color:#6B7684;">🏢 근무지</span>
-          <strong style="font-size:14px;">${Object.values(worksites).reduce((s,p)=>s+p.sites.length,0)}</strong>
-        </div>
-      </div>
-    `;
-
-    // ─── 4단: 오늘 진행 공고 + 최근 활동 (현재 분할 패널 유지) ───
-    html += `
-      <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 12px; margin-bottom: 14px;">
-        <div class="jf-panel">
-          <div class="ws-section-title">오늘 진행 중인 공고
-            <span style="font-size:11px; color:#6B7684; font-weight:400;">시작 임박순 · ${todayJobs.length}건</span>
-          </div>
-          ${todayJobs.length === 0
-            ? '<div style="padding:20px 0; text-align:center; color:#6B7684; font-size:13px;">오늘 예정된 공고가 없습니다.</div>'
-            : todayJobs.sort((a,b) => (a.start||'').localeCompare(b.start||'')).map(j => {
-                const site = findSite(j.siteId); const st = jobStatus(j); const sum = attendanceSummary(j.id);
-                const stColor = { pending:'#8B5CF6', expired:'#9CA3AF', open:'#2563EB', closed:'#F59E0B', progress:'#22C55E', done:'#6B7684' }[st];
-                return `
-                  <div onclick="window.__gotoJobDetail('${j.id}');" style="padding: 10px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:10px;">
-                    <div>
-                      <div style="font-weight:500; font-size:13px;">${site.site.name} <span style="color:#6B7684; font-weight:400; font-size:12px;">${site.partner}</span></div>
-                      <div style="font-size:12px; color:#6B7684; margin-top:2px;">${j.slot} ${j.start}~${j.end} · 모집 ${j.apply}/${j.cap}</div>
-                    </div>
-                    <div style="display:flex; gap:8px; align-items:center;">
-                      <span style="font-size:11px; color:#166534;">🟢${sum.출근}</span>
-                      <span style="font-size:11px; color:#92400E;">🟡${sum.지각}</span>
-                      <span style="font-size:11px; color:#991B1B;">🔴${sum.결근}</span>
-                      <span class="jobs-status" style="background:${stColor}22; color:${stColor};">${STATUS_LABEL[st]}</span>
-                    </div>
-                  </div>
-                `;
-              }).join('')}
-        </div>
-
-        <div class="jf-panel">
-          <div class="ws-section-title">최근 활동 <span style="font-size:11px; color:#6B7684; font-weight:400;">최근 ${recent.length}건</span></div>
-          ${recent.length === 0
-            ? '<div style="padding:20px 0; text-align:center; color:#6B7684; font-size:13px;">최근 활동이 없습니다.</div>'
-            : recent.map(a => `
-              <div style="display:flex; gap:10px; padding: 8px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); font-size:12px;">
-                <span style="color:${a.color}; font-weight:500; width:16px; text-align:center; flex-shrink:0;">${a.icon}</span>
-                <div style="flex:1; min-width:0;">
-                  <div style="color:#111827;">${a.text}</div>
-                  <div style="color:#6B7684; font-size:11px; margin-top:2px;">${a.at} · ${a.by}</div>
-                </div>
-              </div>
-            `).join('')}
-        </div>
-      </div>
-    `;
-
-    // ─── 데모 가이드 (접기 가능) ───
-    html += `
-      <div class="jf-panel" style="border-left: 3px solid #8B5CF6;">
-        <div class="ws-section-title" style="cursor:pointer;" onclick="window.__hv2ToggleDemo()">
-          <span>🎬 데모 가이드 <span style="font-size:11px; color:#6B7684; font-weight:400;">개발자 인계용 · 시연 흐름 (클릭하여 ${homeV2State.showDemoGuide ? '접기' : '펼치기'})</span></span>
-          <span style="font-size:14px; color:#6B7684;">${homeV2State.showDemoGuide ? '▼' : '▶'}</span>
-        </div>
-        ${homeV2State.showDemoGuide ? `
-          <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px;">
-            <div style="padding:12px 14px; background:#F0FDFA; border-radius:8px; font-size:12px; line-height:1.7;">
-              <div style="font-weight:500; color:#0F766E; margin-bottom:4px;">⏰ 관제 시뮬 시각 추천</div>
-              <div style="color:#374151;">
-                <code style="background:#fff; padding:1px 5px; border-radius:3px; font-size:11px;">09:00</code> 새벽 종료·오전 진행·모집 多<br>
-                <code style="background:#fff; padding:1px 5px; border-radius:3px; font-size:11px;">15:30</code> 종료/진행/모집 균등 (기본 데모)<br>
-                <code style="background:#fff; padding:1px 5px; border-radius:3px; font-size:11px;">22:30</code> 야간 시작 직후 진행 多
-              </div>
-            </div>
-            <div style="padding:12px 14px; background:#F0F9FF; border-radius:8px; font-size:12px; line-height:1.7;">
-              <div style="font-weight:500; color:#1E40AF; margin-bottom:4px;">📋 핵심 테스트 흐름</div>
-              <div style="color:#374151;">
-                1. 공고 상세 → 외부 구인 +1 → 관제 카드 반영<br>
-                2. 신청 승인에서 거절 사유 모달<br>
-                3. 퇴근 승인에서 GPS 승인 (포인트 자동 지급)<br>
-                4. 관제에서 구인 완료 → 공고 마감 전환
-              </div>
-            </div>
-            <div style="padding:12px 14px; background:#FEF3C7; border-radius:8px; font-size:12px; line-height:1.7;">
-              <div style="font-weight:500; color:#92400E; margin-bottom:4px;">🔒 권한 시뮬 (관제 창)</div>
-              <div style="color:#374151;">
-                상단 드롭다운에서 <strong>박담당(2급)</strong> 선택 →<br>
-                담당 근무지 (용인·군포_l) 만 보이는지 확인
-              </div>
-            </div>
-            <div style="padding:12px 14px; background:#F3E8FF; border-radius:8px; font-size:12px; line-height:1.7;">
-              <div style="font-weight:500; color:#6B21A8; margin-bottom:4px;">📊 데이터 풍부도</div>
-              <div style="color:#374151; font-family:'SF Mono',Monaco,monospace; font-size:11px;">
-                공고 ${jobs.length}건 · 신청 ${applications.length.toLocaleString()}건<br>
-                포인트 ${pointTxs.length}트랜잭션 · GPS ${gpsRequests.length}건<br>
-                문의 ${inquiries.length}건 · 워커 ${workers.length}명 · 관리자 ${admins.length}명
-              </div>
-            </div>
-          </div>
-        ` : ''}
-      </div>
-    `;
-
-    main.innerHTML = html;
-  }
-
-  window.__hv2ToggleDemo = function() {
-    homeV2State.showDemoGuide = !homeV2State.showDemoGuide;
-    renderHomeV2();
-  };
 
   // 네비 항목 프로그램적으로 전환
   window.__navGoto = function(page) {
@@ -3680,6 +3434,7 @@
             ? '<button class="btn-primary" onclick="window.__wrkNegRelease(\'' + w.id + '\')">협의대상 해제 (마스터)</button>'
             : '<button onclick="window.__wrkWarnAdd(\'' + w.id + '\')">경고 부여</button>'}
           <button onclick="window.__bonusGive('${w.id}')">💰 보너스 지급</button>
+          <button onclick="window.__wrkRecover('${w.id}')" style="color:#991B1B; border-color:#FCA5A5;">⛔ 포인트 회수</button>
           <button onclick="window.__notifWorker('${w.id}')">알림 발송</button>
         </div>
       </div>
@@ -3746,6 +3501,66 @@
             : '<div style="display:flex; gap:6px; padding: 4px 0;">' + w.favParts.map(k => `<span class="ws-mini-tag">${worksites[k].name}</span>`).join('') + '</div>'
           }
         </div>
+
+        ${(() => {
+          const myTxs = pointTxs
+            .filter(t => t.workerId === w.id)
+            .sort((a, b) => (b.requestedAt || '').localeCompare(a.requestedAt || ''));
+          const fmt = {
+            reward:   { label: '지급',   color: '#22C55E', icon: '+' },
+            withdraw: { label: '출금',   color: '#2563EB', icon: '↗' },
+            deduct:   { label: '회수',   color: '#EF4444', icon: '−' },
+          };
+          const stLabel = (t) => {
+            if (t.type === 'withdraw') {
+              return { pending: '대기', done: '완료', failed: '실패' }[t.status] || t.status;
+            }
+            return '완료';
+          };
+          const stStyle = (t) => {
+            if (t.type === 'withdraw') {
+              if (t.status === 'pending') return 'background:#FEF3C7; color:#92400E;';
+              if (t.status === 'failed')  return 'background:#FEE2E2; color:#991B1B;';
+            }
+            return 'background:#F3F4F6; color:#374151;';
+          };
+          const totalReward = myTxs.filter(t => t.type === 'reward').reduce((s, t) => s + (t.amount || 0), 0);
+          const totalWithdraw = myTxs.filter(t => t.type === 'withdraw' && t.status === 'done').reduce((s, t) => s + (t.amount || 0), 0);
+          const totalRecover = myTxs.filter(t => t.type === 'deduct').reduce((s, t) => s + Math.abs(t.amount || 0), 0);
+          return `
+            <div class="jf-panel" style="grid-column: span 2;">
+              <div class="ws-section-title">
+                <span>포인트 이력 <span style="font-size:11px; color:#6B7684; font-weight:400;">(지급 · 출금 · 회수 — 최근 ${myTxs.length}건)</span></span>
+                <span style="font-size:11px; color:#6B7684;">누적 지급 +${totalReward.toLocaleString()}P · 출금 -${totalWithdraw.toLocaleString()}P · 회수 -${totalRecover.toLocaleString()}P</span>
+              </div>
+              ${myTxs.length === 0
+                ? '<div style="padding:20px 0; text-align:center; color:#6B7684; font-size:12px;">포인트 이력이 없습니다.</div>'
+                : `<div class="jf-table" style="font-size:12px;">
+                    <div class="jf-table-head" style="grid-template-columns: 1fr 0.7fr 1fr 2.4fr 0.8fr;">
+                      <div>일시</div>
+                      <div>종류</div>
+                      <div style="text-align:right;">금액</div>
+                      <div>사유</div>
+                      <div>상태</div>
+                    </div>
+                    ${myTxs.map(t => {
+                      const meta = fmt[t.type] || { label: t.type, color: '#6B7684', icon: '·' };
+                      const amt = (t.amount || 0);
+                      const amtStr = (amt > 0 ? '+' : '') + amt.toLocaleString() + 'P';
+                      return `
+                        <div class="jf-table-row" style="grid-template-columns: 1fr 0.7fr 1fr 2.4fr 0.8fr; cursor:default;">
+                          <div style="color:#6B7684;">${esc(t.requestedAt || '')}${t.processedAt && t.processedAt !== t.requestedAt ? '<br><span style="font-size:10px;">처리 ' + esc(t.processedAt) + '</span>' : ''}</div>
+                          <div><span style="display:inline-block; padding:2px 8px; background:${meta.color}1A; color:${meta.color}; border-radius:4px; font-size:11px; font-weight:600;">${meta.icon} ${meta.label}</span></div>
+                          <div style="text-align:right; font-weight:600; color:${meta.color}; font-family:'SF Mono',Monaco,monospace;">${amtStr}</div>
+                          <div style="color:#374151;">${esc(t.reason || '-')}${t.bank ? `<br><span style="font-size:10px; color:#6B7684;">${esc(t.bank)} ${esc(t.account || '')}</span>` : ''}${t.failReason ? `<br><span style="font-size:10px; color:#EF4444;">${esc(t.failReason)}</span>` : ''}</div>
+                          <div><span class="apv-badge" style="${stStyle(t)} font-size:10px;">${stLabel(t)}</span>${t.processedBy ? `<br><span style="font-size:10px; color:#6B7684;">${esc(t.processedBy)}</span>` : ''}</div>
+                        </div>
+                      `;
+                    }).join('')}
+                  </div>`}
+            </div>
+          `;
+        })()}
       </div>
     `;
   }
@@ -3754,6 +3569,36 @@
   window.__wrkFilter = function(key, val) { workerState[key] = val; renderWorkers(); };
   window.__wrkClearFilter = function() { workerState.search = ''; workerState.status = ''; renderWorkers(); };
   window.__wrkDetail = function(id) { renderWorkerDetail(id); };
+  window.__wrkRecover = function(id) {
+    const w = findWorker(id); if (!w) return;
+    promptModal({
+      title: '포인트 회수',
+      subtitle: `<strong>${esc(w.name)}</strong> · 보유 <strong style="color:#2563EB;">${(w.points||0).toLocaleString()}P</strong><br><span style="color:#991B1B; font-size:12px;">⛔ 무단결근 후 발견 / 부정 출근 / 기타 정책 위반에 사용 — 사유 메모 필수 (감사로그 기록)</span>`,
+      fields: [
+        { key: 'amount', label: '회수 금액', type: 'number', required: true, value: '1000', placeholder: '1,000P 단위', hint: `최소 1,000P · 1,000P 단위 · 보유 잔액 ${(w.points||0).toLocaleString()}P` },
+        { key: 'memo', label: '회수 사유 (메모)', type: 'textarea', required: true, placeholder: '예: 무단결근 후 발견 — 4/22 곤지암 야간 / 부정 출근 신고 접수 등', hint: '감사로그 + 회수 로그에 기록되며 알바생에게도 알림 발송됩니다' },
+      ],
+      submitLabel: '회수',
+      danger: true,
+      onSubmit: (vals) => {
+        const amount = parseInt(String(vals.amount).replace(/,/g, ''), 10);
+        if (isNaN(amount) || amount < 1000) { alert('최소 1,000P 이상 입력해주세요.'); return false; }
+        if (amount % 1000 !== 0) { alert('1,000P 단위로 입력해주세요.'); return false; }
+        if (!vals.memo || !vals.memo.trim()) { alert('회수 사유는 필수입니다.'); return false; }
+        if (amount > 50000) {
+          if (!confirm(amount.toLocaleString() + 'P는 큰 금액입니다. 정말 회수하시겠습니까?')) return false;
+        }
+        const me = currentAdmin();
+        const result = recoverWorkerPoints({ workerId: id, amount, memo: vals.memo, by: me.name, byRole: me.role });
+        if (!result || result.error) { alert('처리 실패: ' + (result?.error || '알 수 없는 오류')); return false; }
+        const shortMsg = result.deducted < result.requested
+          ? `요청 ${result.requested.toLocaleString()}P 중 잔액 부족으로 ${result.deducted.toLocaleString()}P만 차감됨.`
+          : `${result.deducted.toLocaleString()}P 회수 완료.`;
+        alert(`✅ ${shortMsg}\n\n${w.name} 님 잔여 ${(w.points||0).toLocaleString()}P\n알바생에게 회수 알림이 발송되었습니다.`);
+        renderWorkerDetail(id);
+      },
+    });
+  };
   window.__notifWorker = function(id) {
     const w = findWorker(id); if (!w) return;
     showNotificationModal([{ id: w.id, name: w.name, phone: w.phone, type: 'worker' }]);
@@ -3917,6 +3762,25 @@
         const sp = document.createElement('span');
         sp.setAttribute('data-role', 'gps-badge');
         sp.style.cssText = 'margin-left:auto; background:#8B5CF6; color:#fff; font-size:10px; padding:1px 6px; border-radius:8px;';
+        sp.textContent = pending;
+        navItem.appendChild(sp);
+      }
+    } else if (existing) {
+      existing.remove();
+    }
+  }
+
+  function updateCancelBadge() {
+    const pending = applications.filter(a => a.status === 'cancel_pending').length;
+    const navItem = document.querySelector('.jf-nav-item[data-page="cancelapv"]');
+    if (!navItem) return;
+    const existing = navItem.querySelector('span[data-role="cancel-badge"]');
+    if (pending > 0) {
+      if (existing) existing.textContent = pending;
+      else {
+        const sp = document.createElement('span');
+        sp.setAttribute('data-role', 'cancel-badge');
+        sp.style.cssText = 'margin-left:auto; background:#F97316; color:#fff; font-size:10px; padding:1px 6px; border-radius:8px;';
         sp.textContent = pending;
         navItem.appendChild(sp);
       }
@@ -4378,6 +4242,304 @@
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
     document.body.appendChild(overlay);
   }
+
+  // ───────────────────────────────────────────────────────
+  // 취소 승인 페이지 (12h 이내 알바생 취소 요청 검토)
+  // ───────────────────────────────────────────────────────
+  const cnclState = { reasonType: '' }; // 사유 카테고리 필터
+
+  // 시작까지 남은 시간 계산 (분 단위)
+  function timeToJobStart(j) {
+    if (!j) return null;
+    const startMs = new Date(j.date + 'T' + j.start + ':00').getTime();
+    const now = new Date();
+    const [ty, tm, td] = TODAY.split('-').map(Number);
+    const nowMs = new Date(ty, tm - 1, td, now.getHours(), now.getMinutes()).getTime();
+    return Math.floor((startMs - nowMs) / 60000);
+  }
+
+  function renderCancelApproval() {
+    const allCancelReqs = applications.filter(a => a.cancelRequestedAt);
+    const pending = allCancelReqs.filter(a => a.status === 'cancel_pending');
+    const today = TODAY;
+    const processedToday = allCancelReqs.filter(a =>
+      a.cancelDecision && a.cancelReviewedAt && a.cancelReviewedAt.startsWith(today)
+    ).length;
+
+    // 사유 카테고리별 카운트
+    const byType = {};
+    pending.forEach(a => {
+      byType[a.cancelReasonType] = (byType[a.cancelReasonType] || 0) + 1;
+    });
+    const normalCount = byType.normal || 0;
+    const validReasonCount = pending.length - normalCount;
+
+    // 필터 적용 — 사유 카테고리
+    const filtered = cnclState.reasonType
+      ? pending.filter(a => a.cancelReasonType === cnclState.reasonType)
+      : pending;
+
+    // 정렬: 시작까지 남은 시간이 짧은 것 우선 (긴급)
+    const sorted = [...filtered].sort((a, b) => {
+      const ja = findJob(a.jobId); const jb = findJob(b.jobId);
+      const ra = ja ? timeToJobStart(ja) : 99999;
+      const rb = jb ? timeToJobStart(jb) : 99999;
+      return ra - rb;
+    });
+
+    // 사유 카테고리 옵션
+    const typeOpts = Object.keys(CANCEL_REASON_TYPES).map(k => {
+      const meta = CANCEL_REASON_TYPES[k];
+      const cnt = byType[k] || 0;
+      const sel = cnclState.reasonType === k ? 'selected' : '';
+      return `<option value="${k}" ${sel}>${meta.label} (${cnt})</option>`;
+    }).join('');
+
+    let html = `
+      <div class="jf-header">
+        <div>
+          <div class="jf-title">취소 승인</div>
+          <div class="jf-subtitle">근무 시작 12시간 이내 알바생 취소 요청 검토 — 사유별 차감/면제/반려 결정</div>
+        </div>
+        <div class="ws-actions">
+          <button onclick="window.__cnclHistory()">처리 이력 (${allCancelReqs.filter(a => a.cancelDecision).length}건)</button>
+        </div>
+      </div>
+
+      <div class="jf-metric-grid">
+        <div class="jf-metric"><div class="jf-metric-label">대기 중</div><div class="jf-metric-value" style="color:${pending.length>0?'#F97316':'#111827'};">${pending.length}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">${pending.length>0?'사유 검토 후 결정':'모두 처리됨'}</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">단순 변심</div><div class="jf-metric-value" style="color:${normalCount>0?'#EF4444':'#111827'};">${normalCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">차감 권고 (-1,000P)</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">사유 있음</div><div class="jf-metric-value" style="color:${validReasonCount>0?'#3B82F6':'#111827'};">${validReasonCount}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">질병/가족/교통/날씨/기타</div></div>
+        <div class="jf-metric"><div class="jf-metric-label">오늘 처리</div><div class="jf-metric-value">${processedToday}<span style="font-size:13px; color:#6B7684; font-weight:400;"> 건</span></div><div class="jf-metric-hint">차감+면제+반려 합계</div></div>
+      </div>
+
+      <div class="ws-warn-box" style="background:#FFF7ED; color:#9A3412; border-left-color:#F97316;">
+        ℹ <b>정책</b>: 12h 이내 취소는 사유 검토 필수 — 단순 변심은 1,000P 차감 (자동 아님), 정당한 사유는 면제, 사유 부족은 반려(출근 의무) · <b>경고 부여는 별도</b> (근무자 관리 페이지)
+      </div>
+
+      <div class="jobs-filters">
+        <select onchange="window.__cnclFilter(this.value)">
+          <option value="">전체 사유</option>
+          ${typeOpts}
+        </select>
+        ${cnclState.reasonType ? `<button onclick="window.__cnclFilter('')" style="font-size:12px;">필터 초기화</button>` : ''}
+      </div>
+    `;
+
+    if (sorted.length === 0) {
+      html += `<div class="jf-placeholder"><div class="jf-placeholder-icon">✅</div><div class="jf-placeholder-title">${pending.length === 0 ? '대기 중인 취소 요청이 없습니다' : '조건에 맞는 요청이 없습니다'}</div><div class="jf-placeholder-desc">${pending.length === 0 ? '12h 이내 알바생 취소 요청이 들어오면 여기에 표시됩니다.' : '필터를 변경해보세요.'}</div></div>`;
+    } else {
+      html += `<div class="apv-list">`;
+      sorted.forEach(a => {
+        const w = findWorker(a.workerId);
+        const j = findJob(a.jobId);
+        if (!w || !j) return;
+        const site = findSite(j.siteId);
+        const meta = CANCEL_REASON_TYPES[a.cancelReasonType] || { label: '미분류', color: '#6B7684', recommend: 'review', hint: '' };
+        const remainMin = timeToJobStart(j);
+        const remainLabel = remainMin == null ? ''
+          : remainMin < 0 ? `<span style="color:#991B1B; font-weight:600;">⚠ 시작 ${-remainMin}분 경과</span>`
+          : remainMin < 60 ? `<span style="color:#991B1B; font-weight:600;">🚨 ${remainMin}분 후 시작</span>`
+          : remainMin < 360 ? `<span style="color:#92400E; font-weight:500;">⏱ ${Math.floor(remainMin/60)}h ${remainMin%60}m 후 시작</span>`
+          : `<span style="color:#374151;">⏱ ${Math.floor(remainMin/60)}h ${remainMin%60}m 후 시작</span>`;
+
+        const sc = workerScore(w);
+        const scoreBadge = `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:10px; background:${sc.color}1A; color:${sc.color}; font-size:10px; font-weight:600;">
+          ${sc.tier && sc.tier !== 'unknown' ? '<span style="font-size:9px; opacity:0.85;">'+sc.tier+'</span>' : ''}
+          ${sc.label}
+        </span>`;
+
+        const cardCls = a.cancelReasonType === 'normal' ? 'urgent' : '';
+        const cardStyle = a.cancelReasonType === 'normal' ? 'border-left: 3px solid #EF4444;' : `border-left: 3px solid ${meta.color};`;
+
+        // 추천 액션 강조
+        const isDeductRecommend = meta.recommend === 'deduct';
+        const isExemptRecommend = meta.recommend === 'exempt';
+        const deductBtnCls = isDeductRecommend ? 'btn-primary' : '';
+        const exemptBtnCls = isExemptRecommend ? 'btn-primary' : '';
+
+        html += `
+          <div class="apv-card ${cardCls}" style="${cardStyle} grid-template-columns: 1.1fr 1.3fr 1.4fr auto;">
+            <div class="apv-worker">
+              <div class="apv-worker-name">
+                ${esc(w.name)}
+                ${scoreBadge}
+                ${w.negotiation ? '<span class="apv-badge apv-badge-neg" style="font-size:10px; padding:2px 6px;">협의대상</span>' : ''}
+              </div>
+              <div class="apv-worker-phone">${esc(w.phone)}</div>
+              <div class="apv-worker-stat">누적 <strong>${w.total}</strong>회 · 경고 <strong>${w.warnings}</strong> · 보유 <strong>${(w.points||0).toLocaleString()}P</strong></div>
+            </div>
+            <div class="apv-job">
+              <div class="apv-job-title">${esc(site?.site.name || '')} <span class="ws-mini-tag" style="font-size:10px;">${esc(site?.partner || '')}</span></div>
+              <div class="apv-job-sub">${j.date} · ${j.slot} ${j.start}~${j.end}</div>
+              <div class="apv-job-sub">신청 ${a.appliedAt} · 모집 ${j.apply}/${j.cap}</div>
+              <div class="apv-job-sub" style="margin-top:4px;">${remainLabel}</div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <span style="display:inline-block; padding:3px 10px; background:${meta.color}1A; color:${meta.color}; border-radius:10px; font-size:11px; font-weight:600;">${esc(meta.label)}</span>
+                <span style="font-size:10px; color:#6B7684;">취소 요청 ${a.cancelRequestedAt}</span>
+              </div>
+              <div style="background:#F9FAFB; border:0.5px solid rgba(0,0,0,0.08); border-radius:6px; padding:8px 10px; font-size:12px; color:#374151; line-height:1.5;">
+                ${esc(a.cancelReason || '(사유 없음)')}
+              </div>
+              <div style="font-size:10px; color:${meta.color}; font-weight:500;">권고: ${meta.recommend === 'deduct' ? '-1,000P 차감' : meta.recommend === 'exempt' ? '면제 승인' : '메모 확인 후 결정'} · ${esc(meta.hint)}</div>
+            </div>
+            <div class="apv-actions" style="flex-direction:column; gap:5px; min-width:120px;">
+              <button class="${deductBtnCls}" style="${isDeductRecommend ? '' : 'background:#FEF2F2; color:#991B1B; border-color:#FCA5A5;'} font-size:11px; padding:6px 8px; height:auto; white-space:nowrap;" onclick="window.__cnclDeduct('${a.id}')">차감 -1,000P</button>
+              <button class="${exemptBtnCls}" style="${isExemptRecommend ? '' : 'background:#EFF6FF; color:#1E40AF; border-color:#BFDBFE;'} font-size:11px; padding:6px 8px; height:auto; white-space:nowrap;" onclick="window.__cnclExempt('${a.id}')">면제 승인</button>
+              <button style="background:#F3F4F6; color:#374151; border-color:rgba(0,0,0,0.1); font-size:11px; padding:6px 8px; height:auto; white-space:nowrap;" onclick="window.__cnclReject('${a.id}')">반려</button>
+            </div>
+          </div>
+        `;
+      });
+      html += `</div>`;
+    }
+
+    main.innerHTML = html;
+    updateCancelBadge();
+  }
+
+  window.__cnclFilter = function(val) {
+    cnclState.reasonType = val || '';
+    renderCancelApproval();
+  };
+
+  window.__cnclDeduct = function(appId) {
+    const a = findApp(appId); if (!a) return;
+    const w = findWorker(a.workerId); const j = findJob(a.jobId);
+    if (!w || !j) return;
+    const site = findSite(j.siteId);
+    const meta = CANCEL_REASON_TYPES[a.cancelReasonType] || {};
+    promptModal({
+      title: '취소 승인 — 차감 처리',
+      subtitle: `<strong>${esc(w.name)}</strong> · ${esc(site?.site.name || '')} ${j.date} ${j.slot}<br><span style="color:#EF4444; font-size:12px;">단순 변심 정책: -${POLICY.POINT_CANCEL_DEDUCT.toLocaleString()}P 차감 후 취소 처리</span>`,
+      fields: [
+        { key: 'memo', label: '관리자 메모 (선택)', type: 'textarea', placeholder: '예: 사유 부적절 / 패턴 확인됨', hint: '감사로그에 기록됩니다' },
+      ],
+      submitLabel: `차감 -${POLICY.POINT_CANCEL_DEDUCT.toLocaleString()}P`,
+      danger: true,
+      onSubmit: (vals) => {
+        const me = currentAdmin();
+        const result = approveCancelDeduct(appId, me.name, vals.memo);
+        if (!result) { alert('처리 실패 — 이미 처리되었거나 데이터 오류'); return; }
+        updateCancelBadge();
+        renderCancelApproval();
+        alert(`✅ 차감 완료\n\n${w.name} 님 -${result.deducted.toLocaleString()}P 차감 (잔여 ${(w.points||0).toLocaleString()}P)\n공고 모집 ${j.apply}/${j.cap}로 재계산.`);
+      },
+    });
+  };
+
+  window.__cnclExempt = function(appId) {
+    const a = findApp(appId); if (!a) return;
+    const w = findWorker(a.workerId); const j = findJob(a.jobId);
+    if (!w || !j) return;
+    const site = findSite(j.siteId);
+    promptModal({
+      title: '취소 승인 — 면제 처리',
+      subtitle: `<strong>${esc(w.name)}</strong> · ${esc(site?.site.name || '')} ${j.date} ${j.slot}<br><span style="color:#1E40AF; font-size:12px;">차감 없이 취소 처리 — 슬롯만 회수</span>`,
+      fields: [
+        { key: 'memo', label: '관리자 메모 (선택)', type: 'textarea', placeholder: '예: 진료 영수증 확인 / 가족 입원 확인', hint: '감사로그에 기록됩니다' },
+      ],
+      submitLabel: '면제 승인',
+      onSubmit: (vals) => {
+        const me = currentAdmin();
+        const result = approveCancelExempt(appId, me.name, vals.memo);
+        if (!result) { alert('처리 실패 — 이미 처리되었거나 데이터 오류'); return; }
+        updateCancelBadge();
+        renderCancelApproval();
+        alert(`✅ 면제 완료\n\n${w.name} 님 차감 없이 취소 처리됨.\n공고 모집 ${j.apply}/${j.cap}로 재계산 — 대기열에 자동 자리 제안 발송됩니다.`);
+      },
+    });
+  };
+
+  window.__cnclReject = function(appId) {
+    const a = findApp(appId); if (!a) return;
+    const w = findWorker(a.workerId); const j = findJob(a.jobId);
+    if (!w || !j) return;
+    const site = findSite(j.siteId);
+    promptModal({
+      title: '취소 요청 반려',
+      subtitle: `<strong>${esc(w.name)}</strong> · ${esc(site?.site.name || '')} ${j.date} ${j.slot}<br><span style="color:#92400E; font-size:12px;">반려 시 신청이 복원되며 알바생은 출근 의무가 있습니다</span>`,
+      fields: [
+        { key: 'memo', label: '반려 사유', type: 'textarea', required: true, placeholder: '알바생에게 알림으로 발송됩니다', hint: '예: 사유가 부족합니다 / 증빙 자료 제출 후 재요청 바랍니다' },
+      ],
+      submitLabel: '반려',
+      danger: true,
+      onSubmit: (vals) => {
+        const me = currentAdmin();
+        const result = rejectCancelRequest(appId, me.name, vals.memo);
+        if (!result) { alert('처리 실패 — 이미 처리되었거나 데이터 오류'); return; }
+        updateCancelBadge();
+        renderCancelApproval();
+        alert(`반려 완료\n\n${w.name} 님 신청 복원됨 — 출근 의무 알림이 발송되었습니다.`);
+      },
+    });
+  };
+
+  window.__cnclHistory = function() {
+    const processed = applications
+      .filter(a => a.cancelDecision)
+      .sort((a, b) => (b.cancelReviewedAt || '').localeCompare(a.cancelReviewedAt || ''));
+    document.querySelectorAll('.jf-modal-overlay.cncl-hist').forEach(el => el.remove());
+    const overlay = document.createElement('div');
+    overlay.className = 'jf-modal-overlay cncl-hist';
+
+    const decisionBadge = (d) => {
+      if (d === 'deducted') return '<span style="display:inline-block; padding:2px 8px; background:#FEE2E2; color:#991B1B; border-radius:4px; font-size:11px; font-weight:600;">차감</span>';
+      if (d === 'exempted') return '<span style="display:inline-block; padding:2px 8px; background:#DBEAFE; color:#1E40AF; border-radius:4px; font-size:11px; font-weight:600;">면제</span>';
+      if (d === 'rejected') return '<span style="display:inline-block; padding:2px 8px; background:#F3F4F6; color:#374151; border-radius:4px; font-size:11px; font-weight:600;">반려</span>';
+      return '';
+    };
+
+    const rows = processed.map(a => {
+      const w = findWorker(a.workerId); const j = findJob(a.jobId);
+      const site = j ? findSite(j.siteId) : null;
+      const meta = CANCEL_REASON_TYPES[a.cancelReasonType] || {};
+      return `
+        <tr>
+          <td>${a.cancelReviewedAt || '-'}</td>
+          <td>${esc(w?.name || '-')}</td>
+          <td>${esc(site?.site.name || '-')}<br><span style="font-size:10px; color:#6B7684;">${j ? j.date+' '+j.slot : ''}</span></td>
+          <td><span style="color:${meta.color || '#6B7684'};">${esc(meta.label || a.cancelReasonType || '-')}</span></td>
+          <td style="font-size:11px; color:#374151; max-width:280px;">${esc(a.cancelReason || '').slice(0, 80)}${(a.cancelReason||'').length > 80 ? '...' : ''}</td>
+          <td>${decisionBadge(a.cancelDecision)}</td>
+          <td style="text-align:right; font-weight:600; color:${a.cancelDeduct > 0 ? '#EF4444' : '#6B7684'};">${a.cancelDeduct > 0 ? '-' + a.cancelDeduct.toLocaleString() + 'P' : '-'}</td>
+          <td>${esc(a.cancelReviewedBy || '-')}</td>
+        </tr>
+      `;
+    }).join('');
+
+    overlay.innerHTML = `
+      <div class="jf-modal" style="max-width: 1000px;" onclick="event.stopPropagation()">
+        <div class="jf-modal-head">
+          <div class="jf-modal-title">취소 승인 처리 이력 (${processed.length}건)</div>
+          <button class="jf-modal-close" onclick="this.closest('.jf-modal-overlay').remove()">×</button>
+        </div>
+        <div class="jf-modal-body" style="max-height: 70vh; overflow-y:auto;">
+          ${processed.length === 0
+            ? '<div class="jf-placeholder"><div class="jf-placeholder-title">처리 이력이 없습니다</div></div>'
+            : `<table class="jf-table" style="font-size:12px;">
+                <thead>
+                  <tr>
+                    <th>처리 시각</th>
+                    <th>알바생</th>
+                    <th>근무지/공고</th>
+                    <th>사유 카테고리</th>
+                    <th>사유 내용</th>
+                    <th>결정</th>
+                    <th style="text-align:right;">차감</th>
+                    <th>처리자</th>
+                  </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+              </table>`}
+        </div>
+      </div>
+    `;
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  };
 
   // ───────────────────────────────────────────────────────
   // 공고 관리 페이지
@@ -7824,10 +7986,13 @@
   // 디자인 레퍼런스 용도 — 실제 Flutter 앱 재구현 시 이 흐름을 기반으로
   // ───────────────────────────────────────────────────────
   const appPreviewState = {
-    tab: 'home',      // home / jobs / mywork / points / profile / busguide
+    tab: 'home',      // home / jobs / mywork / points / profile / busguide / inquiry
     workerId: 'w007', // 시뮬 알바생: 한지민 (근무 이력 풍부, 62회, 132,000P)
     busguideJobId: null,  // 가이드 화면에서 보여줄 공고 ID
     busguideOrigin: { name: '강남역 11번 출구 (현재 위치 시뮬)', lat: 37.4979, lng: 127.0276 },  // 알바생 위치 시뮬
+    inqDetailId: null,    // 1:1 문의 채팅 진입 시 inquiry id
+    inqCompose: false,    // 새 문의 작성 모드
+    inqDraftCategory: 'general',
   };
 
   function renderAppPreview() {
@@ -7921,6 +8086,7 @@
     if (t === 'points')   return renderApPoints(w);
     if (t === 'profile')  return renderApProfile(w);
     if (t === 'busguide') return renderApBusGuide(w);
+    if (t === 'inquiry')  return renderApInquiry(w);
     return renderApHome(w);
   }
 
@@ -8371,12 +8537,262 @@
         <div class="app-list-row"><div><div class="app-list-row-main">⭐ 즐겨찾기 근무지</div><div class="app-list-row-sub">${w.favParts.length}곳 설정됨</div></div><div style="color:#9CA3AF; font-size:12px;">›</div></div>
         <div class="app-list-row"><div><div class="app-list-row-main">🏦 계좌 정보</div><div class="app-list-row-sub">출금용 계좌 등록</div></div><div style="color:#9CA3AF; font-size:12px;">›</div></div>
         <div class="app-list-row"><div><div class="app-list-row-main">🔔 알림 설정</div><div class="app-list-row-sub">마케팅 · 긴급 구인</div></div><div style="color:#9CA3AF; font-size:12px;">›</div></div>
-        <div class="app-list-row"><div><div class="app-list-row-main">💬 문의하기</div><div class="app-list-row-sub">운영팀 1:1 문의</div></div><div style="color:#9CA3AF; font-size:12px;">›</div></div>
+        <div class="app-list-row" onclick="window.__apInqOpen()" style="cursor:pointer;"><div><div class="app-list-row-main">💬 1:1 문의</div><div class="app-list-row-sub">${(() => { const myCount = inquiries.filter(i => i.workerId === w.id && i.status !== 'closed').length; return myCount > 0 ? `진행 중 ${myCount}건` : '운영팀에 문의하기'; })()}</div></div><div style="color:#9CA3AF; font-size:12px;">›</div></div>
         <div class="app-list-row" style="margin-top:10px; color:#EF4444;"><div class="app-list-row-main" style="color:#EF4444;">🚪 로그아웃</div></div>
       </div>
       ${phoneBottomNav('profile')}
     `;
   }
+
+  // ─── 1:1 문의 화면 (알바생 앱 미리보기) ───
+  function renderApInquiry(w) {
+    if (appPreviewState.inqCompose) return renderApInquiryCompose(w);
+    if (appPreviewState.inqDetailId) return renderApInquiryChat(w);
+    return renderApInquiryList(w);
+  }
+
+  function renderApInquiryList(w) {
+    const myInqs = inquiries
+      .filter(i => i.workerId === w.id)
+      .sort((a, b) => (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt));
+
+    const items = myInqs.map(it => {
+      const meta = INQ_STATUS_META[it.status] || INQ_STATUS_META.pending;
+      const lastMsg = (it.messages || []).slice(-1)[0];
+      const lastFromAdmin = lastMsg && lastMsg.from === 'admin';
+      const unread = lastFromAdmin && it.status !== 'closed'; // 시뮬: 마지막이 운영팀이고 종결 아니면 "새 답변" 표시
+      return `
+        <div class="app-list-row" onclick="window.__apInqDetail('${it.id}')" style="cursor:pointer; padding:12px; border-radius:10px; background:#fff; margin-bottom:8px; border:0.5px solid rgba(0,0,0,0.06);">
+          <div style="flex:1; min-width:0;">
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:3px;">
+              <span style="display:inline-block; padding:1px 6px; background:${meta.bg}; color:${meta.fg}; border-radius:6px; font-size:9px; font-weight:600;">${meta.label}</span>
+              ${it.priority === 'urgent' ? '<span style="font-size:9px; color:#991B1B; font-weight:600;">🚨 긴급</span>' : ''}
+              ${unread ? '<span style="display:inline-block; width:6px; height:6px; background:#EF4444; border-radius:50%;"></span>' : ''}
+            </div>
+            <div style="font-size:12px; color:#111827; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(it.title)}</div>
+            <div style="font-size:10px; color:#6B7684; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+              ${lastMsg ? (lastFromAdmin ? '🛡 ' : '👤 ') + esc(lastMsg.text) : ''}
+            </div>
+            <div style="font-size:10px; color:#9CA3AF; margin-top:3px;">${esc(it.updatedAt || it.createdAt)}</div>
+          </div>
+          <div style="color:#9CA3AF; font-size:14px;">›</div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      ${phoneStatusBar()}
+      <div class="mobile-app-header">
+        <div style="display:flex; align-items:center; gap:8px; flex:1;">
+          <span style="font-size:18px; cursor:pointer;" onclick="window.__apInqClose()">←</span>
+          <div style="flex:1;">
+            <div class="mobile-app-header-title">1:1 문의</div>
+            <div class="mobile-app-header-sub">운영팀 응답 시간: 평균 1~3시간</div>
+          </div>
+          <button onclick="window.__apInqCompose()" style="background:#2563EB; color:#fff; border:none; border-radius:8px; padding:6px 12px; font-size:11px; font-weight:600; cursor:pointer;">+ 새 문의</button>
+        </div>
+      </div>
+      <div class="mobile-app-body" style="background:#F3F4F6;">
+        ${myInqs.length === 0
+          ? `<div style="text-align:center; padding:40px 20px; color:#6B7684; font-size:11px;">
+              <div style="font-size:32px; margin-bottom:10px;">💬</div>
+              <div style="font-weight:500; color:#374151; margin-bottom:5px;">아직 문의가 없어요</div>
+              <div>운영팀에 궁금한 점을 물어보세요</div>
+            </div>`
+          : items}
+      </div>
+      ${phoneBottomNav('profile')}
+    `;
+  }
+
+  function renderApInquiryChat(w) {
+    const it = findInquiry(appPreviewState.inqDetailId);
+    if (!it || it.workerId !== w.id) {
+      appPreviewState.inqDetailId = null;
+      return renderApInquiryList(w);
+    }
+    const meta = INQ_STATUS_META[it.status] || INQ_STATUS_META.pending;
+    const isClosed = it.status === 'closed';
+
+    const messages = (it.messages || []).map(m => {
+      const isMe = m.from === 'worker';
+      const align = isMe ? 'flex-end' : 'flex-start';
+      const bg = isMe ? 'linear-gradient(135deg,#2563EB,#1E40AF)' : '#fff';
+      const color = isMe ? '#fff' : '#111827';
+      const sender = isMe ? '나' : (m.by || '운영팀');
+      return `
+        <div style="display:flex; flex-direction:column; align-items:${align}; margin:6px 0;">
+          <div style="font-size:9px; color:#6B7684; margin-bottom:2px; ${isMe ? 'text-align:right; padding-right:4px;' : 'padding-left:4px;'}">
+            ${isMe ? '' : '🛡 '}${esc(sender)} · ${esc(m.at.slice(11))}
+          </div>
+          <div style="max-width:82%; background:${bg}; color:${color}; border-radius:14px; padding:8px 12px; font-size:12px; line-height:1.5; white-space:pre-wrap; word-break:break-word; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+            ${esc(m.text)}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      ${phoneStatusBar()}
+      <div class="mobile-app-header">
+        <div style="display:flex; align-items:center; gap:8px; flex:1;">
+          <span style="font-size:18px; cursor:pointer;" onclick="window.__apInqBackToList()">←</span>
+          <div style="flex:1; min-width:0;">
+            <div class="mobile-app-header-title" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(it.title)}</div>
+            <div class="mobile-app-header-sub">
+              <span style="display:inline-block; padding:1px 6px; background:${meta.bg}; color:${meta.fg}; border-radius:6px; font-size:9px; font-weight:600;">${meta.label}</span>
+              · ${CAT_LABEL[it.category] || ''}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mobile-app-body" style="background:#ECEFF1; padding:8px 12px;" id="ap-inq-chat-scroll">
+        ${messages || '<div style="text-align:center; color:#6B7684; font-size:11px; padding:20px;">메시지 없음</div>'}
+      </div>
+      ${isClosed ? `
+        <div style="background:#F0FDF4; padding:10px 12px; border-top:0.5px solid #86EFAC; font-size:10px; color:#166534; text-align:center;">
+          ✓ 종결된 문의 — 새 메시지 보내면 자동 재오픈됩니다
+        </div>
+      ` : ''}
+      <div style="background:#fff; padding:8px 10px; border-top:0.5px solid rgba(0,0,0,0.08); display:flex; gap:6px; align-items:flex-end;">
+        <textarea id="ap-inq-input" rows="1" placeholder="메시지 입력..." style="flex:1; padding:8px 10px; border:0.5px solid rgba(0,0,0,0.15); border-radius:18px; font-family:inherit; font-size:12px; resize:none; max-height:80px;"></textarea>
+        <button onclick="window.__apInqSend('${it.id}')" style="background:#2563EB; color:#fff; border:none; border-radius:50%; width:32px; height:32px; font-size:14px; cursor:pointer; flex-shrink:0;">↑</button>
+      </div>
+      ${phoneBottomNav('profile')}
+    `;
+  }
+
+  function renderApInquiryCompose(w) {
+    const cats = [
+      { key: 'general', label: '일반' },
+      { key: 'bug',     label: '앱버그' },
+      { key: 'point',   label: '포인트/결제' },
+      { key: 'account', label: '계정' },
+    ];
+    const sel = appPreviewState.inqDraftCategory || 'general';
+    return `
+      ${phoneStatusBar()}
+      <div class="mobile-app-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:18px; cursor:pointer;" onclick="window.__apInqCancelCompose()">←</span>
+          <div>
+            <div class="mobile-app-header-title">새 1:1 문의</div>
+            <div class="mobile-app-header-sub">운영팀에 직접 문의하기</div>
+          </div>
+        </div>
+      </div>
+      <div class="mobile-app-body" style="padding:14px 12px;">
+        <div style="font-size:11px; color:#374151; font-weight:600; margin-bottom:6px;">분류</div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px;">
+          ${cats.map(c => `
+            <span onclick="window.__apInqDraftCat('${c.key}')" style="padding:6px 12px; border-radius:14px; font-size:11px; cursor:pointer; ${sel === c.key ? 'background:#2563EB; color:#fff;' : 'background:#F3F4F6; color:#374151;'}">${c.label}</span>
+          `).join('')}
+        </div>
+
+        <div style="font-size:11px; color:#374151; font-weight:600; margin-bottom:6px;">제목 (선택)</div>
+        <input id="ap-inq-title" type="text" placeholder="비워두면 본문 첫 줄로 자동 생성" maxlength="40" style="width:100%; padding:8px 10px; border:0.5px solid rgba(0,0,0,0.15); border-radius:8px; font-size:12px; margin-bottom:14px;" />
+
+        <div style="font-size:11px; color:#374151; font-weight:600; margin-bottom:6px;">내용</div>
+        <textarea id="ap-inq-body" rows="6" placeholder="궁금한 내용을 자세히 적어주세요. 운영팀이 1:1로 답변드립니다." style="width:100%; padding:10px 12px; border:0.5px solid rgba(0,0,0,0.15); border-radius:8px; font-size:12px; line-height:1.6; resize:vertical;"></textarea>
+
+        <div style="margin-top:10px; padding:10px 12px; background:#F0F9FF; border-radius:8px; font-size:10px; color:#1E40AF; line-height:1.5;">
+          ℹ 운영 시간: 평일 09~21시 · 평균 응답 1~3시간<br>
+          ℹ 출근 직전 긴급 상황은 분류 [일반] 선택 후 본문에 "긴급" 표시 부탁드려요
+        </div>
+
+        <div style="display:flex; gap:6px; margin-top:14px;">
+          <button onclick="window.__apInqCancelCompose()" style="flex:1; background:#F3F4F6; color:#374151; border:none; border-radius:8px; padding:10px; font-size:12px; cursor:pointer;">취소</button>
+          <button onclick="window.__apInqSubmit()" style="flex:1; background:#2563EB; color:#fff; border:none; border-radius:8px; padding:10px; font-size:12px; font-weight:600; cursor:pointer;">전송</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // 알바생 앱 — 1:1 문의 핸들러
+  window.__apInqOpen = function() {
+    appPreviewState.tab = 'inquiry';
+    appPreviewState.inqDetailId = null;
+    appPreviewState.inqCompose = false;
+    renderAppPreview();
+  };
+  window.__apInqClose = function() {
+    appPreviewState.tab = 'profile';
+    appPreviewState.inqDetailId = null;
+    appPreviewState.inqCompose = false;
+    renderAppPreview();
+  };
+  window.__apInqDetail = function(id) {
+    appPreviewState.inqDetailId = id;
+    appPreviewState.inqCompose = false;
+    renderAppPreview();
+    setTimeout(() => {
+      const sc = document.getElementById('ap-inq-chat-scroll');
+      if (sc) sc.scrollTop = sc.scrollHeight;
+    }, 30);
+  };
+  window.__apInqBackToList = function() {
+    appPreviewState.inqDetailId = null;
+    renderAppPreview();
+  };
+  window.__apInqCompose = function() {
+    appPreviewState.inqCompose = true;
+    appPreviewState.inqDetailId = null;
+    appPreviewState.inqDraftCategory = 'general';
+    renderAppPreview();
+  };
+  window.__apInqCancelCompose = function() {
+    appPreviewState.inqCompose = false;
+    renderAppPreview();
+  };
+  window.__apInqDraftCat = function(cat) {
+    // textarea 값 보존을 위해 직접 DOM 수정
+    appPreviewState.inqDraftCategory = cat;
+    const titleEl = document.getElementById('ap-inq-title');
+    const bodyEl = document.getElementById('ap-inq-body');
+    const t = titleEl?.value || '';
+    const b = bodyEl?.value || '';
+    renderAppPreview();
+    setTimeout(() => {
+      const t2 = document.getElementById('ap-inq-title');
+      const b2 = document.getElementById('ap-inq-body');
+      if (t2) t2.value = t;
+      if (b2) b2.value = b;
+    }, 30);
+  };
+  window.__apInqSubmit = function() {
+    const w = findWorker(appPreviewState.workerId);
+    if (!w) return;
+    const titleEl = document.getElementById('ap-inq-title');
+    const bodyEl = document.getElementById('ap-inq-body');
+    const text = (bodyEl?.value || '').trim();
+    if (!text) { alert('내용을 입력해주세요.'); return; }
+    const result = createInquiry({
+      workerId: w.id,
+      category: appPreviewState.inqDraftCategory || 'general',
+      title: (titleEl?.value || '').trim(),
+      text,
+    });
+    if (!result || result.error) { alert('전송 실패: ' + (result?.error || '오류')); return; }
+    appPreviewState.inqCompose = false;
+    appPreviewState.inqDetailId = result.id;
+    renderAppPreview();
+    alert('✅ 문의가 전송되었습니다.\n운영팀 답변을 기다려주세요.');
+  };
+  window.__apInqSend = function(id) {
+    const w = findWorker(appPreviewState.workerId);
+    const it = findInquiry(id);
+    if (!w || !it || it.workerId !== w.id) return;
+    const ta = document.getElementById('ap-inq-input');
+    const text = (ta?.value || '').trim();
+    if (!text) return;
+    addInquiryMessage(id, 'worker', text);
+    if (ta) ta.value = '';
+    renderAppPreview();
+    setTimeout(() => {
+      const sc = document.getElementById('ap-inq-chat-scroll');
+      if (sc) sc.scrollTop = sc.scrollHeight;
+    }, 30);
+  };
 
   function renderAppPreviewInfo(w) {
     const t = appPreviewState.tab;
@@ -8386,6 +8802,7 @@
       mywork:  { title: '내 근무', desc: '신청·진행·완료된 근무 관리 · 계약서 조회' },
       points:  { title: '포인트', desc: '보유 포인트 확인 · 출금 신청 · 이력 조회' },
       profile: { title: '프로필', desc: '계정 정보·설정·문의·로그아웃' },
+      inquiry: { title: '1:1 문의 (채팅)', desc: '운영팀과 1:1 채팅 — 게시판형 리스트 + 카톡 스타일 스레드' },
     };
     const info = titles[t] || titles.home;
 
@@ -8493,6 +8910,33 @@
             <li><b>경고 3회 누적</b> → 자동 협의대상 등록 (해제는 마스터 전용)</li>
             <li><b>알림 동의</b>는 서비스/마케팅/긴급구인 3개 카테고리 개별 설정</li>
           </ul>
+        </div>
+      `,
+      inquiry: `
+        <div class="ap-info-section">
+          <h4>UI 흐름 (3단계)</h4>
+          <ul>
+            <li><b>리스트 화면</b> — 내 문의 목록(상태 칩·미확인 점) + [+ 새 문의] 버튼</li>
+            <li><b>채팅 화면</b> — 카톡 스타일 말풍선(내 메시지=파란 오른쪽, 운영팀=흰 왼쪽) + 하단 입력</li>
+            <li><b>새 문의 작성</b> — 분류 칩 선택 → 제목(선택) → 본문 → 전송</li>
+          </ul>
+        </div>
+        <div class="ap-info-section">
+          <h4>알바생 ↔ 운영팀 동기화 시뮬</h4>
+          <p>알바생 화면에서 보낸 메시지는 <b>관리자 [문의] 페이지에 즉시 반영</b>됩니다.<br>관리자 페이지로 가서 답변하면 → 다시 알바생 미리보기에 반영 — <b>실제 양방향 동기화 시뮬</b>이라 데모 흐름 시연 가능.</p>
+        </div>
+        <div class="ap-info-section">
+          <h4>상태 자동 전환</h4>
+          <ul>
+            <li><b>알바생 새 문의</b> → 미답변 (운영팀 첫 응답 대기)</li>
+            <li><b>운영팀 답변</b> → 진행 중</li>
+            <li><b>알바생 추가 메시지</b> → 다시 미답변 (응답 우선순위 ↑)</li>
+            <li><b>운영팀 종결</b> → 종결 (알바생이 새 메시지 보내면 자동 재오픈)</li>
+          </ul>
+        </div>
+        <div class="ap-info-section">
+          <h4>실제 앱 구현 시</h4>
+          <p>Flutter + Supabase Realtime — 메시지 스트림 구독 / FCM 푸시(운영자 답변 시·새 문의 접수 시) / 첨부 사진 1장 (Supabase Storage)</p>
         </div>
       `,
     };
@@ -10068,12 +10512,12 @@
 
   const pageRouters = {
     home: renderHome,
-    home2: renderHomeV2,
     worksite: renderList,
     jobs: () => { jobsState.tab = 'list'; renderJobs(); },
     approval: renderApproval,
     waitlistapv: renderWaitlistApv,
     gpsapproval: renderGpsApproval,
+    cancelapv: renderCancelApproval,
     workers: renderWorkers,
     negotiation: renderNegotiation,
     points: () => { pointState.tab = 'request'; renderPoints(); },
@@ -10105,7 +10549,7 @@
   });
 
   function pageNameFor(page) {
-    const names = { home: '홈', home2: '홈 (재설계)', jobs: '공고 관리', approval: '신청 승인', waitlistapv: '대기열 승인', gpsapproval: '퇴근 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정', stats: '통계 리포트', settlement: '파트너사 정산', apppreview: '앱 미리보기', mobileadmin: '모바일 관리자 뷰', busmap: '통근버스 길찾기', audit: '감사로그' };
+    const names = { home: '홈', jobs: '공고 관리', approval: '신청 승인', waitlistapv: '대기열 승인', gpsapproval: '퇴근 승인', cancelapv: '취소 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정', stats: '통계 리포트', settlement: '파트너사 정산', apppreview: '앱 미리보기', mobileadmin: '모바일 관리자 뷰', busmap: '통근버스 길찾기', audit: '감사로그' };
     return names[page] || '';
   }
 
@@ -10114,6 +10558,7 @@
   updateApprovalBadge();
   updateWaitlistBadge();
   updateGpsBadge();
+  updateCancelBadge();
   renderHome();
 
   // 관제 창에서 공고 상세로 딥링크 (#job=xxx) — 진입 시 자동 이동
