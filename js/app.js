@@ -1888,12 +1888,18 @@
 
     // 오늘 출결
     let todayOk = 0, todayLate = 0, todayNo = 0, todayWait = 0;
+    let todayCapTotal = 0, todayFilledTotal = 0;
     todayJobs.forEach(j => {
       const s = attendanceSummary(j.id);
       todayOk += s.출근; todayLate += s.지각; todayNo += s.결근; todayWait += s.대기;
+      // 구인율 — 정원 vs (앱 신청 + 외부 구인)
+      todayCapTotal += j.cap;
+      const ext = Array.isArray(j.externalWorkers) ? j.externalWorkers.length : 0;
+      todayFilledTotal += j.apply + ext;
     });
     const todayTotal = todayOk + todayLate + todayNo;
     const todayRate = todayTotal > 0 ? Math.round((todayOk + todayLate) / todayTotal * 100) : null;
+    const fillRate = todayCapTotal > 0 ? Math.round(Math.min(100, todayFilledTotal / todayCapTotal * 100)) : null;
 
     // 처리 필요 — alerts + anomalies 통합
     const todoItems = [];
@@ -1908,13 +1914,19 @@
       todoItems.push({ sev: an.severity, icon: an.icon, title: an.title, text: an.text, hint: an.hint, goto: an.goto });
     });
 
-    // 큰 도넛 색상
+    // 큰 도넛 색상 — 출근율
     const rateColor = todayRate === null ? '#9CA3AF' : todayRate >= 90 ? '#22C55E' : todayRate >= 75 ? '#F59E0B' : '#EF4444';
     const rateSegments = [
       { value: todayOk,    color: '#22C55E' },
       { value: todayLate,  color: '#F59E0B' },
       { value: todayNo,    color: '#EF4444' },
       { value: Math.max(todayWait, todayTotal === 0 ? 1 : 0), color: '#E5E7EB' },
+    ];
+    // 구인율 — 정원 대비 모집 인원
+    const fillColor = fillRate === null ? '#9CA3AF' : fillRate >= 90 ? '#22C55E' : fillRate >= 70 ? '#2563EB' : fillRate >= 50 ? '#F59E0B' : '#EF4444';
+    const fillSegments = [
+      { value: todayFilledTotal,                                    color: '#2563EB' },
+      { value: Math.max(todayCapTotal - todayFilledTotal, todayCapTotal === 0 ? 1 : 0), color: '#E5E7EB' },
     ];
 
     // 최근 활동 (renderHome과 동일하게 mix)
@@ -1995,20 +2007,36 @@
         <div style="font-size:13px; font-weight:600; color:#111827; margin-bottom: 16px; display:flex; align-items:center; gap:8px;">
           📊 오늘 한눈에 <span style="font-size:11px; color:#6B7684; font-weight:400;">${TODAY}</span>
         </div>
-        <div style="display:grid; grid-template-columns: 220px 1fr; gap: 24px; align-items:center;">
-          <div style="position:relative; display:flex; flex-direction:column; align-items:center;" onclick="window.__openControlBoard()">
-            <div style="cursor:pointer; position:relative;">
-              ${donutSvg(rateSegments, 180, 18)}
-              <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none;">
-                <div style="font-size:36px; font-weight:600; color:${rateColor}; line-height:1;">${todayRate !== null ? todayRate + '%' : '-'}</div>
-                <div style="font-size:11px; color:#6B7684; margin-top:6px;">오늘 출근율</div>
+        <div style="display:grid; grid-template-columns: 320px 1fr; gap: 24px; align-items:center;">
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <!-- 출근율 도넛 -->
+            <div style="position:relative; display:flex; flex-direction:column; align-items:center; cursor:pointer;" onclick="window.__openControlBoard()" title="관제 시스템에서 상세 보기">
+              <div style="position:relative;">
+                ${donutSvg(rateSegments, 140, 14)}
+                <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none;">
+                  <div style="font-size:26px; font-weight:600; color:${rateColor}; line-height:1;">${todayRate !== null ? todayRate + '%' : '-'}</div>
+                  <div style="font-size:10px; color:#6B7684; margin-top:4px;">출근율</div>
+                </div>
+              </div>
+              <div style="display:flex; gap:6px; margin-top:10px; font-size:10px;">
+                <span style="color:#166534; font-weight:500;">🟢${todayOk}</span>
+                <span style="color:#92400E; font-weight:500;">🟡${todayLate}</span>
+                <span style="color:#991B1B; font-weight:500;">🔴${todayNo}</span>
+                <span style="color:#6B7684;">⚪${todayWait}</span>
               </div>
             </div>
-            <div style="display:flex; gap:10px; margin-top:14px; font-size:12px;">
-              <span style="color:#166534; font-weight:500;">🟢 ${todayOk}</span>
-              <span style="color:#92400E; font-weight:500;">🟡 ${todayLate}</span>
-              <span style="color:#991B1B; font-weight:500;">🔴 ${todayNo}</span>
-              <span style="color:#6B7684;">⚪ ${todayWait}</span>
+            <!-- 구인율 도넛 -->
+            <div style="position:relative; display:flex; flex-direction:column; align-items:center; cursor:pointer;" onclick="window.__navGoto('jobs')" title="공고 관리로 이동">
+              <div style="position:relative;">
+                ${donutSvg(fillSegments, 140, 14)}
+                <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none;">
+                  <div style="font-size:26px; font-weight:600; color:${fillColor}; line-height:1;">${fillRate !== null ? fillRate + '%' : '-'}</div>
+                  <div style="font-size:10px; color:#6B7684; margin-top:4px;">구인율</div>
+                </div>
+              </div>
+              <div style="margin-top:10px; font-size:10px; color:#374151;">
+                <strong style="color:#2563EB;">${todayFilledTotal}</strong> / ${todayCapTotal} 명
+              </div>
             </div>
           </div>
 
