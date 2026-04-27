@@ -1257,38 +1257,81 @@ function addDaysStr(dateStr, n) {
   return d.toISOString().slice(0, 10);
 }
 
-// 알바생 특정 주의 주휴수당 추정
-// 반환: { weekStart, weekEnd, days, need, totalHours, totalWage, eligible, estimated, reason }
+// 알바생 특정 주의 주휴수당 추정 — 정책 v1 (기획안 §7-4 + N24 결정)
+// • 컨벤션: 동일 근무지 2일 출근 시 그 근무지에서 발생
+// • CJ대한통운 / 롯데택배: 파트너사 통합 4일 (어느 근무지든) 출근 시 그 파트너사에서 발생
+// • 한 알바생이 여러 단위(근무지/파트너사)에서 동시 만근 가능 (각자 별도 발생)
+// 반환: { weekStart, weekEnd, units:[{type,partnerKey,siteId,name,days,hours,wage,need,eligible,estimated,reason}], totalEstimated, eligible, days/need/totalHours/totalWage/estimated/reason (호환 필드) }
 function estimateHolidayPayForWeek(workerId, dateRefStr) {
   const weekStart = weekStartOf(dateRefStr);
   const weekEnd = addDaysStr(weekStart, 6);
   const completed = applications
     .filter(a => a.workerId === workerId && a.status === 'approved')
-    .map(a => ({ a, j: findJob(a.jobId) }))
-    .filter(({ j }) => j && j.date >= weekStart && j.date <= weekEnd);
-  const days = new Set(completed.map(({ j }) => j.date)).size;
-  const totalHours = completed.reduce((s, { j }) => s + jobHours(j), 0);
-  const totalWage  = completed.reduce((s, { j }) => s + (j.wage || 0), 0);
+    .map(a => {
+      const j = findJob(a.jobId);
+      return { a, j, site: j ? findSite(j.siteId) : null };
+    })
+    .filter(({ j, site }) => j && site && j.date >= weekStart && j.date <= weekEnd);
 
-  // 만근 기준 — 파트너사별 (컨벤션 2일, 그 외 4일). 혼합 시 다수 기준 사용
-  const partnerCount = {};
-  completed.forEach(({ j }) => {
-    const pk = findSite(j.siteId)?.partnerKey;
-    if (pk) partnerCount[pk] = (partnerCount[pk] || 0) + 1;
+  // 단위별 그룹핑
+  // - 컨벤션: 동일 근무지 (siteId)
+  // - CJ/롯데: 파트너사 통합 (partnerKey)
+  const groups = {};
+  completed.forEach(({ j, site }) => {
+    const isConv = site.partnerKey === 'convention';
+    const groupKey = isConv ? ('site:' + site.site.id) : ('partner:' + site.partnerKey);
+    if (!groups[groupKey]) {
+      groups[groupKey] = {
+        type:        isConv ? 'site' : 'partner',
+        partnerKey:  site.partnerKey,
+        siteId:      isConv ? site.site.id : null,
+        name:        isConv ? site.site.name : site.partner,
+        jobs:        [],
+        dates:       new Set(),
+      };
+    }
+    groups[groupKey].jobs.push(j);
+    groups[groupKey].dates.add(j.date);
   });
-  const dominantPartner = Object.keys(partnerCount).sort((a, b) => partnerCount[b] - partnerCount[a])[0];
-  const need = dominantPartner === 'convention' ? 2 : 4;
 
-  // 자격: 주 15시간 이상 + 만근 일수 충족
-  const eligible = totalHours >= 15 && days >= need;
-  const reason = !eligible
-    ? (totalHours < 15 ? '주 15시간 미만' : `${need}일 만근 미달 (${days}/${need}일)`)
-    : '주 15시간 + 만근 충족';
-  // 1일분 = 평균 일급 (참고용 추정)
-  const avgDaily = days > 0 ? Math.round(totalWage / days) : 0;
-  const estimated = eligible ? avgDaily : 0;
+  // 단위별 자격 분석
+  const units = [];
+  let totalEstimated = 0;
+  Object.values(groups).forEach(g => {
+    const days  = g.dates.size;
+    const hours = g.jobs.reduce((s, j) => s + jobHours(j), 0);
+    const wage  = g.jobs.reduce((s, j) => s + (j.wage || 0), 0);
+    const need  = g.type === 'site' ? 2 : 4;   // 컨벤션 2일 / CJ·롯데 4일
+    const eligible = hours >= 15 && days >= need;
+    const avgDaily = days > 0 ? Math.round(wage / days) : 0;
+    const estimated = eligible ? avgDaily : 0;
+    const reason = eligible
+      ? '만근 충족'
+      : (hours < 15 ? '주 15시간 미만' : `${need}일 만근 미달 (${days}/${need}일)`);
+    if (eligible) totalEstimated += estimated;
+    units.push({
+      type: g.type, partnerKey: g.partnerKey, siteId: g.siteId, name: g.name,
+      days, hours: Math.round(hours * 10)/10, wage,
+      need, eligible, estimated, avgDaily, reason,
+    });
+  });
 
-  return { weekStart, weekEnd, days, need, totalHours: Math.round(totalHours * 10)/10, totalWage, eligible, estimated, reason };
+  // UI 표시용 호환 필드 — 가장 큰 추정 단위 기준
+  const primary = units.length > 0
+    ? units.reduce((m, u) => u.estimated > (m?.estimated || -1) ? u : m, null) || units[0]
+    : null;
+  const eligibleSummary = units.filter(u => u.eligible).map(u => u.name).join(' + ');
+
+  return {
+    weekStart, weekEnd, units, eligible: units.some(u => u.eligible),
+    estimated:   totalEstimated,
+    // 호환 필드 (이전 코드 호환)
+    days:        primary ? primary.days : 0,
+    need:        primary ? primary.need : null,
+    totalHours:  Math.round(units.reduce((s, u) => s + u.hours, 0) * 10)/10,
+    totalWage:   units.reduce((s, u) => s + u.wage, 0),
+    reason:      eligibleSummary ? `${eligibleSummary} 만근 충족` : (units.length > 0 ? '만근 미달' : '이번 주 출근 없음'),
+  };
 }
 
 // 파트너사 정산 데이터 — 기간 + 파트너사별
@@ -1321,26 +1364,22 @@ function partnerSettlement(partnerKey, dateStart, dateEnd) {
     });
   });
 
-  // 알바생별 주별 주휴수당 추정 (해당 파트너사 한정)
+  // 알바생별 주별 주휴수당 추정 — 단위별 (정책 v1)
+  // 컨벤션 = 동일 근무지 / CJ·롯데 = 파트너사 통합 → 각 단위별 별도 발생
   Object.values(workerStats).forEach(stat => {
     const weeks = new Set(stat.jobs.map(j => weekStartOf(j.date)));
     weeks.forEach(ws => {
-      // 해당 주의 출근만 합산해서 자격 검증 (전체 ​데이터로 추정 — 정확도 한계)
       const est = estimateHolidayPayForWeek(stat.worker.id, ws);
-      // 정산 대상 파트너사가 우세할 때만 카운트
-      if (est.eligible) {
-        const pkOfWeek = (() => {
-          const pks = stat.jobs
-            .filter(j => weekStartOf(j.date) === ws)
-            .map(j => findSite(j.siteId)?.partnerKey)
-            .filter(Boolean);
-          return pks.length > 0 ? pks.sort((a,b) => pks.filter(x => x===a).length - pks.filter(x => x===b).length).pop() : null;
-        })();
-        if (!partnerKey || pkOfWeek === partnerKey) {
-          stat.holidayPay += est.estimated;
-          stat.holidayWeeks.push({ week: ws, amount: est.estimated, days: est.days, hours: est.totalHours });
-        }
-      }
+      est.units.forEach(u => {
+        if (!u.eligible) return;
+        // 정산 대상 파트너사 필터 (전체 선택 시 모두 합산)
+        if (partnerKey && u.partnerKey !== partnerKey) return;
+        stat.holidayPay += u.estimated;
+        stat.holidayWeeks.push({
+          week: ws, unit: u.name, type: u.type,
+          amount: u.estimated, days: u.days, hours: u.hours,
+        });
+      });
     });
   });
 
