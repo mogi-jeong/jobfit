@@ -1288,24 +1288,19 @@ function validateApplicantEligibility(workerId, jobId) {
   // 5) 협의대상 → warning (force 가능)
   if (w.negotiation) warnings.push('협의대상 알바생 (관리자 검토 필요)');
 
-  // 6) 주 4일 한도 (CJ/롯데만 적용 · 컨벤션은 미적용)
+  // 6) 동일 근무지 주 4일 한도 (CJ/롯데만 적용 · 컨벤션은 미적용 — 컨벤션은 만근 기준이 2일이라 한도 의미 적음)
+  // 정책 v1.1: 동일 근무지 기준 (이전 파트너사 통합에서 변경)
   if (partnerEntry && partnerEntry !== 'convention') {
     const ws = weekStartOf(j.date);
-    const partnerDays = applications
+    const sameSiteDays = applications
       .filter(a => a.workerId === workerId && a.status !== 'cancelled' && a.status !== 'rejected')
       .map(a => findJob(a.jobId))
-      .filter(jj => jj && weekStartOf(jj.date) === ws)
-      .filter(jj => {
-        for (const k in worksites) {
-          if (k !== 'convention' && worksites[k].sites.find(s => s.id === jj.siteId)) return k === partnerEntry;
-        }
-        return false;
-      })
+      .filter(jj => jj && weekStartOf(jj.date) === ws && jj.siteId === j.siteId)
       .map(jj => jj.date);
-    const uniqueDays = new Set(partnerDays);
+    const uniqueDays = new Set(sameSiteDays);
     if (uniqueDays.size >= 4) {
-      const partnerName = worksites[partnerEntry]?.name || partnerEntry;
-      warnings.push(partnerName + ' 이번 주 4일 한도 초과 (현재 ' + uniqueDays.size + '일)');
+      const siteName = findSite(j.siteId)?.site.name || j.siteId;
+      warnings.push(siteName + ' 이번 주 4일 한도 초과 (현재 ' + uniqueDays.size + '일)');
     }
   }
 
@@ -1755,11 +1750,11 @@ function addDaysStr(dateStr, n) {
   return d.toISOString().slice(0, 10);
 }
 
-// 알바생 특정 주의 주휴수당 추정 — 정책 v1 (기획안 §7-4 + N24 결정)
+// 알바생 특정 주의 주휴수당 추정 — 정책 v1.1 (동일 근무지 기준 통일)
 // • 컨벤션: 동일 근무지 2일 출근 시 그 근무지에서 발생
-// • CJ대한통운 / 롯데택배: 파트너사 통합 4일 (어느 근무지든) 출근 시 그 파트너사에서 발생
-// • 한 알바생이 여러 단위(근무지/파트너사)에서 동시 만근 가능 (각자 별도 발생)
-// 반환: { weekStart, weekEnd, units:[{type,partnerKey,siteId,name,days,hours,wage,need,eligible,estimated,reason}], totalEstimated, eligible, days/need/totalHours/totalWage/estimated/reason (호환 필드) }
+// • CJ대한통운 / 롯데택배: 동일 근무지 4일 출근 시 그 근무지에서 발생
+// • 한 알바생이 여러 근무지에서 동시 만근 가능 (각자 별도 발생)
+// 반환: { weekStart, weekEnd, units:[{partnerKey,siteId,name,days,hours,wage,need,eligible,estimated,reason}], totalEstimated, eligible, days/need/totalHours/totalWage/estimated/reason (호환 필드) }
 function estimateHolidayPayForWeek(workerId, dateRefStr) {
   const weekStart = weekStartOf(dateRefStr);
   const weekEnd = addDaysStr(weekStart, 6);
@@ -1771,19 +1766,16 @@ function estimateHolidayPayForWeek(workerId, dateRefStr) {
     })
     .filter(({ j, site }) => j && site && j.date >= weekStart && j.date <= weekEnd);
 
-  // 단위별 그룹핑
-  // - 컨벤션: 동일 근무지 (siteId)
-  // - CJ/롯데: 파트너사 통합 (partnerKey)
+  // 단위별 그룹핑 — 모두 동일 근무지(siteId) 기준
   const groups = {};
   completed.forEach(({ j, site }) => {
-    const isConv = site.partnerKey === 'convention';
-    const groupKey = isConv ? ('site:' + site.site.id) : ('partner:' + site.partnerKey);
+    const groupKey = 'site:' + site.site.id;
     if (!groups[groupKey]) {
       groups[groupKey] = {
-        type:        isConv ? 'site' : 'partner',
         partnerKey:  site.partnerKey,
-        siteId:      isConv ? site.site.id : null,
-        name:        isConv ? site.site.name : site.partner,
+        siteId:      site.site.id,
+        name:        site.site.name,
+        partnerName: site.partner,
         jobs:        [],
         dates:       new Set(),
       };
@@ -1792,14 +1784,14 @@ function estimateHolidayPayForWeek(workerId, dateRefStr) {
     groups[groupKey].dates.add(j.date);
   });
 
-  // 단위별 자격 분석
+  // 단위별 자격 분석 — 컨벤션 2일 / CJ·롯데 4일 (모두 동일 근무지 기준)
   const units = [];
   let totalEstimated = 0;
   Object.values(groups).forEach(g => {
     const days  = g.dates.size;
     const hours = g.jobs.reduce((s, j) => s + jobHours(j), 0);
     const wage  = g.jobs.reduce((s, j) => s + (j.wage || 0), 0);
-    const need  = g.type === 'site' ? 2 : 4;   // 컨벤션 2일 / CJ·롯데 4일
+    const need  = g.partnerKey === 'convention' ? 2 : 4;
     const eligible = hours >= 15 && days >= need;
     const avgDaily = days > 0 ? Math.round(wage / days) : 0;
     const estimated = eligible ? avgDaily : 0;
@@ -1808,7 +1800,7 @@ function estimateHolidayPayForWeek(workerId, dateRefStr) {
       : (hours < 15 ? '주 15시간 미만' : `${need}일 만근 미달 (${days}/${need}일)`);
     if (eligible) totalEstimated += estimated;
     units.push({
-      type: g.type, partnerKey: g.partnerKey, siteId: g.siteId, name: g.name,
+      type: 'site', partnerKey: g.partnerKey, siteId: g.siteId, name: g.name, partnerName: g.partnerName,
       days, hours: Math.round(hours * 10)/10, wage,
       need, eligible, estimated, avgDaily, reason,
     });
@@ -1974,8 +1966,9 @@ function _seedApplicationsForJobs() {
   // 정책 적용 — 알바생 앱이 자동 차단하는 한도를 시드에서도 준수
   // 1. CJ/롯데 — 파트너사별 주 4일 한도 (POLICY 정책)
   // 2. 알바생 하루 1건 신청 — 같은 알바생이 같은 날짜 다른 공고에 안 들어감
-  const partnerWeekDays = {};   // workerId|weekStart|partnerKey → Set<date>
-  const workerDayUsed = {};      // workerId|date → bool
+  // 정책 v1.1: 한도는 동일 근무지 기준 (이전 파트너사 통합 → 변경)
+  const siteWeekDays = {};   // workerId|weekStart|siteId → Set<date>
+  const workerDayUsed = {};   // workerId|date → bool
 
   // 기존 매뉴얼 시드 application도 한도 카운트에 포함
   applications.forEach(a => {
@@ -1989,9 +1982,9 @@ function _seedApplicationsForJobs() {
     if (a.status !== 'rejected' && a.status !== 'cancelled') {
       workerDayUsed[a.workerId + '|' + j.date] = true;
       if (pk && pk !== 'convention') {
-        const key = a.workerId + '|' + weekStartOf(j.date) + '|' + pk;
-        if (!partnerWeekDays[key]) partnerWeekDays[key] = new Set();
-        partnerWeekDays[key].add(j.date);
+        const key = a.workerId + '|' + weekStartOf(j.date) + '|' + j.siteId;
+        if (!siteWeekDays[key]) siteWeekDays[key] = new Set();
+        siteWeekDays[key].add(j.date);
       }
     }
   });
@@ -2016,11 +2009,11 @@ function _seedApplicationsForJobs() {
       .filter(w => !w.negotiation && !usedWorkerIds.has(w.id))
       // 하루 1건 신청 한도
       .filter(w => !workerDayUsed[w.id + '|' + j.date])
-      // CJ/롯데: 파트너사별 주 4일 한도 (컨벤션은 미적용)
+      // CJ/롯데: 동일 근무지 주 4일 한도 (컨벤션은 미적용)
       .filter(w => {
         if (!partnerKey || partnerKey === 'convention') return true;
-        const key = w.id + '|' + ws + '|' + partnerKey;
-        const days = partnerWeekDays[key]?.size || 0;
+        const key = w.id + '|' + ws + '|' + j.siteId;
+        const days = siteWeekDays[key]?.size || 0;
         return days < 4;
       })
       .slice(0, need);
@@ -2034,9 +2027,9 @@ function _seedApplicationsForJobs() {
       // 한도 카운터 갱신
       workerDayUsed[w.id + '|' + j.date] = true;
       if (partnerKey && partnerKey !== 'convention') {
-        const key = w.id + '|' + ws + '|' + partnerKey;
-        if (!partnerWeekDays[key]) partnerWeekDays[key] = new Set();
-        partnerWeekDays[key].add(j.date);
+        const key = w.id + '|' + ws + '|' + j.siteId;
+        if (!siteWeekDays[key]) siteWeekDays[key] = new Set();
+        siteWeekDays[key].add(j.date);
       }
 
       const daysBefore = ((seed + i * 11) % 7) + 1;

@@ -197,7 +197,7 @@
             <div class="ws-info-row"><div class="ws-info-label">기본 일급</div><div class="ws-info-val">${s.wage.toLocaleString()}원</div></div>
             <div class="ws-info-row"><div class="ws-info-label">주휴수당</div><div class="ws-info-val">${s.holiday} 시 지급</div></div>
             <div class="ws-info-row"><div class="ws-info-label">통근버스</div><div class="ws-info-val">${s.bus ? '운영 중 · <a onclick="window.__wsBusGuide(\''+s.id+'\')" style="color:#2563EB; cursor:pointer; text-decoration:underline;">탑승 가이드</a>' : '없음'}</div></div>
-            <div class="ws-info-row"><div class="ws-info-label">주 근무일 제한</div><div class="ws-info-val">${found.partnerKey==='convention'?'제한 없음':'파트너사 기준 주 4일'}</div></div>
+            <div class="ws-info-row"><div class="ws-info-label">주 근무일 제한</div><div class="ws-info-val">${found.partnerKey==='convention'?'제한 없음':'동일 근무지 주 4일'}</div></div>
             ${found.partnerKey==='convention' ? `<div class="ws-info-row"><div class="ws-info-label">지하철 가이드</div><div class="ws-info-val"><a onclick="window.__wsSubwayGuide(\'${s.id}\')" style="color:#2563EB; cursor:pointer; text-decoration:underline;">경로 안내 보기</a> <span style="font-size:11px; color:#6B7684;">(N17 이월)</span></div></div>` : ''}
           </div>
 
@@ -6352,7 +6352,7 @@
   };
 
   // 주휴수당 팝업 미리보기 — 알바생 앱에서 실제 어떻게 보이는지 모바일 프레임으로 시뮬
-  // 파트너사에 따라 규칙 상이: 컨벤션=이번 주 2일째 · CJ/롯데=이번 주 4일 만근 안내
+  // 정책 v1.1: 모두 동일 근무지 기준 — 컨벤션 2일 / CJ·롯데 4일
   const HOLIDAY_SCENARIOS = [
     { key: 'cj_3of4',      partner: 'CJ대한통운',   site: 'CJ대한통운 곤지암 MegaHub',  done: 3, need: 4, avgDaily: 110000, sub: '이번 주 이미 3일 출근 · 1일만 더 하면 만근!' },
     { key: 'cj_2of4',      partner: 'CJ대한통운',   site: 'CJ대한통운 이천 MpHub',      done: 2, need: 4, avgDaily: 105000, sub: '이번 주 2일 출근 · 4일 만근 시 주휴수당 대상' },
@@ -9192,7 +9192,7 @@
             <li><b>하루 1건 신청만 가능</b> — 시간대 다른 공고라도 중복 불가</li>
             <li><b>12h 전 신청</b>: 자동 승인 / <b>12h 이내</b>: 관리자 승인 대기</li>
             <li><b>협의대상 / 경고 3회 이상</b>: 시간 무관 관리자 승인 필요</li>
-            <li><b>CJ/롯데는 파트너사별 주 4일 제한</b></li>
+            <li><b>CJ/롯데는 동일 근무지 주 4일 제한</b></li>
           </ul>
         </div>
       `,
@@ -10116,8 +10116,8 @@
           <li><strong>알바비</strong>: 출근/지각 처리된 알바생의 공고별 일급(또는 시급) 합계 (결근 제외)</li>
           <li><strong>주휴수당 추정</strong>: 한국 노동법 기준 — <strong>주 15시간 이상 + 만근</strong> 시 1주일에 1일분 임금
             <ul style="padding-left: 18px; margin-top: 4px;">
-              <li>CJ대한통운·롯데택배: <strong>주 4일 만근</strong> 기준</li>
-              <li>컨벤션: <strong>주 2일 출근</strong> 기준</li>
+              <li>CJ대한통운·롯데택배: <strong>동일 근무지 주 4일 만근</strong> 기준</li>
+              <li>컨벤션: <strong>동일 근무지 주 2일 출근</strong> 기준</li>
               <li>1일분 = 그 주 평균 일급 (참고용 추정 — 정확한 금액은 파트너사 정산 시 결정)</li>
             </ul>
           </li>
