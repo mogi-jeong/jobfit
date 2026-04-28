@@ -482,6 +482,112 @@ ALTER TABLE applications ADD CONSTRAINT no_self_buddy CHECK (id <> buddy_app_id)
 - `tryGrantBuddyBonus` 중복 호출 race → DB 단 `UNIQUE (application_id) ON buddy_bonus_grants` 제약
 - 자기 참조 외래키 CHECK + 같은 페어가 동일 jobId여야 함 검증 (cross-job 페어 방지)
 
+### 4.8 취소 승인 — 12h 이내 알바생 취소 요청 검토 (v0.11 신규)
+
+알바생이 근무 시작 12h 이내에 취소 요청 시 사유 카테고리별로 관리자가 검토.
+
+**사유 카테고리 6종** (`CANCEL_REASON_TYPES`):
+| 카테고리 | 권고 액션 | 비고 |
+|---|---|---|
+| `normal` 단순 변심 | -1,000P 차감 | `POLICY.POINT_CANCEL_DEDUCT` |
+| `sick` 본인 질병 | 면제 | 진료 영수증 등 증빙 권장 |
+| `family` 가족 응급 | 면제 | 가족 입원/사고 등 |
+| `transport` 대중교통 장애 | 면제 | 사고/지연 등 |
+| `weather` 천재지변 | 면제 | 폭설/태풍 등 도로 통제 |
+| `other` 기타 | 메모 확인 후 결정 | 자유 사유 |
+
+**상태 전이**:
+- 알바생 12h 이내 취소 요청 → `application.status = 'cancel_pending'` (priorStatus='approved' 보존)
+- 관리자 검토 후 3가지 액션:
+  - **차감 승인** (`approveCancelDeduct`) → status='cancelled', cancelDeduct=1000, pointTxs deduct
+  - **면제 승인** (`approveCancelExempt`) → status='cancelled', cancelDeduct=0
+  - **반려** (`rejectCancelRequest`) → status=priorStatus 복원 (출근 의무)
+
+### 4.9 포인트 회수 — 무단결근 후 발견 / 부정 출근 / 정책 위반 (v0.11 신규)
+
+관리자가 알바생 보유 포인트를 사후 회수. 근무자 상세 [⛔ 포인트 회수] 버튼.
+
+**가용 잔액 캡 (M1)**: 출금 대기 금액은 알바생에게 약속된 돈이라 회수 불가
+```js
+recoverableBalance(workerId) → { points, pendingLocked, available }
+// available = max(0, points - sum(pending withdraw amounts))
+```
+
+**검증**:
+- 1,000P 단위 + 최소 1,000P + 메모 필수
+- 잔액 0이면 버튼 disable
+- 5만P 초과 시 confirm 한 번 더
+- 가용 초과 요청 시 actual = min(amount, available) 만 차감
+
+**감사로그**: `category='point', action='recover'`
+
+### 4.10 문의 — 게시판 + 1:1 스레드 하이브리드 (v0.11 재구성)
+
+기존 단일 message body/answer 구조 → **카카오 고객센터 패턴**으로 재구성.
+
+**데이터 모델 변경**:
+```
+inquiries[].messages[]: [{ from: 'worker'|'admin', at, text, by? }]
+inquiries[].status: 'pending' | 'in_progress' | 'closed'
+inquiries[].priority: 'normal' | 'urgent'
+inquiries[].updatedAt, closedAt, closedBy
+```
+
+**상태 자동 전환**:
+- 알바생 새 문의 → `pending`
+- 운영자 답변 → `in_progress`
+- 알바생 추가 메시지 → `pending` (응답 우선순위 ↑)
+- 운영자 종결 → `closed`
+- 종결 후 알바생 메시지 → 자동 `in_progress` (재오픈)
+
+**Mutation 헬퍼**:
+- `addInquiryMessage(inqId, from, text, by)` — 메시지 추가 + 상태 자동 전환
+- `closeInquiry(inqId, by)` — 종결 처리
+- `createInquiry({ workerId, category, title, text })` — 알바생 신규 문의
+
+**Supabase 마이그레이션**:
+- `messages` 별도 테이블 권장 (`inquiry_messages` FK to `inquiries`)
+- Realtime 구독으로 양방향 채팅 (`supabase.channel(...).on('INSERT', ...)`)
+- FCM 푸시 — 알바생/운영자 새 메시지 수신 시
+
+### 4.11 신청자 직접 추가 — 알바생 검색 후 등록 (v0.11 신규)
+
+전화/카톡으로 신청 의사 받은 알바생을 운영자가 직접 등록. 공고 상세 신청자 목록 헤더 [+ 알바생 직접 추가].
+
+**검증** (`validateApplicantEligibility(workerId, jobId)`):
+- **hardBlocks** (절대 우회 불가): 이미 신청 / 같은 날 다른 공고 / FULL / 데이터 오류
+- **warnings** (force=true 면 우회): 협의대상 / 동일 근무지 주 4일 초과
+
+**등록** (`adminAddApplicant({ workerId, jobId, reason, by, byRole, force })`):
+- `applications` 추가 (status='approved', addedByAdmin=true, addReason)
+- `j.apply++`
+- 감사로그 `application/admin_add`
+
+**권한**: 마스터/admin1/admin2 모두 (admin2는 담당 근무지 한정 — 시뮬은 전체 허용)
+
+**노출 조건**: `jobStatus(j) === 'open' || 'closed'` (공고 시작 전만)
+
+### 4.12 관리자 강제 취소 — 1:1 문의 사유 받은 후 처리 (v0.11 신규)
+
+알바생이 문의로 못 오는 사정 알린 후 운영자가 대신 처리. 신청자 목록 행 우측 [신청 취소] 버튼.
+
+**`adminCancelApproved(appId, reason, by, byRole)`**:
+- status='approved'만 처리 (이중 호출 방지)
+- jobStatus가 `open`/`closed`만 허용 (진행 중/완료는 [출결 정정] 사용)
+- status → 'cancelled', cancelDecision='admin_cancel', cancelDeduct=0
+- `j.apply -= 1` 슬롯 회수
+- buddy cascade 안 함 (짝꿎 승인 유지 + 보너스 자격만 소멸)
+
+### 4.13 지각 보고 — 알바앱에서 1:1 문의로 자동 등록 (v0.11 신규)
+
+알바앱 [내 근무] 오늘 근무 카드의 [⏰ 늦어요 보고] 버튼.
+
+**플로우**:
+1. 알바생이 예상 지연 (10분 이내~1시간 이상) + 사유 입력
+2. `createInquiry({ category: 'general', title: '⏰ 지각 보고 — [근무지]', text })` 호출
+3. `priority = 'urgent'` 마킹 → 관리자 [문의] 페이지에 🚨 긴급으로 즉시 표시
+4. 알바앱은 [1:1 문의] 채팅 화면으로 자동 진입 → 양방향 대화 가능
+
 ---
 
 ## 5. mutation 헬퍼 → API endpoint 매핑
@@ -499,6 +605,17 @@ ALTER TABLE applications ADD CONSTRAINT no_self_buddy CHECK (id <> buddy_app_id)
 | `addWorkerWarning(workerId, ...)` | `POST /api/workers/:id/warnings` | `worker_warnings INSERT` + `workers UPDATE` + (필요 시 `negotiations INSERT`) |
 | `releaseNegotiation(workerId)` | `POST /api/workers/:id/release-negotiation` | `workers UPDATE` + `negotiations 처리` |
 | `canWithdraw(points, amount)` | (클라이언트 검증, 서버 재검증 필수) | |
+| `approveCancelDeduct(appId, by, memo)` | `POST /api/applications/:id/cancel/deduct` | `applications UPDATE` + `jobs.apply -= 1` + `point_txs INSERT(deduct)` + `workers.points -= 1000` |
+| `approveCancelExempt(appId, by, memo)` | `POST /api/applications/:id/cancel/exempt` | `applications UPDATE` + `jobs.apply -= 1` |
+| `rejectCancelRequest(appId, by, memo)` | `POST /api/applications/:id/cancel/reject` | `applications UPDATE` (priorStatus 복원) |
+| `adminCancelApproved(appId, reason, by, byRole)` | `POST /api/applications/:id/admin-cancel` | `applications UPDATE` + `jobs.apply -= 1` (jobStatus가 open/closed일 때만) |
+| `adminAddApplicant({ workerId, jobId, reason, by, byRole, force })` | `POST /api/jobs/:id/applications/admin-add` | `applications INSERT (status='approved')` + `jobs.apply += 1` (검증 통과 시) |
+| `validateApplicantEligibility(workerId, jobId)` | `GET /api/jobs/:id/applicant-eligibility?workerId=...` | (read-only — 동일 근무지 4일 한도 + 협의대상 + FULL 검증) |
+| `recoverWorkerPoints({ workerId, amount, memo, by, byRole })` | `POST /api/workers/:id/recover-points` | `workers.points -= amount` + `point_txs INSERT(deduct)` |
+| `recoverableBalance(workerId)` | `GET /api/workers/:id/recoverable-balance` | (read-only — points - sum(pending withdraws)) |
+| `addInquiryMessage(inqId, from, text, by)` | `POST /api/inquiries/:id/messages` | `inquiry_messages INSERT` + `inquiries.status UPDATE` |
+| `closeInquiry(inqId, by)` | `POST /api/inquiries/:id/close` | `inquiries UPDATE (status='closed', closedAt, closedBy)` |
+| `createInquiry({ workerId, category, title, text })` | `POST /api/inquiries` | `inquiries INSERT` + `inquiry_messages INSERT(첫 메시지)` |
 
 서버 측에선 이 헬퍼들이 **하나의 PostgreSQL 트랜잭션** 안에서 실행되어야 데이터 일관성 보장.
 
@@ -506,23 +623,47 @@ ALTER TABLE applications ADD CONSTRAINT no_self_buddy CHECK (id <> buddy_app_id)
 
 ## 6. 화면 카탈로그 (13페이지 + 모달 N개)
 
-### 사이드바 메뉴 구조
+### 사이드바 메뉴 구조 (5개 섹션 + 참고용)
 ```
 홈
+
+[운영]
 공고 관리                  (탭: 리스트 / 등록 / 템플릿)
-신청 승인                  ← 알바생 앱 → 관리자 검토
-대기열 승인                ← FULL 공고 자리 제안 관리
-퇴근 승인                  ← GPS 미검증 + 자동퇴근 미처리
-근무자 관리
-근무지 관리                (마스터 전용)
+신청 승인 N                ← 알바생 앱 → 관리자 검토 (N=대기 건수 빨강 뱃지)
+대기열 승인 N              ← FULL 공고 자리 제안 관리 (주황 뱃지)
+퇴근 승인 N                ← GPS 미검증 + 자동퇴근 미처리 (보라 뱃지)
+취소 승인 N                ← 12h 이내 취소 요청 사유 검토 (주황 뱃지) [v0.11 신규]
+
+[알바생]
+근무자 관리                (포인트 회수 + 포인트 이력 패널)
 협의대상                   (해제는 마스터 전용)
+
+[자원·정산]
+근무지 관리                (마스터 전용)
 포인트                     (탭: 출금 요청 / 이력 / 회수)
-문의
-앱 미리보기                (5탭: 홈/공고/내근무/포인트/프로필)
+문의                       (게시판 + 1:1 스레드 채팅 — v0.11 재구성)
+
+[도구·리포트]
 관제 시스템 ⧉             (별도 창 · 전광판 · 다크 테마)
 통계 리포트                (탭: 일별 / 월별 / 연간)
+파트너사 정산 NEW         (기간 + 파트너사별 알바비/주휴수당 추정)
+
+[시스템]
 관리자 계정                (시스템 설정 · 점검 모드)
+감사로그 M                  (마스터 전용 — 검색 시 기간 필터 자동 우회)
+
+[참고용 (개발자/시연)]
+통근버스 길찾기            (카카오맵 임베드)
+앱 미리보기                (알바생 앱 — 1:1 문의 채팅 + 지각 보고 포함)
+모바일 관리자               (현장 1·2등급 폰 화면 4탭)
 ```
+
+**v0.11 신규 기능 진입점**:
+- 취소 승인: 사이드바 [운영] → 취소 승인
+- 신청자 직접 추가: 공고 상세 → 신청자 목록 헤더 [+ 알바생 직접 추가]
+- 관리자 강제 취소: 공고 상세 → 신청자 목록 행 우측 [신청 취소] (open/closed 공고만)
+- 포인트 회수: 근무자 상세 헤더 [⛔ 포인트 회수] (잔액 0이면 disable)
+- 지각 보고: 앱 미리보기 → [내 근무] → 오늘 카드 [⏰ 늦어요 보고]
 
 ### 핵심 모달
 | 모달 | 위치 | 트리거 |
