@@ -660,7 +660,12 @@ function createInquiry({ workerId, category, title, text }) {
   const w = findWorker(workerId); if (!w) return null;
   const trimmed = (text || '').trim();
   if (!trimmed) return { error: '메시지 내용이 비어 있음' };
-  const id = uid('q');
+  // 시드와 동일한 ID 형식 — 'q' + 3자리 zero-padded · 충돌 방지를 위해 기존 최대 번호 +1
+  const maxNum = inquiries.reduce((m, q) => {
+    const n = parseInt(String(q.id || '').replace(/^q/, ''), 10);
+    return isNaN(n) ? m : Math.max(m, n);
+  }, 0);
+  const id = 'q' + String(maxNum + 1).padStart(3, '0');
   const at = nowStamp();
   const it = {
     id, workerId,
@@ -847,17 +852,22 @@ function attendanceDonut(sum, size = 90, thick = 10) {
   `;
 }
 
-// 결정적 출결 시뮬레이션 — 공고 상태에 따라 분포 조정
+// 결정적 출결 시뮬레이션 — applications 기반 (실제 신청자=출결자 일치)
 // 관리자 정정 (attendanceOverrides)이 있으면 시뮬 결과 위에 덮어씀
+// Supabase 마이그레이션 시 이 함수 한 곳만 SQL 쿼리로 치환하면 끝
+//
+// 출결 명단 = applications 중 'cancelled'/'rejected'를 제외한 신청자들
+// (approved · pending · cancel_pending 모두 포함 — 출근 의무가 살아있는 상태)
 function getAttendance(jobId) {
   const job = findJob(jobId); if (!job) return [];
   const st = jobStatus(job);
   const seed = [...jobId].reduce((s, c) => s + c.charCodeAt(0), 0);
-  const actualCount = Math.min(job.apply, workers.length);
-  const shuffled = [...workers].sort((a, b) =>
-    ((seed + a.id.charCodeAt(3)) % 100) - ((seed + b.id.charCodeAt(3)) % 100)
-  );
-  const picked = shuffled.slice(0, actualCount);
+
+  // applications 기반 — 실제 신청자만 (취소/거절 제외) · 신청 시간 순 정렬
+  const apps = applications
+    .filter(a => a.jobId === jobId && a.status !== 'cancelled' && a.status !== 'rejected')
+    .sort((a, b) => (a.appliedAt || '').localeCompare(b.appliedAt || ''));
+  const picked = apps.map(a => findWorker(a.workerId)).filter(Boolean);
 
   // 이 공고에 적용된 정정 (status === 'applied' 만 반영, 'pending'은 미반영)
   const overrides = (typeof attendanceOverrides !== 'undefined' ? attendanceOverrides : [])
@@ -1197,6 +1207,154 @@ function approveCancelExempt(appId, by, memo) {
   return { app: a, worker: w, job: j };
 }
 
+// 관리자가 승인된 신청을 알바생 대신 강제 취소
+// 사용 케이스: 알바생이 1:1 문의로 사정 알린 후 관리자가 직접 처리
+// 자동 차감 없음 · 슬롯만 회수 · buddy는 cascade하지 않음 (개별 출근 가능)
+function adminCancelApproved(appId, reason, by, byRole) {
+  const a = findApp(appId); if (!a) return null;
+  if (a.status !== 'approved') return { error: '승인 상태인 신청만 취소 가능' };
+  const trimmed = (reason || '').trim();
+  if (!trimmed) return { error: '취소 사유 필수' };
+  const w = findWorker(a.workerId); const j = findJob(a.jobId);
+  if (!w || !j) return { error: '데이터 오류' };
+  // 공고 시작 전(open/closed)만 강제 취소 허용 — 진행 중/완료 공고는 출결 정정으로 처리
+  const jSt = jobStatus(j);
+  if (jSt !== 'open' && jSt !== 'closed') {
+    return { error: '진행 중 또는 완료된 공고는 취소할 수 없습니다. 출결 정정으로 처리해주세요.' };
+  }
+  const site = findSite(j.siteId);
+  a.status = 'cancelled';
+  a.cancelDecision = 'admin_cancel';
+  a.cancelDeduct = 0;
+  a.cancelReason = trimmed;
+  a.cancelReviewedAt = nowStamp();
+  a.cancelReviewedBy = by || '시스템';
+  // 슬롯 회수
+  if (typeof j.apply === 'number' && j.apply > 0) j.apply -= 1;
+  if (typeof logAudit === 'function') {
+    logAudit({
+      category: 'application', action: 'admin_cancel',
+      target: w.name + ' / ' + (site?.site.name || '') + ' ' + j.date + ' ' + j.slot,
+      targetId: appId,
+      summary: '관리자 취소 — ' + trimmed + ' · 슬롯 회수 · 차감 없음',
+      by, byRole,
+    });
+  }
+  return { app: a, worker: w, job: j };
+}
+
+// 알바생 자격 검증 — 직접 추가 / 추천 호출 시 공통 사용
+// 반환: { ok, hardBlocks: [...], warnings: [...], worker, job, partnerKey }
+//   hardBlocks: 강제 등록 불가 (이미 신청 / 다른 공고 충돌 / FULL / 미성년)
+//   warnings:   force=true 면 우회 가능 (협의대상 / 주 4일 초과)
+function validateApplicantEligibility(workerId, jobId) {
+  const w = findWorker(workerId);
+  const j = findJob(jobId);
+  if (!w || !j) return { ok: false, hardBlocks: ['데이터 오류'], warnings: [], worker: w, job: j };
+  const partnerEntry = (function () {
+    for (const k in worksites) {
+      if (worksites[k].sites.find(s => s.id === j.siteId)) return k;
+    }
+    return null;
+  })();
+  const hardBlocks = [];
+  const warnings  = [];
+
+  // 1) 이미 같은 공고에 활성 신청 (취소/거절 제외)
+  const dupe = applications.find(a => a.workerId === workerId && a.jobId === jobId
+    && a.status !== 'cancelled' && a.status !== 'rejected');
+  if (dupe) hardBlocks.push('이미 이 공고에 신청 (' + (dupe.status === 'approved' ? '승인됨' : dupe.status) + ')');
+
+  // 2) 같은 날 다른 공고 신청 (하루 1건 한도)
+  const sameDay = applications.find(a => a.workerId === workerId && a.jobId !== jobId
+    && a.status !== 'cancelled' && a.status !== 'rejected');
+  if (sameDay) {
+    const otherJob = findJob(sameDay.jobId);
+    if (otherJob && otherJob.date === j.date) {
+      const otherSite = findSite(otherJob.siteId);
+      hardBlocks.push('같은 날 다른 공고 신청 중 (' + (otherSite?.site.name || '') + ' ' + otherJob.slot + ')');
+    }
+  }
+
+  // 3) FULL 체크 (cap 도달)
+  const filled = applications.filter(a => a.jobId === jobId
+    && a.status !== 'cancelled' && a.status !== 'rejected').length;
+  const ext = (j.externalWorkers || []).length;
+  if (filled + ext >= j.cap) hardBlocks.push('FULL — 모집 인원 도달 (' + (filled + ext) + '/' + j.cap + ')');
+
+  // 4) 미성년 (workers 시드에 birthYear 없음 — 프로토타입은 검증 생략)
+  // TODO: 실제 운영 시 w.birthYear 또는 w.minor 플래그 검증
+
+  // 5) 협의대상 → warning (force 가능)
+  if (w.negotiation) warnings.push('협의대상 알바생 (관리자 검토 필요)');
+
+  // 6) 주 4일 한도 (CJ/롯데만 적용 · 컨벤션은 미적용)
+  if (partnerEntry && partnerEntry !== 'convention') {
+    const ws = weekStartOf(j.date);
+    const partnerDays = applications
+      .filter(a => a.workerId === workerId && a.status !== 'cancelled' && a.status !== 'rejected')
+      .map(a => findJob(a.jobId))
+      .filter(jj => jj && weekStartOf(jj.date) === ws)
+      .filter(jj => {
+        for (const k in worksites) {
+          if (k !== 'convention' && worksites[k].sites.find(s => s.id === jj.siteId)) return k === partnerEntry;
+        }
+        return false;
+      })
+      .map(jj => jj.date);
+    const uniqueDays = new Set(partnerDays);
+    if (uniqueDays.size >= 4) {
+      const partnerName = worksites[partnerEntry]?.name || partnerEntry;
+      warnings.push(partnerName + ' 이번 주 4일 한도 초과 (현재 ' + uniqueDays.size + '일)');
+    }
+  }
+
+  return { ok: hardBlocks.length === 0 && warnings.length === 0, hardBlocks, warnings, worker: w, job: j, partnerKey: partnerEntry };
+}
+
+// 관리자가 알바생을 신청자 목록에 직접 추가 (전화/카톡 신청 등)
+// force=true 면 warnings 무시 · hardBlocks는 절대 우회 불가
+function adminAddApplicant({ workerId, jobId, reason, by, byRole, force }) {
+  const trimmed = (reason || '').trim();
+  if (!trimmed) return { error: '등록 사유 필수' };
+  const v = validateApplicantEligibility(workerId, jobId);
+  if (v.hardBlocks.length > 0) return { error: '등록 불가: ' + v.hardBlocks.join(' · ') };
+  if (v.warnings.length > 0 && !force) {
+    return { error: '경고: ' + v.warnings.join(' · '), warnings: v.warnings, needsForce: true };
+  }
+  const w = v.worker; const j = v.job;
+  const site = findSite(j.siteId);
+  // 새 application 생성
+  const id = 'a' + String(applications.length + 1).padStart(3, '0');
+  const at = nowStamp();
+  const app = {
+    id,
+    workerId,
+    jobId,
+    appliedAt: at,
+    status: 'approved',
+    reason: 'admin_added',     // 일반 'reason' 필드 (urgent/neg 등과 구분)
+    processedAt: at,
+    processedBy: by || '시스템',
+    addedByAdmin: true,        // 직접 추가됨 표시 (UI에서 활용)
+    addReason: trimmed,        // 등록 사유 (전화 신청 등)
+    addedForceWarnings: force && v.warnings.length > 0 ? v.warnings : undefined,
+  };
+  applications.push(app);
+  // 슬롯 1 증가
+  if (typeof j.apply === 'number') j.apply = Math.min(j.apply + 1, j.cap);
+  if (typeof logAudit === 'function') {
+    logAudit({
+      category: 'application', action: 'admin_add',
+      target: w.name + ' / ' + (site?.site.name || '') + ' ' + j.date + ' ' + j.slot,
+      targetId: id,
+      summary: '직접 추가 — ' + trimmed + (force && v.warnings.length > 0 ? ' (강제: ' + v.warnings.join(', ') + ')' : ''),
+      by, byRole,
+    });
+  }
+  return { app, worker: w, job: j, warningsForced: v.warnings };
+}
+
 // 취소 요청 처리 — 반려 (신청 복원, 알바생 출근 의무)
 function rejectCancelRequest(appId, by, memo) {
   const a = findApp(appId); if (!a || a.status !== 'cancel_pending') return null;
@@ -1344,16 +1502,36 @@ function reviewAttendanceOverride(overrideId, decision, reviewer, reviewerRole) 
 }
 
 // 보너스 포인트 지급 — 단일 또는 일괄
+// 가용 회수 잔액 계산 (보유 포인트 - 출금 대기 합계)
+// 출금 대기 금액은 알바생에게 이미 약속된 돈이라 회수 불가 — 데이터 모순 방지
+function recoverableBalance(workerId) {
+  const w = findWorker(workerId); if (!w) return { points: 0, pendingLocked: 0, available: 0 };
+  const pendingLocked = pointTxs
+    .filter(t => t.workerId === workerId && t.type === 'withdraw' && t.status === 'pending')
+    .reduce((s, t) => s + (t.amount || 0), 0);
+  return {
+    points: w.points || 0,
+    pendingLocked,
+    available: Math.max(0, (w.points || 0) - pendingLocked),
+  };
+}
+
 // 수동 포인트 회수 (관리자 → 알바생 보유 포인트 차감)
 // 무단결근 후 발견 / 부정 출근 / 기타 정책 위반 등에 사용 — 사유는 자유 메모
+// 가용 잔액 캡: 출금 대기 금액은 잠겨있어 회수 불가 (데이터 모순 방지)
 function recoverWorkerPoints({ workerId, amount, memo, by, byRole }) {
   const w = findWorker(workerId); if (!w) return null;
   if (!amount || amount < 1000) return { error: '최소 1,000P 이상' };
   if (amount % 1000 !== 0)      return { error: '1,000P 단위로 입력' };
   if (!memo || !memo.trim())    return { error: '회수 사유(메모) 필수' };
-  // 보유 포인트가 부족해도 0 미만으로 가지 않도록 — 실 차감액만 트랜잭션에 기록
-  const actual = Math.min(amount, w.points);
-  w.points = Math.max(0, w.points - amount);
+  // 가용 잔액 산정 — 출금 대기 금액은 알바생에게 이미 약속된 돈이므로 잠금
+  const bal = recoverableBalance(workerId);
+  if (bal.available <= 0) {
+    return { error: `회수 가능 잔액이 0P (보유 ${bal.points.toLocaleString()}P 중 출금 대기 ${bal.pendingLocked.toLocaleString()}P 잠금)` };
+  }
+  // 가용 잔액 캡 — 요청보다 적게 차감될 수 있음
+  const actual = Math.min(amount, bal.available);
+  w.points = Math.max(0, w.points - actual);
   const tx = {
     id: uid('p-recover'),
     workerId,
@@ -1370,11 +1548,11 @@ function recoverWorkerPoints({ workerId, amount, memo, by, byRole }) {
       category: 'point', action: 'recover',
       target: w.name,
       targetId: tx.id,
-      summary: actual.toLocaleString() + 'P 회수 — ' + memo.trim() + (actual < amount ? ` (잔액 부족: 요청 ${amount.toLocaleString()}P 중 ${actual.toLocaleString()}P만 차감)` : ''),
+      summary: actual.toLocaleString() + 'P 회수 — ' + memo.trim() + (actual < amount ? ` (가용 잔액 부족: 요청 ${amount.toLocaleString()}P 중 ${actual.toLocaleString()}P만 차감 · 출금 대기 ${bal.pendingLocked.toLocaleString()}P 잠금)` : ''),
       by, byRole,
     });
   }
-  return { tx, worker: w, deducted: actual, requested: amount };
+  return { tx, worker: w, deducted: actual, requested: amount, pendingLocked: bal.pendingLocked };
 }
 
 function givePointBonus({ workerId, jobId, amount, reason, by, byRole }) {

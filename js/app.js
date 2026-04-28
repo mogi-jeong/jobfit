@@ -1007,7 +1007,7 @@
   // ───────────────────────────────────────────────────────
   const auditState = {
     search:   '',
-    category: '',  // '' / application / warning / negotiation / gps / point / job / site / admin / notification / external
+    category: '',  // '' / application / warning / negotiation / gps / attendance / point / job / site / admin / notification / external / inquiry
     range:    '7d', // 7d / 30d / 90d / all
   };
 
@@ -1021,9 +1021,14 @@
       return d.toISOString().slice(0, 10);
     })();
 
+    // 검색어가 있을 때는 날짜 필터를 자동 우회 (전 기간 검색)
+    // 이유: 시드 60일 분포 + 기본 7일 범위에서 검색어가 잡히지 않는 UX 혼란 방지
+    const searchActive = q.length > 0;
+    const effectiveCutoff = searchActive ? null : cutoff;
+
     const filtered = auditLogs.filter(log => {
       if (auditState.category && log.category !== auditState.category) return false;
-      if (cutoff && log.at.slice(0, 10) < cutoff) return false;
+      if (effectiveCutoff && log.at.slice(0, 10) < effectiveCutoff) return false;
       if (q) {
         const blob = (log.target + ' ' + log.summary + ' ' + log.by).toLowerCase();
         if (!blob.includes(q)) return false;
@@ -1031,9 +1036,9 @@
       return true;
     });
 
-    // 카테고리별 카운트 (현재 기간 + 검색어 기준 — 카테고리 필터는 미적용)
+    // 카테고리별 카운트 (effective range + 검색어 기준 — 카테고리 필터는 미적용)
     const baseList = auditLogs.filter(log => {
-      if (cutoff && log.at.slice(0, 10) < cutoff) return false;
+      if (effectiveCutoff && log.at.slice(0, 10) < effectiveCutoff) return false;
       if (q) {
         const blob = (log.target + ' ' + log.summary + ' ' + log.by).toLowerCase();
         if (!blob.includes(q)) return false;
@@ -1075,12 +1080,14 @@
         <div class="jf-search" style="flex:0 0 280px;">
           <input type="text" placeholder="대상/요약/관리자 검색" value="${esc(auditState.search)}" oninput="window.__imeInput(this, '__audSearch')" data-imefn="__audSearch" />
         </div>
-        <div style="display:inline-flex; gap:4px; border:0.5px solid rgba(0,0,0,0.12); border-radius:8px; padding:3px;">
+        <div style="display:inline-flex; gap:4px; border:0.5px solid rgba(0,0,0,0.12); border-radius:8px; padding:3px; ${searchActive ? 'opacity:0.5;' : ''}" ${searchActive ? 'title="검색 중에는 기간 필터가 자동 우회됩니다"' : ''}>
           ${rangeBtns}
         </div>
         ${(auditState.search || auditState.category || auditState.range !== '7d') ? `<button onclick="window.__audClear()" style="font-size:12px;">초기화</button>` : ''}
         <span style="margin-left:auto; font-size:12px; color:#6B7684;">${filtered.length}건 (전체 ${auditLogs.length}건)</span>
       </div>
+
+      ${searchActive ? `<div style="font-size:11px; color:#1E40AF; background:#EFF6FF; padding:6px 12px; border-radius:6px; margin-bottom:10px;">🔍 <strong>검색 중</strong> — 기간 필터를 자동 우회하고 전체 기간에서 검색합니다.</div>` : ''}
 
       <div style="display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap;">${catChips}</div>
     `;
@@ -2064,7 +2071,7 @@
             <div class="gps-req-worker-sub">${w.phone}</div>
           </div>
           <div>
-            <div class="gps-req-job-title">${site.site.name} <span style="font-size:11px; color:#6B7684; font-weight:400;">${site.partner}</span></div>
+            <div class="gps-req-job-title" onclick="event.stopPropagation(); window.__gotoJobDetail('${j.id}')" style="cursor:pointer;" title="공고 상세로 이동">${site.site.name} <span style="font-size:10px; color:#2563EB;">→</span> <span style="font-size:11px; color:#6B7684; font-weight:400;">${site.partner}</span></div>
             <div class="gps-req-job-sub">${j.date} · ${j.slot} ${j.start}~${j.end} · 제출 ${g.submittedAt}</div>
           </div>
           <div class="gps-req-reason" title="${esc(g.reason)}">${esc(g.reason)}</div>
@@ -3434,7 +3441,14 @@
             ? '<button class="btn-primary" onclick="window.__wrkNegRelease(\'' + w.id + '\')">협의대상 해제 (마스터)</button>'
             : '<button onclick="window.__wrkWarnAdd(\'' + w.id + '\')">경고 부여</button>'}
           <button onclick="window.__bonusGive('${w.id}')">💰 보너스 지급</button>
-          <button onclick="window.__wrkRecover('${w.id}')" style="color:#991B1B; border-color:#FCA5A5;">⛔ 포인트 회수</button>
+          ${(() => {
+            const bal = recoverableBalance(w.id);
+            if (bal.available > 0) {
+              return `<button onclick="window.__wrkRecover('${w.id}')" style="color:#991B1B; border-color:#FCA5A5;" title="회수 가능 ${bal.available.toLocaleString()}P${bal.pendingLocked > 0 ? ' (출금 대기 ' + bal.pendingLocked.toLocaleString() + 'P 잠금)' : ''}">⛔ 포인트 회수</button>`;
+            }
+            const reason = bal.points === 0 ? '보유 포인트가 0이라 회수할 수 없습니다' : `회수 가능 잔액 0P — 보유 ${bal.points.toLocaleString()}P가 모두 출금 대기로 잠겨있음`;
+            return `<button disabled style="color:#9CA3AF; border-color:#E5E7EB; cursor:not-allowed;" title="${reason}">⛔ 포인트 회수</button>`;
+          })()}
           <button onclick="window.__notifWorker('${w.id}')">알림 발송</button>
         </div>
       </div>
@@ -3474,21 +3488,22 @@
         </div>
 
         <div class="jf-panel">
-          <div class="ws-section-title">최근 신청 이력 <span style="font-size:11px; color:#6B7684; font-weight:400;">최근 ${myApps.length}건</span></div>
+          <div class="ws-section-title">최근 신청 이력 <span style="font-size:11px; color:#6B7684; font-weight:400;">최근 ${myApps.length}건 · 클릭 시 공고 상세로 이동</span></div>
           ${myApps.length === 0
             ? '<div style="padding:20px 0; text-align:center; color:#6B7684; font-size:12px;">신청 이력이 없습니다.</div>'
             : myApps.map(a => {
-                const j = findJob(a.jobId); const s = findSite(j.siteId);
-                const stColor = { pending: '#F59E0B', approved: '#22C55E', rejected: '#EF4444' }[a.status];
-                const stLabel = { pending: '대기 중', approved: '승인', rejected: '거절' }[a.status];
+                const j = findJob(a.jobId); const s = j ? findSite(j.siteId) : null;
+                if (!j || !s) return '';
+                const stColor = { pending: '#F59E0B', approved: '#22C55E', rejected: '#EF4444', cancelled: '#6B7684', cancel_pending: '#F97316' }[a.status] || '#6B7684';
+                const stLabel = { pending: '대기 중', approved: '승인', rejected: '거절', cancelled: '취소', cancel_pending: '취소 검토 중' }[a.status] || a.status;
                 return `
-                  <div style="padding: 10px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); font-size: 12px;">
+                  <div onclick="window.__gotoJobDetail('${j.id}')" style="padding: 10px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); font-size: 12px; cursor:pointer; transition:background 0.1s;" onmouseover="this.style.background='#F9FAFB'" onmouseout="this.style.background=''">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                      <span style="font-weight:500; color:#111827;">${s.site.name}</span>
+                      <span style="font-weight:500; color:#111827;">${esc(s.site.name)} <span style="font-size:10px; color:#6B7684; margin-left:4px;">→</span></span>
                       <span style="color:${stColor}; font-size:11px; font-weight:500;">● ${stLabel}</span>
                     </div>
                     <div style="color:#6B7684; margin-top:3px;">${j.date} · ${j.slot} ${j.start}~${j.end}</div>
-                    <div style="color:#9CA3AF; font-size:11px; margin-top:2px;">신청 ${a.appliedAt}${a.rejectReason ? ' · 거절 사유: ' + a.rejectReason : ''}</div>
+                    <div style="color:#9CA3AF; font-size:11px; margin-top:2px;">신청 ${a.appliedAt}${a.rejectReason ? ' · 거절 사유: ' + esc(a.rejectReason) : ''}</div>
                   </div>
                 `;
               }).join('')}
@@ -3571,11 +3586,15 @@
   window.__wrkDetail = function(id) { renderWorkerDetail(id); };
   window.__wrkRecover = function(id) {
     const w = findWorker(id); if (!w) return;
+    const bal = recoverableBalance(id);
+    const lockNote = bal.pendingLocked > 0
+      ? ` · 출금 대기 <strong style="color:#F59E0B;">${bal.pendingLocked.toLocaleString()}P</strong> 잠금 · 회수 가능 <strong style="color:#EF4444;">${bal.available.toLocaleString()}P</strong>`
+      : '';
     promptModal({
       title: '포인트 회수',
-      subtitle: `<strong>${esc(w.name)}</strong> · 보유 <strong style="color:#2563EB;">${(w.points||0).toLocaleString()}P</strong><br><span style="color:#991B1B; font-size:12px;">⛔ 무단결근 후 발견 / 부정 출근 / 기타 정책 위반에 사용 — 사유 메모 필수 (감사로그 기록)</span>`,
+      subtitle: `<strong>${esc(w.name)}</strong> · 보유 <strong style="color:#2563EB;">${(w.points||0).toLocaleString()}P</strong>${lockNote}<br><span style="color:#991B1B; font-size:12px;">⛔ 무단결근 후 발견 / 부정 출근 / 기타 정책 위반에 사용 — 사유 메모 필수 (감사로그 기록)</span>${bal.pendingLocked > 0 ? '<br><span style="color:#9A3412; font-size:11px;">ℹ 출금 대기 금액은 알바생에게 이미 약속된 돈이라 회수에서 제외됩니다.</span>' : ''}`,
       fields: [
-        { key: 'amount', label: '회수 금액', type: 'number', required: true, value: '1000', placeholder: '1,000P 단위', hint: `최소 1,000P · 1,000P 단위 · 보유 잔액 ${(w.points||0).toLocaleString()}P` },
+        { key: 'amount', label: '회수 금액', type: 'number', required: true, value: '1000', placeholder: '1,000P 단위', hint: `최소 1,000P · 1,000P 단위 · 회수 가능 ${bal.available.toLocaleString()}P` },
         { key: 'memo', label: '회수 사유 (메모)', type: 'textarea', required: true, placeholder: '예: 무단결근 후 발견 — 4/22 곤지암 야간 / 부정 출근 신고 접수 등', hint: '감사로그 + 회수 로그에 기록되며 알바생에게도 알림 발송됩니다' },
       ],
       submitLabel: '회수',
@@ -3585,14 +3604,19 @@
         if (isNaN(amount) || amount < 1000) { alert('최소 1,000P 이상 입력해주세요.'); return false; }
         if (amount % 1000 !== 0) { alert('1,000P 단위로 입력해주세요.'); return false; }
         if (!vals.memo || !vals.memo.trim()) { alert('회수 사유는 필수입니다.'); return false; }
-        if (amount > 50000) {
+        // 가용 잔액 재계산 (모달 열린 사이 다른 작업 발생 가능성 대비)
+        const cur = recoverableBalance(id);
+        if (cur.available <= 0) { alert(`회수 가능 잔액이 0P입니다.\n(보유 ${cur.points.toLocaleString()}P 중 출금 대기 ${cur.pendingLocked.toLocaleString()}P 잠금)`); return false; }
+        if (amount > cur.available) {
+          if (!confirm(`회수 가능 잔액(${cur.available.toLocaleString()}P)을 초과합니다.\n실제로는 ${cur.available.toLocaleString()}P만 차감됩니다.\n진행하시겠습니까?`)) return false;
+        } else if (amount > 50000) {
           if (!confirm(amount.toLocaleString() + 'P는 큰 금액입니다. 정말 회수하시겠습니까?')) return false;
         }
         const me = currentAdmin();
         const result = recoverWorkerPoints({ workerId: id, amount, memo: vals.memo, by: me.name, byRole: me.role });
         if (!result || result.error) { alert('처리 실패: ' + (result?.error || '알 수 없는 오류')); return false; }
         const shortMsg = result.deducted < result.requested
-          ? `요청 ${result.requested.toLocaleString()}P 중 잔액 부족으로 ${result.deducted.toLocaleString()}P만 차감됨.`
+          ? `요청 ${result.requested.toLocaleString()}P 중 가용 잔액 부족으로 ${result.deducted.toLocaleString()}P만 차감됨.`
           : `${result.deducted.toLocaleString()}P 회수 완료.`;
         alert(`✅ ${shortMsg}\n\n${w.name} 님 잔여 ${(w.points||0).toLocaleString()}P\n알바생에게 회수 알림이 발송되었습니다.`);
         renderWorkerDetail(id);
@@ -4086,7 +4110,7 @@
               ${buddyW ? `<div style="font-size:11px; color:#9D174D; margin-top:4px; padding:4px 8px; background:#FDF2F8; border-radius:4px; line-height:1.4;">🤝 ${esc(buddyW.name)} (${esc(buddyW.phone)})와 함께${buddyRoleBadge}<br><span style="color:#6B7684; font-size:10px;">한쪽 거절 시 짝꿓도 자동 거절 · 양쪽 출퇴근 완료 시 +3,000P</span></div>` : ''}
             </div>
             <div class="apv-job">
-              <div class="apv-job-title">${site.site.name} <span class="ws-mini-tag" style="font-size:10px;">${site.partner}</span></div>
+              <div class="apv-job-title" onclick="window.__gotoJobDetail('${j.id}')" style="cursor:pointer;" title="공고 상세로 이동">${site.site.name} <span style="font-size:11px; color:#2563EB;">→</span> <span class="ws-mini-tag" style="font-size:10px;">${site.partner}</span></div>
               <div class="apv-job-sub">${j.date} · ${j.slot} ${j.start}~${j.end}</div>
               <div class="apv-job-sub">${j.wageType} ${j.wage.toLocaleString()}원 · 모집 ${j.apply}/${j.cap}</div>
               <div class="apv-job-sub">신청 ${a.appliedAt} ${dwellHtml}</div>
@@ -4358,19 +4382,34 @@
         const deductBtnCls = isDeductRecommend ? 'btn-primary' : '';
         const exemptBtnCls = isExemptRecommend ? 'btn-primary' : '';
 
+        // 같이하기 짝꿎 정보 — buddy 자격 / 상태 표시
+        const buddyApp = a.buddyAppId ? findApp(a.buddyAppId) : null;
+        const buddyW = buddyApp ? findWorker(buddyApp.workerId) : null;
+        const buddyHtml = buddyW ? (() => {
+          const bSt = buddyApp.status;
+          const bLabel = { approved: '진행 중', cancelled: '이미 취소됨', cancel_pending: '동시 취소 검토 중', rejected: '거절', pending: '신청 대기' }[bSt] || bSt;
+          const bColor = bSt === 'approved' ? '#166534' : bSt === 'cancelled' ? '#6B7684' : bSt === 'cancel_pending' ? '#9A3412' : '#374151';
+          const bonusGone = bSt === 'cancelled' || bSt === 'rejected' || bSt === 'cancel_pending';
+          return `<div style="margin-top:6px; padding:5px 8px; background:#FDF2F8; border-radius:5px; font-size:10px; color:#9D174D; line-height:1.4;">
+            🤝 짝꿎 <strong>${esc(buddyW.name)}</strong> · <span style="color:${bColor};">${bLabel}</span>${bonusGone ? '<br><span style="color:#6B7684; font-size:9px;">→ 보너스 자격 소멸</span>' : '<br><span style="color:#6B7684; font-size:9px;">→ 양쪽 출퇴근 시 +3,000P</span>'}
+          </div>`;
+        })() : '';
+
         html += `
-          <div class="apv-card ${cardCls}" style="${cardStyle} grid-template-columns: 1.1fr 1.3fr 1.4fr auto;">
+          <div class="apv-card ${cardCls}" style="${cardStyle} ${buddyW ? 'border-left: 3px solid #EC4899;' : ''} grid-template-columns: 1.1fr 1.3fr 1.4fr auto;">
             <div class="apv-worker">
               <div class="apv-worker-name">
                 ${esc(w.name)}
                 ${scoreBadge}
                 ${w.negotiation ? '<span class="apv-badge apv-badge-neg" style="font-size:10px; padding:2px 6px;">협의대상</span>' : ''}
+                ${buddyW ? '<span class="apv-badge" style="background:#FCE7F3; color:#9D174D; font-size:10px; padding:2px 6px;">🤝 같이하기</span>' : ''}
               </div>
               <div class="apv-worker-phone">${esc(w.phone)}</div>
               <div class="apv-worker-stat">누적 <strong>${w.total}</strong>회 · 경고 <strong>${w.warnings}</strong> · 보유 <strong>${(w.points||0).toLocaleString()}P</strong></div>
+              ${buddyHtml}
             </div>
             <div class="apv-job">
-              <div class="apv-job-title">${esc(site?.site.name || '')} <span class="ws-mini-tag" style="font-size:10px;">${esc(site?.partner || '')}</span></div>
+              <div class="apv-job-title" onclick="window.__gotoJobDetail('${j.id}')" style="cursor:pointer;" title="공고 상세로 이동">${esc(site?.site.name || '')} <span style="font-size:11px; color:#2563EB;">→</span> <span class="ws-mini-tag" style="font-size:10px;">${esc(site?.partner || '')}</span></div>
               <div class="apv-job-sub">${j.date} · ${j.slot} ${j.start}~${j.end}</div>
               <div class="apv-job-sub">신청 ${a.appliedAt} · 모집 ${j.apply}/${j.cap}</div>
               <div class="apv-job-sub" style="margin-top:4px;">${remainLabel}</div>
@@ -5329,7 +5368,12 @@
           <div class="jf-panel">
             <div class="ws-section-title">
               <span>신청자 목록 <span style="font-size:11px; color:#6B7684; font-weight:400;">${myApps.length}건 신청 · ${myApps.filter(a=>a.status==='approved').length}명 승인</span></span>
-              <button onclick="window.__jobsPrintApps('${j.id}')" style="font-size:12px; padding:4px 10px; height:auto;">📄 출력</button>
+              <div style="display:flex; gap:6px;">
+                ${(jobStatus(j) === 'open' || jobStatus(j) === 'closed')
+                  ? `<button onclick="window.__jobsAdminAddApplicant('${j.id}')" style="font-size:12px; padding:4px 10px; height:auto; background:#EFF6FF; color:#1E40AF; border:0.5px solid #BFDBFE;" title="알바생 검색 후 직접 등록 (전화·카톡 신청 등)">+ 알바생 직접 추가</button>`
+                  : ''}
+                <button onclick="window.__jobsPrintApps('${j.id}')" style="font-size:12px; padding:4px 10px; height:auto;">📄 출력</button>
+              </div>
             </div>
             ${myApps.length === 0
               ? '<div style="padding:20px 0; text-align:center; color:#6B7684; font-size:13px;">아직 신청자가 없습니다.</div>'
@@ -5361,8 +5405,11 @@
                       buddyStatusBadge = `<span style="display:inline-block; font-size:9px; padding:2px 6px; background:#FCE7F3; color:#9D174D; border-radius:3px; margin-left:4px;">🤝 ${esc(buddyW.name)}와 함께</span>`;
                     }
                   }
+                  const cancelMemo = a.status === 'cancelled' && a.cancelReason
+                    ? `<br><span style="color:#9CA3AF; font-size:10px;">취소 사유: ${esc(a.cancelReason)}${a.cancelDecision === 'admin_cancel' ? ' (관리자 취소)' : ''}</span>`
+                    : '';
                   return `
-                    <div style="display:grid; grid-template-columns: 1.2fr 1fr auto auto; gap:10px; align-items:center; padding:10px 0; border-bottom:0.5px solid rgba(0,0,0,0.06); ${buddyW ? 'background: linear-gradient(90deg, #FDF2F8 0%, transparent 60%);' : ''}">
+                    <div style="display:grid; grid-template-columns: 1.2fr 1fr auto auto auto; gap:10px; align-items:center; padding:10px 0; border-bottom:0.5px solid rgba(0,0,0,0.06); ${buddyW ? 'background: linear-gradient(90deg, #FDF2F8 0%, transparent 60%);' : ''}">
                       <div>
                         <div style="font-weight:500; font-size:13px;">${w.name}
                           ${w.negotiation ? '<span class="apv-badge apv-badge-neg" style="font-size:10px; padding:2px 6px;">협의대상</span>' : ''}
@@ -5371,10 +5418,20 @@
                         <div style="font-family:'SF Mono',Monaco,monospace; font-size:11px; color:#6B7684;">${w.phone}</div>
                       </div>
                       <div style="font-size:11px; color:#6B7684;">
-                        경고 ${w.warnings} · 누적 ${w.total}회${a.rejectReason ? '<br>거절 사유: ' + a.rejectReason : ''}
+                        경고 ${w.warnings} · 누적 ${w.total}회${a.rejectReason ? '<br>거절 사유: ' + esc(a.rejectReason) : ''}${cancelMemo}
                       </div>
                       <div style="color:${stColor}; font-size:12px; font-weight:500;">● ${stLabel}</div>
                       <div style="font-size:11px; color:#9CA3AF;">${a.appliedAt}</div>
+                      <div>${(() => {
+                        if (a.status !== 'approved') return '';
+                        const jSt = jobStatus(j);
+                        // 게시 중/마감 직전(공고 시작 전)에만 강제 취소 허용
+                        if (jSt === 'open' || jSt === 'closed') {
+                          return `<button onclick="window.__jobsAdminCancelApp('${a.id}')" style="font-size:11px; padding:5px 10px; height:auto; background:#FEF2F2; color:#991B1B; border:0.5px solid #FCA5A5;" title="관리자가 알바생 신청을 취소 (문의 사유 등)">신청 취소</button>`;
+                        }
+                        // 진행 중/완료 공고: 출결 정정으로 안내
+                        return '<span style="font-size:10px; color:#9CA3AF;" title="진행 중·완료된 공고는 출결 정정으로 처리하세요">취소 불가</span>';
+                      })()}</div>
                     </div>
                   `;
                 }).join('')}
@@ -5499,7 +5556,7 @@
               const gpsBadge = gpsReq ? `<span class="gps-roster-badge" title="${gpsReq.reason.replace(/"/g,'&quot;')}">🛰 GPS 대기 ${gpsReq.distance}m</span>` : '';
               const ovBadge = a.overridden ? '<span style="display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:1px 6px; background:#E0F2FE; color:#0369A1; border-radius:4px; font-weight:500; margin-left:6px;" title="관리자 정정됨">🔧 정정됨</span>' : '';
               // 같이하기 짝꿓 표시 (이 공고에 신청한 application 중 buddy 매칭)
-              const myApp = myApps.find(ap => ap.workerId === a.worker.id && (ap.status === 'approved' || ap.status === 'cancelled'));
+              const myApp = myApps.find(ap => ap.workerId === a.worker.id && (ap.status === 'approved' || ap.status === 'cancelled' || ap.status === 'cancel_pending'));
               const buddyApp = myApp && myApp.buddyAppId ? findApp(myApp.buddyAppId) : null;
               const buddyW = buddyApp ? findWorker(buddyApp.workerId) : null;
               let buddyBadge = '';
@@ -5507,6 +5564,8 @@
               if (buddyW && myApp) {
                 if (myApp.buddyBonusGiven) {
                   buddyBadge = `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:1px 6px; background:#DCFCE7; color:#166534; border-radius:4px; font-weight:500; margin-left:6px;" title="${esc(buddyW.name)}와 함께 — 보너스 +3,000P 지급 완료">🤝 +3,000P</span>`;
+                } else if (myApp.status === 'cancel_pending' || buddyApp.status === 'cancel_pending') {
+                  buddyBadge = `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:1px 6px; background:#FFEDD5; color:#9A3412; border-radius:4px; font-weight:500; margin-left:6px;" title="취소 검토 중 — 결과에 따라 자격 결정">🤝 취소 검토 중</span>`;
                 } else if (myApp.status === 'cancelled' || buddyApp.status === 'cancelled') {
                   buddyBadge = `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:1px 6px; background:#F3F4F6; color:#6B7684; border-radius:4px; font-weight:500; margin-left:6px;" title="짝꿓 취소 — 보너스 자격 소멸">🚫 자격 소멸</span>`;
                 } else {
@@ -6751,6 +6810,235 @@
   };
   window.__jobsDetail = function(id) { renderJobDetail(id); };
 
+  // 신청자 목록에서 관리자가 승인된 알바생 신청을 강제 취소
+  // 알바생이 1:1 문의로 사정 알린 케이스 (예: 어머니 응급실) — 운영자가 대신 처리
+  window.__jobsAdminCancelApp = function(appId) {
+    const a = findApp(appId); if (!a) return;
+    if (a.status !== 'approved') { alert('승인 상태인 신청만 취소할 수 있습니다.'); return; }
+    const w = findWorker(a.workerId);
+    const j = findJob(a.jobId);
+    const site = j ? findSite(j.siteId) : null;
+    if (!w || !j) return;
+    const buddy = a.buddyAppId ? findApp(a.buddyAppId) : null;
+    const buddyW = buddy ? findWorker(buddy.workerId) : null;
+    const buddyHint = (buddy && buddy.status === 'approved' && buddyW)
+      ? `<div style="margin-top:8px; padding:8px 10px; background:#FDF2F8; border-radius:6px; font-size:11px; color:#9D174D; line-height:1.5;">
+          🤝 <strong>같이하기 짝꿎</strong> ${esc(buddyW.name)} 님 — <strong>승인 상태 유지</strong> (개별 출근 가능)<br>
+          <span style="color:#6B7684; font-size:10px;">단, 보너스(+3,000P) 자격은 소멸됩니다 (한쪽 취소).</span>
+        </div>` : '';
+    promptModal({
+      title: '신청 취소 (관리자)',
+      subtitle: `<strong>${esc(w.name)}</strong> · ${esc(site?.site.name || '')} · ${j.date} ${j.slot} ${j.start}~${j.end}<br><span style="color:#92400E; font-size:12px;">⚠ 알바생 대신 강제 취소 — 슬롯 회수 + 차감 없음 · 1:1 문의에서 사유 받은 후 사용</span>${buddyHint}`,
+      fields: [
+        { key: 'reason', label: '취소 사유', type: 'textarea', required: true,
+          placeholder: '예: 가족 응급 (q007 문의 참조) / 본인 부상 / 회사 일정 변경 등',
+          hint: '감사로그에 기록되며 알바생에게 알림 발송됩니다',
+        },
+      ],
+      submitLabel: '취소 처리',
+      danger: true,
+      onSubmit: (vals) => {
+        if (!vals.reason || !vals.reason.trim()) { alert('취소 사유는 필수입니다.'); return false; }
+        const me = currentAdmin();
+        const result = adminCancelApproved(appId, vals.reason, me.name, me.role);
+        if (!result || result.error) { alert('처리 실패: ' + (result?.error || '알 수 없는 오류')); return false; }
+        renderJobDetail(j.id);
+        const buddyMsg = (buddy && buddy.status === 'approved' && buddyW)
+          ? `\n\n🤝 짝꿎 ${buddyW.name} 님은 승인 유지 (개별 출근 가능) · 보너스 자격만 소멸됨.`
+          : '';
+        alert(`✅ ${w.name} 님의 신청이 취소되었습니다.\n\n공고 모집 ${j.apply}/${j.cap} · 슬롯 1자리 회수됨${buddyMsg}\n\nℹ 포인트 차감 없음. 필요 시 [근무자 관리]에서 별도 [⛔ 회수] 처리 가능합니다.`);
+      },
+    });
+  };
+
+  // ─── 알바생 직접 추가 (관리자가 검색 후 신청자 등록) ──────────
+  // 사용 케이스: 전화/카톡으로 들어온 신청 — 운영자가 대신 등록
+  // 권한: 마스터/1급/2급 모두 (admin2는 담당 근무지 한정 — 시뮬은 전체 허용)
+  const adminAddState = {
+    jobId: null,
+    search: '',
+    selectedWorkerId: null,
+    reason: '',
+    force: false,
+  };
+
+  window.__jobsAdminAddApplicant = function(jobId) {
+    const j = findJob(jobId); if (!j) return;
+    const jSt = jobStatus(j);
+    if (jSt !== 'open' && jSt !== 'closed') {
+      alert('진행 중 또는 완료된 공고에는 직접 추가할 수 없습니다.');
+      return;
+    }
+    const me = currentAdmin();
+    // admin2 권한 체크 — 프로토타입은 시뮬상 전체 허용 (실제로는 me.sites에 j.siteId 포함 여부 검증)
+    if (me.role === 'admin2') {
+      // TODO: 실제 운영 시 me.sites 확인 후 차단
+    }
+    Object.assign(adminAddState, {
+      jobId, search: '', selectedWorkerId: null, reason: '', force: false,
+    });
+    showAdminAddApplicantModal();
+  };
+
+  function showAdminAddApplicantModal() {
+    document.querySelectorAll('.jf-modal-overlay.admin-add').forEach(el => el.remove());
+    const overlay = document.createElement('div');
+    overlay.className = 'jf-modal-overlay admin-add';
+    overlay.innerHTML = '<div class="jf-modal" style="max-width: 720px;" onclick="event.stopPropagation()" id="aa-modal-body"></div>';
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    renderAdminAddApplicantModal();
+  }
+
+  function renderAdminAddApplicantModal() {
+    const body = document.getElementById('aa-modal-body');
+    if (!body) return;
+    const j = findJob(adminAddState.jobId); if (!j) return;
+    const site = findSite(j.siteId);
+    const q = (adminAddState.search || '').trim().toLowerCase();
+    // 검색 조건 — 이름 또는 전화번호 부분일치 · 결과 상위 10명
+    let candidates = [];
+    if (q.length > 0) {
+      candidates = workers
+        .filter(w => w.name.toLowerCase().includes(q) || w.phone.toLowerCase().includes(q))
+        .slice(0, 10);
+    }
+    const selected = adminAddState.selectedWorkerId ? findWorker(adminAddState.selectedWorkerId) : null;
+    const validation = selected ? validateApplicantEligibility(selected.id, j.id) : null;
+    const hasHard = validation && validation.hardBlocks.length > 0;
+    const hasWarn = validation && validation.warnings.length > 0;
+
+    body.innerHTML = `
+      <div class="jf-modal-head">
+        <div class="jf-modal-title">+ 알바생 직접 추가</div>
+        <button class="jf-modal-close" onclick="this.closest('.jf-modal-overlay').remove()">×</button>
+      </div>
+      <div class="jf-modal-body">
+        <div style="font-size:12px; color:#6B7684; margin-bottom:14px; line-height:1.6;">
+          <strong>${esc(site?.site.name || '')}</strong> · ${j.date} ${j.slot} ${j.start}~${j.end} · 모집 ${j.apply}/${j.cap}<br>
+          <span style="color:#1E40AF; font-size:11px;">전화/카톡으로 신청 의사 받은 알바생을 검색해서 등록 → 정상 출결 + 포인트 지급</span>
+        </div>
+
+        <div style="display:flex; gap:6px; margin-bottom:10px;">
+          <input id="aa-search" type="text" value="${esc(adminAddState.search)}" placeholder="이름 또는 전화번호 (부분 일치)" oninput="window.__imeInput(this, '__aaSearch')" data-imefn="__aaSearch" style="flex:1; padding:10px 12px; border:0.5px solid rgba(0,0,0,0.15); border-radius:8px; font-size:13px;" />
+        </div>
+
+        ${q.length === 0
+          ? '<div style="text-align:center; padding:20px 0; color:#9CA3AF; font-size:12px;">위 검색창에 알바생 이름이나 전화번호를 입력하세요</div>'
+          : candidates.length === 0
+          ? '<div style="text-align:center; padding:20px 0; color:#9CA3AF; font-size:12px;">검색 결과 없음</div>'
+          : `<div style="max-height: 240px; overflow-y: auto; border:0.5px solid rgba(0,0,0,0.08); border-radius:8px;">
+              ${candidates.map(w => {
+                const v = validateApplicantEligibility(w.id, j.id);
+                let icon = '✅', iconColor = '#22C55E';
+                if (v.hardBlocks.length > 0) { icon = '❌'; iconColor = '#EF4444'; }
+                else if (v.warnings.length > 0) { icon = '⚠'; iconColor = '#F59E0B'; }
+                const isSel = adminAddState.selectedWorkerId === w.id;
+                const issues = [...v.hardBlocks, ...v.warnings].join(' · ');
+                return `
+                  <div onclick="window.__aaSelect('${w.id}')" style="padding:10px 12px; border-bottom:0.5px solid rgba(0,0,0,0.06); cursor:pointer; display:grid; grid-template-columns: 30px 1.4fr 1fr 1.5fr; gap:10px; align-items:center; ${isSel ? 'background:#EFF6FF;' : ''}" onmouseover="if(!this.style.background.includes('EFF6FF')) this.style.background='#F9FAFB'" onmouseout="if(!this.style.background.includes('EFF6FF')) this.style.background=''">
+                    <div style="font-size:18px; color:${iconColor}; text-align:center;">${icon}</div>
+                    <div>
+                      <div style="font-weight:500; font-size:13px;">${esc(w.name)}${w.negotiation ? '<span class="apv-badge apv-badge-neg" style="font-size:10px; padding:2px 6px; margin-left:4px;">협의대상</span>' : ''}</div>
+                      <div style="font-family:'SF Mono',Monaco,monospace; font-size:11px; color:#6B7684;">${esc(w.phone)}</div>
+                    </div>
+                    <div style="font-size:11px; color:#6B7684;">
+                      누적 ${w.total}회 · 경고 ${w.warnings}<br>
+                      보유 ${(w.points||0).toLocaleString()}P
+                    </div>
+                    <div style="font-size:10px; color:#6B7684; line-height:1.4;">
+                      ${issues ? '<span style="color:'+iconColor+';">'+esc(issues)+'</span>' : '<span style="color:#22C55E;">정상 등록 가능</span>'}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>`}
+
+        ${selected ? `
+          <div style="margin-top:14px; padding:12px; background:#F9FAFB; border-radius:8px; border:0.5px solid rgba(0,0,0,0.08);">
+            <div style="font-size:12px; color:#374151; margin-bottom:8px;">
+              선택된 알바생: <strong>${esc(selected.name)}</strong> (${esc(selected.phone)})
+            </div>
+            ${hasHard ? `
+              <div style="padding:8px 10px; background:#FEE2E2; color:#991B1B; border-radius:6px; font-size:11px; margin-bottom:8px;">
+                ❌ <strong>등록 불가</strong> — ${esc(validation.hardBlocks.join(' · '))}
+              </div>
+            ` : hasWarn ? `
+              <div style="padding:8px 10px; background:#FEF3C7; color:#92400E; border-radius:6px; font-size:11px; margin-bottom:8px;">
+                ⚠ <strong>경고</strong> — ${esc(validation.warnings.join(' · '))}
+                <label style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:11px; color:#92400E; cursor:pointer;">
+                  <input type="checkbox" ${adminAddState.force ? 'checked' : ''} onchange="window.__aaSetForce(this.checked)" style="margin:0;">
+                  정책 위반에도 강제 등록 (감사로그에 사유 기록)
+                </label>
+              </div>
+            ` : `
+              <div style="padding:8px 10px; background:#DCFCE7; color:#166534; border-radius:6px; font-size:11px; margin-bottom:8px;">
+                ✅ 정상 등록 가능
+              </div>
+            `}
+            <div style="font-size:11px; color:#374151; font-weight:600; margin-bottom:4px;">등록 사유 (필수)</div>
+            <textarea id="aa-reason" rows="2" placeholder="예: 전화로 신청 / 단골 직접 호출 / 부족 인원 추천 호출" oninput="appPreviewState; adminAddState.reason = this.value;" style="width:100%; padding:8px 10px; border:0.5px solid rgba(0,0,0,0.15); border-radius:6px; font-family:inherit; font-size:12px; resize:vertical;">${esc(adminAddState.reason)}</textarea>
+            <div style="font-size:10px; color:#6B7684; margin-top:4px;">감사로그에 기록되며, 등록 후 알바생에게 "관리자가 신청 등록했어요" 알림이 발송됩니다 (시뮬).</div>
+          </div>
+        ` : ''}
+
+        <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:14px; padding-top:12px; border-top:0.5px solid rgba(0,0,0,0.08);">
+          <button onclick="this.closest('.jf-modal-overlay').remove()">취소</button>
+          <button class="btn-primary" onclick="window.__aaSubmit()" ${!selected || hasHard ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''}>등록</button>
+        </div>
+      </div>
+    `;
+
+    // 검색 input에 포커스 (선택 안 된 상태일 때)
+    setTimeout(() => {
+      const inp = document.getElementById('aa-search');
+      if (inp && !selected) inp.focus();
+    }, 30);
+  }
+
+  window.__aaSearch = function(val) { adminAddState.search = val; renderAdminAddApplicantModal(); };
+  window.__aaSelect = function(workerId) {
+    adminAddState.selectedWorkerId = workerId;
+    adminAddState.force = false;  // 선택 변경 시 강제 토글 리셋
+    renderAdminAddApplicantModal();
+  };
+  window.__aaSetForce = function(checked) {
+    adminAddState.force = !!checked;
+    renderAdminAddApplicantModal();
+  };
+  window.__aaSubmit = function() {
+    const j = findJob(adminAddState.jobId); if (!j) return;
+    if (!adminAddState.selectedWorkerId) { alert('알바생을 먼저 선택해주세요.'); return; }
+    // 사유 textarea 직접 읽기 (state 외에 DOM 백업)
+    const ta = document.getElementById('aa-reason');
+    const reason = (ta?.value || adminAddState.reason || '').trim();
+    if (!reason) { alert('등록 사유를 입력해주세요.'); return; }
+    const me = currentAdmin();
+    const result = adminAddApplicant({
+      workerId: adminAddState.selectedWorkerId,
+      jobId: adminAddState.jobId,
+      reason,
+      by: me.name,
+      byRole: me.role,
+      force: adminAddState.force,
+    });
+    if (!result || result.error) {
+      if (result?.needsForce) {
+        alert('정책 위반 경고: ' + (result.warnings || []).join(' · ') + '\n\n[정책 위반에도 강제 등록] 체크 후 다시 시도해주세요.');
+      } else {
+        alert('등록 실패: ' + (result?.error || '알 수 없는 오류'));
+      }
+      return;
+    }
+    document.querySelectorAll('.jf-modal-overlay.admin-add').forEach(el => el.remove());
+    const w = result.worker;
+    const forceMsg = result.warningsForced && result.warningsForced.length > 0
+      ? '\n\n⚠ 강제 등록 (정책 위반): ' + result.warningsForced.join(' · ')
+      : '';
+    alert(`✅ ${w.name} 님 등록 완료\n\n공고 모집 ${j.apply}/${j.cap}${forceMsg}\n\n알바생 앱에 "관리자가 신청을 등록했어요" 알림 발송됨 (시뮬).`);
+    renderJobDetail(j.id);
+  };
+
   // ─── 외부 구인 인원 관리 ────────────────────────────────
   // 관리자가 앱 외부에서 개별 연락으로 채운 인원 · 포인트/경고/협의대상 시스템 적용 X
   const extFormState = { jobId: null };
@@ -7346,7 +7634,7 @@
             <div class="wl-group-head">
               <div style="flex:1;">
                 <div class="wl-group-title">
-                  ${site.site.name}
+                  <span onclick="window.__jobsDetail('${job.id}')" style="cursor:pointer;" title="공고 상세로 이동">${site.site.name} <span style="font-size:11px; color:#2563EB; font-weight:400;">→</span></span>
                   ${capBadge}
                   ${reopenedBadge}
                 </div>
@@ -7993,6 +8281,8 @@
     inqDetailId: null,    // 1:1 문의 채팅 진입 시 inquiry id
     inqCompose: false,    // 새 문의 작성 모드
     inqDraftCategory: 'general',
+    inqDraftTitle: '',    // 작성 중 제목 (재렌더 시 보존)
+    inqDraftBody: '',     // 작성 중 본문 (재렌더 시 보존)
   };
 
   function renderAppPreview() {
@@ -8413,6 +8703,10 @@
             ? '12h 이내 신청 · 관리자 검토 중'
             : `${a.site.site.bus ? '통근버스 운영' : '통근버스 없음'} · 담당: ${a.job.contact || '-'}`;
           const hasBus = a.site.site.bus && getBusRoutes(a.site.site.id).length > 0;
+          // 오늘 근무 + 승인 상태일 때만 [늦어요 보고] 버튼 노출 (1:1 문의 긴급 자동 생성)
+          const lateBtn = (a.status === 'approved' && isToday)
+            ? `<button style="flex:1; background:#FEF3C7; color:#92400E; border:0.5px solid #F59E0B; border-radius:6px; padding:6px; font-size:10px; font-weight:500;" onclick="window.__apLateReport('${a.job.id}')">⏰ 늦어요 보고</button>`
+            : '';
           return `
             <div class="app-card" style="border-left:3px solid ${borderColor};">
               <div class="app-card-title">${a.site.site.name}</div>
@@ -8424,6 +8718,7 @@
               <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
                 ${a.status === 'approved' ? '<button style="flex:1; background:#F3F4F6; color:#374151; border:none; border-radius:6px; padding:6px; font-size:10px;">계약서</button>' : ''}
                 ${hasBus && a.status !== 'rejected' ? `<button style="flex:1; background:#F0FDFA; color:#0F766E; border:0.5px solid #14B8A6; border-radius:6px; padding:6px; font-size:10px; font-weight:500;" onclick="window.__apOpenBusGuide('${a.job.id}')">🚌 가이드</button>` : ''}
+                ${lateBtn}
                 ${cancelReject(a.status)}
                 ${a.status === 'pending' ? '<button style="flex:1; background:#F3F4F6; color:#374151; border:none; border-radius:6px; padding:6px; font-size:10px;">신청 취소</button>' : ''}
               </div>
@@ -8690,10 +8985,10 @@
         </div>
 
         <div style="font-size:11px; color:#374151; font-weight:600; margin-bottom:6px;">제목 (선택)</div>
-        <input id="ap-inq-title" type="text" placeholder="비워두면 본문 첫 줄로 자동 생성" maxlength="40" style="width:100%; padding:8px 10px; border:0.5px solid rgba(0,0,0,0.15); border-radius:8px; font-size:12px; margin-bottom:14px;" />
+        <input id="ap-inq-title" type="text" placeholder="비워두면 본문 첫 줄로 자동 생성" maxlength="40" value="${esc(appPreviewState.inqDraftTitle || '')}" oninput="appPreviewState.inqDraftTitle = this.value;" style="width:100%; padding:8px 10px; border:0.5px solid rgba(0,0,0,0.15); border-radius:8px; font-size:12px; margin-bottom:14px;" />
 
         <div style="font-size:11px; color:#374151; font-weight:600; margin-bottom:6px;">내용</div>
-        <textarea id="ap-inq-body" rows="6" placeholder="궁금한 내용을 자세히 적어주세요. 운영팀이 1:1로 답변드립니다." style="width:100%; padding:10px 12px; border:0.5px solid rgba(0,0,0,0.15); border-radius:8px; font-size:12px; line-height:1.6; resize:vertical;"></textarea>
+        <textarea id="ap-inq-body" rows="6" placeholder="궁금한 내용을 자세히 적어주세요. 운영팀이 1:1로 답변드립니다." oninput="appPreviewState.inqDraftBody = this.value;" style="width:100%; padding:10px 12px; border:0.5px solid rgba(0,0,0,0.15); border-radius:8px; font-size:12px; line-height:1.6; resize:vertical;">${esc(appPreviewState.inqDraftBody || '')}</textarea>
 
         <div style="margin-top:10px; padding:10px 12px; background:#F0F9FF; border-radius:8px; font-size:10px; color:#1E40AF; line-height:1.5;">
           ℹ 운영 시간: 평일 09~21시 · 평균 응답 1~3시간<br>
@@ -8738,46 +9033,100 @@
     appPreviewState.inqCompose = true;
     appPreviewState.inqDetailId = null;
     appPreviewState.inqDraftCategory = 'general';
+    appPreviewState.inqDraftTitle = '';
+    appPreviewState.inqDraftBody = '';
     renderAppPreview();
   };
   window.__apInqCancelCompose = function() {
     appPreviewState.inqCompose = false;
+    appPreviewState.inqDraftTitle = '';
+    appPreviewState.inqDraftBody = '';
     renderAppPreview();
   };
   window.__apInqDraftCat = function(cat) {
-    // textarea 값 보존을 위해 직접 DOM 수정
-    appPreviewState.inqDraftCategory = cat;
+    // textarea/input 값을 state에 캡처한 뒤 카테고리만 변경 + 재렌더
     const titleEl = document.getElementById('ap-inq-title');
     const bodyEl = document.getElementById('ap-inq-body');
-    const t = titleEl?.value || '';
-    const b = bodyEl?.value || '';
+    if (titleEl) appPreviewState.inqDraftTitle = titleEl.value;
+    if (bodyEl)  appPreviewState.inqDraftBody  = bodyEl.value;
+    appPreviewState.inqDraftCategory = cat;
     renderAppPreview();
-    setTimeout(() => {
-      const t2 = document.getElementById('ap-inq-title');
-      const b2 = document.getElementById('ap-inq-body');
-      if (t2) t2.value = t;
-      if (b2) b2.value = b;
-    }, 30);
   };
   window.__apInqSubmit = function() {
     const w = findWorker(appPreviewState.workerId);
     if (!w) return;
     const titleEl = document.getElementById('ap-inq-title');
     const bodyEl = document.getElementById('ap-inq-body');
-    const text = (bodyEl?.value || '').trim();
+    const text = (bodyEl?.value || appPreviewState.inqDraftBody || '').trim();
     if (!text) { alert('내용을 입력해주세요.'); return; }
     const result = createInquiry({
       workerId: w.id,
       category: appPreviewState.inqDraftCategory || 'general',
-      title: (titleEl?.value || '').trim(),
+      title: (titleEl?.value || appPreviewState.inqDraftTitle || '').trim(),
       text,
     });
     if (!result || result.error) { alert('전송 실패: ' + (result?.error || '오류')); return; }
     appPreviewState.inqCompose = false;
     appPreviewState.inqDetailId = result.id;
+    appPreviewState.inqDraftTitle = '';
+    appPreviewState.inqDraftBody = '';
     renderAppPreview();
     alert('✅ 문의가 전송되었습니다.\n운영팀 답변을 기다려주세요.');
   };
+  // 알바생 앱 — 오늘 근무 카드의 [⏰ 늦어요 보고] 버튼 핸들러
+  // 1:1 문의로 자동 등록 (카테고리=일반, 우선순위=긴급)
+  window.__apLateReport = function(jobId) {
+    const w = findWorker(appPreviewState.workerId);
+    const j = findJob(jobId);
+    const site = j ? findSite(j.siteId) : null;
+    if (!w || !j || !site) return;
+    promptModal({
+      title: '⏰ 지각 보고',
+      subtitle: `<strong>${esc(site.site.name)}</strong> · ${j.date} ${j.slot} ${j.start}~${j.end}<br><span style="color:#92400E; font-size:12px;">운영팀에 1:1 문의로 즉시 전달됩니다 (🚨 긴급 우선순위)</span>`,
+      fields: [
+        { key: 'delay', label: '예상 지연', type: 'select', required: true, value: '20',
+          options: [
+            { value: '10', label: '10분 이내' },
+            { value: '20', label: '20분 이내' },
+            { value: '30', label: '30분 이내' },
+            { value: '45', label: '45분 이내' },
+            { value: '60', label: '1시간 이내' },
+            { value: 'over60', label: '1시간 이상' },
+            { value: 'unknown', label: '잘 모르겠어요' },
+          ],
+        },
+        { key: 'reason', label: '사유', type: 'textarea', required: true,
+          placeholder: '예: 지하철 1호선 사고로 지연 / 차량 정체 / 가는 길 사고 등',
+          hint: '운영팀에 그대로 전달되며 1:1 채팅으로 후속 대화 가능합니다',
+        },
+      ],
+      submitLabel: '운영팀에 보고',
+      onSubmit: (vals) => {
+        const delayLabel = {
+          '10':'10분 이내', '20':'20분 이내', '30':'30분 이내',
+          '45':'45분 이내', '60':'1시간 이내', 'over60':'1시간 이상',
+          'unknown':'잘 모르겠음',
+        }[vals.delay] || vals.delay;
+        const text = `⏰ 지각 보고\n\n• 근무지: ${site.site.name} (${site.partner})\n• 일시: ${j.date} ${j.slot} ${j.start}~${j.end}\n• 예상 지연: ${delayLabel}\n• 사유: ${vals.reason.trim()}`;
+        const result = createInquiry({
+          workerId: w.id,
+          category: 'general',
+          title: `⏰ 지각 보고 — ${site.site.name} ${j.slot}`,
+          text,
+        });
+        if (!result || result.error) { alert('전송 실패: ' + (result?.error || '오류')); return false; }
+        // 긴급 우선순위로 마킹 (createInquiry 기본값=normal이라 여기서 덮어씀)
+        result.priority = 'urgent';
+        // 알바앱 1:1 문의 채팅 화면으로 자동 진입
+        appPreviewState.tab = 'inquiry';
+        appPreviewState.inqDetailId = result.id;
+        appPreviewState.inqCompose = false;
+        renderAppPreview();
+        alert(`✅ 지각 보고 전송 완료\n\n운영팀에 즉시 전달되었습니다 (🚨 긴급).\n[1:1 문의]에서 답변을 확인하세요.`);
+      },
+    });
+  };
+
   window.__apInqSend = function(id) {
     const w = findWorker(appPreviewState.workerId);
     const it = findInquiry(id);
@@ -10523,7 +10872,7 @@
     points: () => { pointState.tab = 'request'; renderPoints(); },
     control: () => window.__openControlBoard(),
     accounts: renderAdmins,
-    inquiry: renderInquiries,
+    inquiry: () => { inqState.detailId = null; renderInquiries(); },
     stats: renderStats,
     apppreview: renderAppPreview,
     mobileadmin: renderMobileAdmin,
