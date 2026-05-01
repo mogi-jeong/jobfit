@@ -21,6 +21,8 @@
 ```
 잡핏_개발자_인계_v1.0/
 ├── README.md                    ← 이 파일 (가장 먼저 읽기)
+├── NEXT_SESSION.md              ← 다음 세션 진입 가이드 (재부팅 후 우선)
+├── FLUTTER_GUIDE.md             ← Flutter 앱 제작 가이드 (Phase 3)
 ├── 잡핏_기획안_v1_4.md          ← 전체 서비스 기획안 (최신)
 ├── HANDOFF.md                   ← 외부 개발자 인계 문서 (Supabase 스키마 + API 매핑)
 ├── CLAUDE.md                    ← 프로토타입 작업 지침 (구조·정책 요약)
