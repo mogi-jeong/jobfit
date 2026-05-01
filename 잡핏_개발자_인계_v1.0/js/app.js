@@ -5295,7 +5295,7 @@
     bus: false,
     wage: 100000,
     wageType: '일급',
-    holiday: '주 4일 만근',
+    holiday: '동일 근무지 주 4일 만근',
     contact: '',
     manager1: '',
     manager2: '',
@@ -5388,7 +5388,7 @@
           </div>
           <div class="jf-form-row">
             <div class="jf-form-label">주휴수당 조건</div>
-            <input type="text" placeholder="예: 주 4일 만근, 주 2일 출근" value="${f.holiday}" oninput="window.__swfSet('holiday', this.value)" style="max-width:260px;" />
+            <input type="text" placeholder="예: 동일 근무지 주 4일 만근 / 동일 근무지 주 2일 출근" value="${f.holiday}" oninput="window.__swfSet('holiday', this.value)" style="max-width:320px;" />
           </div>
           <div class="jf-form-row">
             <div class="jf-form-label">통근버스</div>
@@ -5504,7 +5504,7 @@
   };
   window.__swfCancel = function() {
     if (!confirm('근무지 추가를 취소합니다. 입력 내용은 사라집니다.')) return;
-    Object.assign(siteFormState, { step: 1, partnerKey: '', siteName: '', address: '', lat: 37.5665, lng: 126.9780, bus: false, wage: 100000, wageType: '일급', holiday: '주 4일 만근', contact: '', manager1: '', manager2: '' });
+    Object.assign(siteFormState, { step: 1, partnerKey: '', siteName: '', address: '', lat: 37.5665, lng: 126.9780, bus: false, wage: 100000, wageType: '일급', holiday: '동일 근무지 주 4일 만근', contact: '', manager1: '', manager2: '' });
     renderList();
   };
   window.__swfSearchAddr = function() {
@@ -5576,7 +5576,7 @@
     worksites[f.partnerKey].count = worksites[f.partnerKey].sites.length;
     alert(`근무지 "${f.siteName}" 등록 완료!\n\n이제 GPS 영역을 설정해야 공고 등록이 가능합니다.\n다음 화면에서 다각형으로 영역을 그려주세요.`);
     // 폼 초기화
-    Object.assign(siteFormState, { step: 1, partnerKey: '', siteName: '', address: '', lat: 37.5665, lng: 126.9780, bus: false, wage: 100000, wageType: '일급', holiday: '주 4일 만근', contact: '', manager1: '', manager2: '' });
+    Object.assign(siteFormState, { step: 1, partnerKey: '', siteName: '', address: '', lat: 37.5665, lng: 126.9780, bus: false, wage: 100000, wageType: '일급', holiday: '동일 근무지 주 4일 만근', contact: '', manager1: '', manager2: '' });
     renderGpsEditor(newId);
   };
 
@@ -6477,7 +6477,7 @@
                   </label>
                   <button type="button" onclick="window.__jfHolidayPreview()" style="font-size:11px; height:28px; padding:0 10px;">📱 미리보기</button>
                 </div>
-                <div class="jf-toggle-sub">신청 시 이번 주 N회 만근 상태에 따라 자동 안내 — CJ/롯데 4회, 컨벤션 2일</div>
+                <div class="jf-toggle-sub">신청 시 <b>동일 근무지</b> 이번 주 출근 횟수 기준 자동 안내 — CJ/롯데 4일, 컨벤션 2일 만근</div>
               </div>
             </div>
           </div>
@@ -6635,13 +6635,14 @@
   };
 
   // 주휴수당 팝업 미리보기 — 알바생 앱에서 실제 어떻게 보이는지 모바일 프레임으로 시뮬
-  // 정책 v1.1: 모두 동일 근무지 기준 — 컨벤션 2일 / CJ·롯데 4일
+  // 정책 v1.1: 모두 동일 근무지(siteId) 기준 — 컨벤션 2일 / CJ·롯데 4일
+  // 한 알바생이 여러 근무지에서 동시 만근 가능 (예: 곤지암 4일 + 이천 2일 → 곤지암만 발생)
   const HOLIDAY_SCENARIOS = [
-    { key: 'cj_3of4',      partner: 'CJ대한통운',   site: 'CJ대한통운 곤지암 MegaHub',  done: 3, need: 4, avgDaily: 110000, sub: '이번 주 이미 3일 출근 · 1일만 더 하면 만근!' },
-    { key: 'cj_2of4',      partner: 'CJ대한통운',   site: 'CJ대한통운 이천 MpHub',      done: 2, need: 4, avgDaily: 105000, sub: '이번 주 2일 출근 · 4일 만근 시 주휴수당 대상' },
-    { key: 'lotte_3of4',   partner: '롯데택배',     site: '롯데택배 진천 MegaHub',       done: 3, need: 4, avgDaily: 115000, sub: '이번 주 이미 3일 출근 · 1일만 더 하면 만근!' },
-    { key: 'conv_1of2',    partner: '컨벤션',       site: 'L타워 웨딩홀',                done: 1, need: 2, avgDaily: 120000, sub: '이번 주 1일 근무 완료 · 이 공고까지 하면 2일 = 주휴수당 대상' },
-    { key: 'conv_0of2',    partner: '컨벤션',       site: 'W힐스 웨딩홀',                done: 0, need: 2, avgDaily: 125000, sub: '이번 주 첫 근무 · 한 번 더 하면 주휴수당 대상' },
+    { key: 'cj_3of4',      partner: 'CJ대한통운',   site: 'CJ대한통운 곤지암 MegaHub',  done: 3, need: 4, avgDaily: 110000, sub: '이번 주 <b>이 근무지</b> 3일 출근 · 1일만 더 하면 만근!' },
+    { key: 'cj_2of4',      partner: 'CJ대한통운',   site: 'CJ대한통운 이천 MpHub',      done: 2, need: 4, avgDaily: 105000, sub: '이번 주 <b>이 근무지</b> 2일 출근 · 4일 만근 시 주휴수당 대상' },
+    { key: 'lotte_3of4',   partner: '롯데택배',     site: '롯데택배 진천 MegaHub',       done: 3, need: 4, avgDaily: 115000, sub: '이번 주 <b>이 근무지</b> 3일 출근 · 1일만 더 하면 만근!' },
+    { key: 'conv_1of2',    partner: '컨벤션',       site: 'L타워 웨딩홀',                done: 1, need: 2, avgDaily: 120000, sub: '이번 주 <b>이 근무지</b> 1일 근무 완료 · 이 공고까지 하면 2일 = 주휴수당 대상' },
+    { key: 'conv_0of2',    partner: '컨벤션',       site: 'W힐스 웨딩홀',                done: 0, need: 2, avgDaily: 125000, sub: '이번 주 <b>이 근무지</b> 첫 근무 · 한 번 더 하면 주휴수당 대상' },
   ];
 
   let holidayPreviewScenario = 'cj_3of4';
@@ -6665,9 +6666,10 @@
 
     const nextIsLast = sc.done + 1 >= sc.need;
     const titleTxt = nextIsLast ? '🎉 주휴수당 대상 공고!' : '주휴수당 안내';
+    const unit = '일';  // 정책 v1.1: 모두 일 단위 (동일 근무지 기준)
     const subTxt = nextIsLast
-      ? `이 공고를 신청하면 <strong>이번 주 ${sc.need}${sc.partner === '컨벤션' ? '일' : '회'} 만근</strong>이 되어<br>주휴수당 지급 대상이 됩니다.`
-      : `이 공고를 신청하면 <strong>이번 주 ${sc.done + 1}${sc.partner === '컨벤션' ? '일' : '회'}</strong>이 됩니다.<br>${sc.need}${sc.partner === '컨벤션' ? '일' : '회'} 만근 시 주휴수당 대상.`;
+      ? `이 공고를 신청하면 <strong>이 근무지에서 이번 주 ${sc.need}${unit} 만근</strong>이 되어<br>주휴수당 지급 대상이 됩니다.`
+      : `이 공고를 신청하면 <strong>이 근무지 이번 주 ${sc.done + 1}${unit}</strong>이 됩니다.<br>${sc.need}${unit} 만근 시 주휴수당 대상 (동일 근무지 기준).`;
 
     const pickerHtml = HOLIDAY_SCENARIOS.map(s =>
       `<button class="${s.key === sc.key ? 'active' : ''}" onclick="window.__jfHolidayScenario('${s.key}')">${s.partner} ${s.done}/${s.need}</button>`
@@ -6712,7 +6714,7 @@
                       <div class="mp-hp-subtitle">${subTxt}</div>
                       <div class="mp-hp-progress">
                         <div class="mp-hp-dots">${dotsHtml}</div>
-                        <div class="mp-hp-progress-label">이번 주 <strong>${sc.done}${sc.partner === '컨벤션' ? '일' : '회'} 완료</strong> · <strong>${sc.need}${sc.partner === '컨벤션' ? '일' : '회'} 만근</strong>까지 ${sc.need - sc.done}${sc.partner === '컨벤션' ? '일' : '회'} 남음</div>
+                        <div class="mp-hp-progress-label">이 근무지 이번 주 <strong>${sc.done}일 완료</strong> · <strong>${sc.need}일 만근</strong>까지 ${sc.need - sc.done}일 남음</div>
                       </div>
                       <div style="background:#FEF3C7; border:1px solid #FCD34D; border-radius:10px; padding:10px 12px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
                         <div>
@@ -6742,8 +6744,10 @@
             <div class="mobile-preview-info">
               <h4>규칙 · 이 팝업이 뜨는 조건</h4>
               <ul>
-                <li><b>CJ대한통운 · 롯데택배</b>: 이번 주 0~3회 출근 상태에서 신청 시 (4회 만근 기준)</li>
-                <li><b>컨벤션 (L타워 · W힐스)</b>: 이번 주 0~1일 출근 상태에서 신청 시 (2일 만근 기준)</li>
+                <li>⭐ <b>모두 동일 근무지(siteId) 기준</b> — 같은 파트너사라도 다른 근무지는 별도 카운트 (정책 v1.1)</li>
+                <li><b>CJ대한통운 · 롯데택배</b>: 이 근무지 이번 주 0~3일 출근 상태에서 신청 시 (4일 만근 기준)</li>
+                <li><b>컨벤션 (L타워 · W힐스)</b>: 이 근무지 이번 주 0~1일 출근 상태에서 신청 시 (2일 만근 기준)</li>
+                <li>한 알바생이 <b>여러 근무지에서 동시 만근 가능</b> (예: 곤지암 4일 + 이천 2일 → 곤지암만 주휴수당)</li>
                 <li>만근 이후에는 <b>팝업이 뜨지 않음</b> (이미 주휴수당 확정)</li>
                 <li>근무 시작일이 <code>월요일~일요일</code> 주간 기준으로 계산됨</li>
               </ul>
@@ -11847,7 +11851,7 @@
   };
 
   window.__wsAddSite = function() {
-    Object.assign(siteFormState, { step: 1, partnerKey: '', siteName: '', address: '', lat: 37.5665, lng: 126.9780, bus: false, wage: 100000, wageType: '일급', holiday: '주 4일 만근', contact: '', manager1: '', manager2: '' });
+    Object.assign(siteFormState, { step: 1, partnerKey: '', siteName: '', address: '', lat: 37.5665, lng: 126.9780, bus: false, wage: 100000, wageType: '일급', holiday: '동일 근무지 주 4일 만근', contact: '', manager1: '', manager2: '' });
     renderSiteWizard();
   };
 
@@ -11866,11 +11870,11 @@
     accounts: renderAdmins,
     inquiry: () => { inqState.detailId = null; renderInquiries(); },
     stats: renderStats,
+    apppreview: renderAppPreview,
+    mobileadmin: renderMobileAdmin,
+    busmap: renderBusMap,
     settlement: renderPartnerSettlement,
     audit: renderAuditLog,
-    // 참고용 페이지(busmap/apppreview/mobileadmin) 제거됨 (인계용 v1.0)
-    // 통근버스 시간표 매트릭스 데이터(busRoutesBySite)는 보존 — Supabase 전환 시 그대로 사용
-    // 통근버스 표시 UI는 [근무지 관리] 카드 + [전체 시간표 보기] 모달에서 확인 가능
   };
 
   navItems.forEach(item => {
@@ -11890,7 +11894,7 @@
   });
 
   function pageNameFor(page) {
-    const names = { home: '홈', jobs: '공고 관리', approval: '신청 승인', waitlistapv: '대기열 승인', gpsapproval: '퇴근 승인', cancelapv: '취소 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정', stats: '통계 리포트', settlement: '파트너사 정산', worksite: '근무지 관리', audit: '감사로그' };
+    const names = { home: '홈', jobs: '공고 관리', approval: '신청 승인', waitlistapv: '대기열 승인', gpsapproval: '퇴근 승인', cancelapv: '취소 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정', stats: '통계 리포트', settlement: '파트너사 정산', apppreview: '앱 미리보기', mobileadmin: '모바일 관리자 뷰', busmap: '통근버스 길찾기', audit: '감사로그' };
     return names[page] || '';
   }
 
