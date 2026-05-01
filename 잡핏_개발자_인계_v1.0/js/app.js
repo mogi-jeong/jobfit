@@ -11866,11 +11866,11 @@
     accounts: renderAdmins,
     inquiry: () => { inqState.detailId = null; renderInquiries(); },
     stats: renderStats,
-    apppreview: renderAppPreview,
-    mobileadmin: renderMobileAdmin,
-    busmap: renderBusMap,
     settlement: renderPartnerSettlement,
     audit: renderAuditLog,
+    // 참고용 페이지(busmap/apppreview/mobileadmin) 제거됨 (인계용 v1.0)
+    // 통근버스 시간표 매트릭스 데이터(busRoutesBySite)는 보존 — Supabase 전환 시 그대로 사용
+    // 통근버스 표시 UI는 [근무지 관리] 카드 + [전체 시간표 보기] 모달에서 확인 가능
   };
 
   navItems.forEach(item => {
@@ -11890,7 +11890,7 @@
   });
 
   function pageNameFor(page) {
-    const names = { home: '홈', jobs: '공고 관리', approval: '신청 승인', waitlistapv: '대기열 승인', gpsapproval: '퇴근 승인', cancelapv: '취소 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정', stats: '통계 리포트', settlement: '파트너사 정산', apppreview: '앱 미리보기', mobileadmin: '모바일 관리자 뷰', busmap: '통근버스 길찾기', audit: '감사로그' };
+    const names = { home: '홈', jobs: '공고 관리', approval: '신청 승인', waitlistapv: '대기열 승인', gpsapproval: '퇴근 승인', cancelapv: '취소 승인', workers: '근무자 관리', control: '관제 시스템', negotiation: '협의대상', points: '포인트', inquiry: '문의', accounts: '관리자 계정', stats: '통계 리포트', settlement: '파트너사 정산', worksite: '근무지 관리', audit: '감사로그' };
     return names[page] || '';
   }
 
