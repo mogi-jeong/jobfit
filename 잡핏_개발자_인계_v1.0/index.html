@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=1280, initial-scale=1.0">
-<title>잡핏 관리자 웹 — 근무지 관리 (프로토타입 v0.3 · 카카오맵)</title>
+<title>잡핏 관리자 웹 — v1.0 · 카카오맵</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif; background: #F5F7FA; color: #1F2937; font-size: 14px; line-height: 1.5; }
@@ -617,7 +617,7 @@
   <aside class="jf-sidebar">
     <div class="jf-brand">
       <div class="jf-brand-name">잡핏 JobFit</div>
-      <div class="jf-brand-sub">관리자 웹 · 프로토타입 v0.3</div>
+      <div class="jf-brand-sub">관리자 웹 · v1.0</div>
     </div>
     <div class="jf-nav-item active" data-page="home"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7l6-5 6 5v7a1 1 0 01-1 1H3a1 1 0 01-1-1V7z"/></svg>홈</div>
 
@@ -646,6 +646,10 @@
     <div class="jf-nav-item" data-page="accounts"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="2.5"/><path d="M3 13c0-2.5 2-4 5-4s5 1.5 5 4"/><circle cx="12" cy="4" r="1.5" fill="currentColor"/></svg>관리자 계정</div>
     <div class="jf-nav-item" data-page="audit"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2h8l3 3v9a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z"/><path d="M5 7h6M5 10h6M5 13h4"/></svg>감사로그 <span style="margin-left:auto; font-size:9px; padding:1px 5px; background:rgba(255,255,255,0.15); border-radius:3px; color:#fff;">M</span></div>
 
+    <div class="jf-nav-section jf-nav-section-ref">참고용 (개발자/시연)</div>
+    <div class="jf-nav-item" data-page="busmap"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4l4-2 4 2 4-2v10l-4 2-4-2-4 2V4z"/><path d="M6 2v10M10 4v10"/></svg>통근버스 길찾기</div>
+    <div class="jf-nav-item" data-page="apppreview"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="1.5" width="8" height="13" rx="1.5"/><path d="M7 12h2"/></svg>앱 미리보기</div>
+    <div class="jf-nav-item" data-page="mobileadmin"><svg class="jf-nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="1.5" width="8" height="13" rx="1.5"/><circle cx="8" cy="6" r="1.5"/><path d="M5.5 10c0-1.4 1.1-2.5 2.5-2.5s2.5 1.1 2.5 2.5"/></svg>모바일 관리자</div>
     <div class="jf-user">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
         <div><span class="jf-user-name">테스트</span><span class="jf-user-badge">마스터</span></div>
@@ -658,7 +662,7 @@
 </div>
 
 <div class="footer-info">
-  <strong style="color: #111827;">잡핏 관리자 웹 · 근무지 관리 페이지 프로토타입 v0.3.1</strong> · 
+  <strong style="color: #111827;">잡핏 관리자 웹 · v1.0</strong> ·
   지도: <code>Kakao Maps JavaScript API</code> (services · drawing 라이브러리) · 
   주소·장소 검색: <code>kakao.maps.services.Places + Geocoder</code> · 
   GPS 영역 판정: <code>Ray Casting (Point-in-Polygon)</code> · 

@@ -1,8 +1,13 @@
 # 잡핏(JobFit) 관리자 웹 — 개발자 인계 문서
 
-**버전:** 프로토타입 v0.7
-**최종 갱신:** 2026-04-26
+**버전:** **v1.0** (인계 첫 정식판)
+**최종 갱신:** 2026-05-01
 **현재 코드:** [GitHub mogi-jeong/jobfit](https://github.com/mogi-jeong/jobfit) · [GitHub Pages 배포](https://mogi-jeong.github.io/jobfit/)
+
+> 📌 **버전 표기 안내**
+> - 외부 인계 문서(HANDOFF/CLAUDE/index.html/README): **v1.0** 으로 통일
+> - 서비스 기획안: **v1.4** (정책 진화 트랙 — 별도)
+> - 프로토타입 코드 내부 버전(v0.x): [잡핏_변경이력.md](잡핏_변경이력.md)에 보존 (현재 코드 기반: v0.12 — 통근버스 매트릭스 + 알림 시스템)
 
 이 문서는 잡핏 관리자 웹 프로토타입을 **Flutter 알바생 앱 + Supabase 백엔드** 로 재구현하기 위한 인계 자료입니다.
 
