@@ -184,7 +184,7 @@ class AdminShell extends StatefulWidget {
 
 class _AdminShellState extends State<AdminShell> {
   int tab = 0;
-  static const tabs = ['일정', '공고', '승인', '소통', '내정보'];
+  static const tabs = ['공고', '일정', '승인', '소통', '내정보']; // 앱 열면 공고 먼저
 
   @override
   Widget build(BuildContext context) {
@@ -193,8 +193,8 @@ class _AdminShellState extends State<AdminShell> {
         children: [
           Positioned.fill(
             child: switch (tab) {
-              0 => SchedulePage(admin: widget.admin),
-              1 => JobListPage(admin: widget.admin),
+              0 => JobListPage(admin: widget.admin),
+              1 => SchedulePage(admin: widget.admin),
               2 => ApprovalPage(admin: widget.admin),
               3 => CommPage(admin: widget.admin),
               _ => MePage(admin: widget.admin, onLogout: widget.onLogout),
@@ -323,7 +323,7 @@ class _JobListPageState extends State<JobListPage> {
                 // 공고 등록 — 마스터·1등급 전용 (2026-08-24 확정)
                 if (widget.admin.isA1)
                   InkWell(
-                    onTap: _registerSheet,
+                    onTap: () => openRegisterSheet(context).then((ok) { if (ok && mounted) setState(() {}); }),
                     borderRadius: BorderRadius.circular(10),
                     child: const Padding(
                       padding: EdgeInsets.all(6),
@@ -381,157 +381,6 @@ class _JobListPageState extends State<JobListPage> {
     );
   }
 
-  // 공고 등록 (1등급 전용) — 근무지·날짜·시간대·인원·일급·포인트
-  void _registerSheet() {
-    String site = allSites.first;
-    final picked = <DateTime>{}; // 달력에서 여러 날 선택 → 날짜별 공고 N건
-    var month = DateTime(DateTime.now().year, DateTime.now().month);
-    var start = const TimeOfDay(hour: 8, minute: 0); // 시간 직접 설정
-    var end = const TimeOfDay(hour: 17, minute: 0);
-    int cap = 8;
-    String tpl = 'A';
-    final descCtrl = TextEditingController(text: templateBody('A'));
-    String tod(TimeOfDay t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-    String slotLabel(TimeOfDay s) => (s.hour >= 20 || s.hour < 5) ? '야간' : (s.hour >= 11 ? '오후' : '주간');
-    final wageCtrl = TextEditingController(text: '110000');
-    final pointCtrl = TextEditingController(text: '1000');
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
-        Widget chips<T>(List<(T, String)> opts, T cur, void Function(T) set) => Wrap(
-              spacing: 7,
-              children: opts
-                  .map((o) => InkWell(
-                        onTap: () => setSheet(() => set(o.$1)),
-                        borderRadius: BorderRadius.circular(16),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: cur == o.$1 ? JColors.ink : Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                                color: cur == o.$1 ? JColors.ink : JColors.hairline, width: cur == o.$1 ? 1 : .8),
-                          ),
-                          child: Text(o.$2,
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
-                                  color: cur == o.$1 ? Colors.white : JColors.ink)),
-                        ),
-                      ))
-                  .toList(),
-            );
-        Widget label(String t) => Padding(
-            padding: const EdgeInsets.only(top: 13, bottom: 6),
-            child: Text(t, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.muted)));
-
-        return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-          child: SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                const Text('공고 등록',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JColors.ink)),
-                const SizedBox(height: 2),
-                const Text('등록하면 알바생 앱에 바로 게시돼요 · 마스터·1등급 전용',
-                    style: TextStyle(fontSize: 11.5, color: JColors.muted)),
-                label('근무지'),
-                chips(allSites.map((s) => (s, s.split(' ').first)).toList(), site, (v) => site = v),
-                label('날짜 — 여러 날 선택 가능 (${picked.length}일 선택)'),
-                _calendar(ctx, month, picked, setSheet, (m) => month = m),
-                label('시간 — 직접 설정'),
-                Row(children: [
-                  Expanded(child: _timeBox(ctx, '시작', tod(start), () async {
-                    final t = await showTimePicker(context: ctx, initialTime: start);
-                    if (t != null) setSheet(() => start = t);
-                  })),
-                  const SizedBox(width: 8),
-                  Expanded(child: _timeBox(ctx, '종료', tod(end), () async {
-                    final t = await showTimePicker(context: ctx, initialTime: end);
-                    if (t != null) setSheet(() => end = t);
-                  })),
-                ]),
-                const SizedBox(height: 8),
-                chips(
-                    const [
-                      ((8, 17), '주간 08–17'),
-                      ((22, 6), '야간 22–06'),
-                      ((11, 19), '오후 11–19'),
-                    ],
-                    (start.hour, end.hour),
-                    (v) {
-                      start = TimeOfDay(hour: v.$1, minute: 0);
-                      end = TimeOfDay(hour: v.$2, minute: 0);
-                    }),
-                label('모집 인원'),
-                Row(children: [
-                  _stepBtn('−', () => setSheet(() => cap = (cap - 1).clamp(1, 50))),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    child: Text('$cap명',
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: JColors.ink,
-                            fontFeatures: [FontFeature.tabularFigures()])),
-                  ),
-                  _stepBtn('＋', () => setSheet(() => cap = (cap + 1).clamp(1, 50))),
-                ]),
-                label('일급 (원 · 파트너사 지급)'),
-                TextField(controller: wageCtrl, keyboardType: TextInputType.number,
-                    style: const TextStyle(fontSize: 14, color: JColors.ink),
-                    decoration: const InputDecoration(isDense: true)),
-                label('포인트 (P · 잡핏 지급, 기본 1,000)'),
-                TextField(controller: pointCtrl, keyboardType: TextInputType.number,
-                    style: const TextStyle(fontSize: 14, color: JColors.ink),
-                    decoration: const InputDecoration(isDense: true)),
-                label('공고 내용 — 템플릿 불러오기 (수정 가능)'),
-                chips(jobTemplates.map((t) => (t.key, '${t.key} ${t.title}')).toList(), tpl, (v) {
-                  tpl = v;
-                  descCtrl.text = templateBody(v);
-                }),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: descCtrl,
-                  maxLines: 5,
-                  style: const TextStyle(fontSize: 12.5, color: JColors.ink, height: 1.5),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    hintText: '업무 · 준비물 · 특이사항',
-                    contentPadding: const EdgeInsets.all(12),
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: JColors.hairline)),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: 42, width: double.infinity,
-                  child: jPill(picked.isEmpty ? '날짜를 선택하세요' : '${picked.length}건 등록하기',
-                      bg: picked.isEmpty ? const Color(0xFFC7C7CC) : JColors.blue, fg: Colors.white, onTap: () {
-                    if (picked.isEmpty) return;
-                    final label = slotLabel(start);
-                    final dates = picked.toList()..sort();
-                    for (final d in dates) {
-                      final s = DateTime(d.year, d.month, d.day, start.hour, start.minute);
-                      var e = DateTime(d.year, d.month, d.day, end.hour, end.minute);
-                      if (!e.isAfter(s)) e = e.add(const Duration(days: 1)); // 야간 = 다음날 종료
-                      gJobs.add(Job(site, label, '모집중', s, e, cap, 0, cap, desc: descCtrl.text.trim()));
-                    }
-                    Navigator.pop(ctx);
-                    setState(() {});
-                    jSnack(context, '공고 ${dates.length}건 등록 완료 — 알바생 앱에 게시됐어요');
-                  }),
-                ),
-              ]),
-            ),
-          ),
-        );
-      }),
-    );
-  }
-
-  // 등록용 달력 — 여러 날 선택, 지난 날짜 비활성
   static Widget _calendar(BuildContext ctx, DateTime month, Set<DateTime> picked,
       void Function(void Function()) setSheet, void Function(DateTime) setMonth) {
     final n = DateTime.now();
@@ -1637,6 +1486,8 @@ class SchedulePage extends StatefulWidget {
 class _SchedulePageState extends State<SchedulePage> {
   late DateTime month = DateTime(DateTime.now().year, DateTime.now().month);
   late DateTime selected = _d0(DateTime.now());
+  String filter = 'all'; // all | 파트너명(1급) | 근무지명(2급)
+  bool onlyShort = false; // 부족·미출근만
   Timer? _tick;
 
   static DateTime _d0(DateTime t) => DateTime(t.year, t.month, t.day);
@@ -1654,7 +1505,33 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   bool _inScope(Job j) => widget.admin.sites == null || widget.admin.sites!.contains(j.site);
-  List<Job> get all => [...gJobs, ...gPastJobs].where(_inScope).toList();
+  bool _pass(Job j) {
+    final now = DateTime.now();
+    if (onlyShort && !(j.short > 0 && !now.isAfter(j.end))) return false;
+    if (filter == 'all') return true;
+    return widget.admin.sites != null ? j.site == filter : (siteOf(j.site)?.partner == filter);
+  }
+
+  List<Job> get all => [...gJobs, ...gPastJobs].where((j) => _inScope(j) && _pass(j)).toList();
+
+  Widget _chip(String t, bool on, VoidCallback f, {bool alert = false}) => Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: InkWell(
+          onTap: f,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: on ? (alert ? JColors.red : JColors.ink) : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: on ? Colors.transparent : JColors.hairline),
+            ),
+            child: Text(t,
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
+                    color: on ? Colors.white : (alert ? JColors.red : JColors.ink))),
+          ),
+        ),
+      );
   List<Job> onDay(DateTime d) => all.where((j) => _d0(j.start) == d).toList()..sort((a, b) => a.start.compareTo(b.start));
 
   @override
@@ -1742,7 +1619,49 @@ class _SchedulePageState extends State<SchedulePage> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
         children: [
-          jHeader('일정', '${month.month}월 공고 $monthJobs건 · 빨강 = 인원 부족'),
+          Padding(
+            padding: const EdgeInsets.only(top: 10, bottom: 10),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('일정',
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -.6, color: JColors.ink)),
+                  const SizedBox(height: 2),
+                  Text('${month.month}월 공고 $monthJobs건 · 빨강 = 인원 부족',
+                      style: const TextStyle(fontSize: 12.5, color: JColors.muted)),
+                ]),
+              ),
+              // 공고 등록 — 1등급 전용, 달력에서 고른 날짜가 미리 선택됨
+              if (widget.admin.isA1)
+                InkWell(
+                  onTap: () => openRegisterSheet(context, preselected: {selected})
+                      .then((ok) { if (ok && mounted) setState(() {}); }),
+                  borderRadius: BorderRadius.circular(10),
+                  child: const Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Text('＋ 공고 등록',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JColors.blue)),
+                  ),
+                ),
+            ]),
+          ),
+          // 필터 — 1급: 파트너사 / 2급: 담당 근무지 · '부족만' 토글
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              for (final o in <(String, String)>[
+                ('all', '전체'),
+                if (widget.admin.sites != null)
+                  ...widget.admin.sites!.map((s) => (s, s.split(' ').first))
+                else
+                  ...const [('CJ대한통운', 'CJ'), ('롯데택배', '롯데'), ('컨벤션', '컨벤션')],
+              ])
+                _chip(o.$2, filter == o.$1, () => setState(() => filter = o.$1)),
+              const SizedBox(width: 4),
+              _chip('부족만', onlyShort, () => setState(() => onlyShort = !onlyShort), alert: true),
+            ]),
+          ),
+          const SizedBox(height: 10),
           jCard(Column(children: [
             Row(children: [
               nav('‹', () => setState(() => month = DateTime(month.year, month.month - 1))),
@@ -2333,4 +2252,160 @@ class _MePageState extends State<MePage> {
         Text(k, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: JColors.muted)),
         Text(v, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: JColors.ink)),
       ]);
+}
+
+  // 공고 등록 (1등급 전용) — 근무지·날짜·시간대·인원·일급·포인트
+// ─── 공고 등록 시트 (1등급 전용) — 공고 탭·일정 탭 공용 ───
+Future<bool> openRegisterSheet(BuildContext context, {Set<DateTime>? preselected}) async {
+  var changed = false;
+    String site = allSites.first;
+    final picked = <DateTime>{...?preselected};
+    var month = (preselected != null && preselected.isNotEmpty)
+        ? DateTime(preselected.first.year, preselected.first.month)
+        : DateTime(DateTime.now().year, DateTime.now().month);
+    var start = const TimeOfDay(hour: 8, minute: 0); // 시간 직접 설정
+    var end = const TimeOfDay(hour: 17, minute: 0);
+    int cap = 8;
+    String tpl = 'A';
+    final descCtrl = TextEditingController(text: templateBody('A'));
+    String tod(TimeOfDay t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    String slotLabel(TimeOfDay s) => (s.hour >= 20 || s.hour < 5) ? '야간' : (s.hour >= 11 ? '오후' : '주간');
+    final wageCtrl = TextEditingController(text: '110000');
+    final pointCtrl = TextEditingController(text: '1000');
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
+        Widget chips<T>(List<(T, String)> opts, T cur, void Function(T) set) => Wrap(
+              spacing: 7,
+              children: opts
+                  .map((o) => InkWell(
+                        onTap: () => setSheet(() => set(o.$1)),
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: cur == o.$1 ? JColors.ink : Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                                color: cur == o.$1 ? JColors.ink : JColors.hairline, width: cur == o.$1 ? 1 : .8),
+                          ),
+                          child: Text(o.$2,
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                                  color: cur == o.$1 ? Colors.white : JColors.ink)),
+                        ),
+                      ))
+                  .toList(),
+            );
+        Widget label(String t) => Padding(
+            padding: const EdgeInsets.only(top: 13, bottom: 6),
+            child: Text(t, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.muted)));
+
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                const Text('공고 등록',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JColors.ink)),
+                const SizedBox(height: 2),
+                const Text('등록하면 알바생 앱에 바로 게시돼요 · 마스터·1등급 전용',
+                    style: TextStyle(fontSize: 11.5, color: JColors.muted)),
+                label('근무지'),
+                chips(allSites.map((s) => (s, s.split(' ').first)).toList(), site, (v) => site = v),
+                label('날짜 — 여러 날 선택 가능 (${picked.length}일 선택)'),
+                _JobListPageState._calendar(ctx, month, picked, setSheet, (m) => month = m),
+                label('시간 — 직접 설정'),
+                Row(children: [
+                  Expanded(child: _JobListPageState._timeBox(ctx, '시작', tod(start), () async {
+                    final t = await showTimePicker(context: ctx, initialTime: start);
+                    if (t != null) setSheet(() => start = t);
+                  })),
+                  const SizedBox(width: 8),
+                  Expanded(child: _JobListPageState._timeBox(ctx, '종료', tod(end), () async {
+                    final t = await showTimePicker(context: ctx, initialTime: end);
+                    if (t != null) setSheet(() => end = t);
+                  })),
+                ]),
+                const SizedBox(height: 8),
+                chips(
+                    const [
+                      ((8, 17), '주간 08–17'),
+                      ((22, 6), '야간 22–06'),
+                      ((11, 19), '오후 11–19'),
+                    ],
+                    (start.hour, end.hour),
+                    (v) {
+                      start = TimeOfDay(hour: v.$1, minute: 0);
+                      end = TimeOfDay(hour: v.$2, minute: 0);
+                    }),
+                label('모집 인원'),
+                Row(children: [
+                  _JobListPageState._stepBtn('−', () => setSheet(() => cap = (cap - 1).clamp(1, 50))),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Text('$cap명',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: JColors.ink,
+                            fontFeatures: [FontFeature.tabularFigures()])),
+                  ),
+                  _JobListPageState._stepBtn('＋', () => setSheet(() => cap = (cap + 1).clamp(1, 50))),
+                ]),
+                label('일급 (원 · 파트너사 지급)'),
+                TextField(controller: wageCtrl, keyboardType: TextInputType.number,
+                    style: const TextStyle(fontSize: 14, color: JColors.ink),
+                    decoration: const InputDecoration(isDense: true)),
+                label('포인트 (P · 잡핏 지급, 기본 1,000)'),
+                TextField(controller: pointCtrl, keyboardType: TextInputType.number,
+                    style: const TextStyle(fontSize: 14, color: JColors.ink),
+                    decoration: const InputDecoration(isDense: true)),
+                label('공고 내용 — 템플릿 불러오기 (수정 가능)'),
+                chips(jobTemplates.map((t) => (t.key, '${t.key} ${t.title}')).toList(), tpl, (v) {
+                  tpl = v;
+                  descCtrl.text = templateBody(v);
+                }),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: descCtrl,
+                  maxLines: 5,
+                  style: const TextStyle(fontSize: 12.5, color: JColors.ink, height: 1.5),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: '업무 · 준비물 · 특이사항',
+                    contentPadding: const EdgeInsets.all(12),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: JColors.hairline)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 42, width: double.infinity,
+                  child: jPill(picked.isEmpty ? '날짜를 선택하세요' : '${picked.length}건 등록하기',
+                      bg: picked.isEmpty ? const Color(0xFFC7C7CC) : JColors.blue, fg: Colors.white, onTap: () {
+                    if (picked.isEmpty) return;
+                    final label = slotLabel(start);
+                    final dates = picked.toList()..sort();
+                    for (final d in dates) {
+                      final s = DateTime(d.year, d.month, d.day, start.hour, start.minute);
+                      var e = DateTime(d.year, d.month, d.day, end.hour, end.minute);
+                      if (!e.isAfter(s)) e = e.add(const Duration(days: 1)); // 야간 = 다음날 종료
+                      gJobs.add(Job(site, label, '모집중', s, e, cap, 0, cap, desc: descCtrl.text.trim()));
+                    }
+                    Navigator.pop(ctx);
+                    changed = true;
+                    jSnack(context, '공고 ${dates.length}건 등록 완료 — 알바생 앱에 게시됐어요');
+                  }),
+                ),
+              ]),
+            ),
+          ),
+        );
+      }),
+    );
+
+  return changed;
 }
