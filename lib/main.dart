@@ -241,6 +241,22 @@ int mockBalance(String name) => 5000 + (name.codeUnits.fold(0, (a, b) => a + b) 
 // 이미 회수된 합계 (가용 잔액 계산)
 int recoveredOf(String name) => gRecoveries.where((r) => r.name == name).fold(0, (a, r) => a + r.amount);
 
+// ─── 취소 검토 처리 내역 — 잘못 눌렀을 때 되돌리기 (차감이면 포인트 복원) → Supabase applications.cancel_decision 교체 지점 ───
+class CancelDecision {
+  final CancelReq req;
+  final String decision; // deduct 차감 / exempt 면제 / reject 반려
+  final String by;
+  final DateTime at;
+  bool reverted = false;
+  CancelDecision(this.req, this.decision, this.by, this.at);
+}
+
+final List<CancelDecision> gCancelDecisions = [];
+// 유효한(되돌리지 않은) 취소 차감 합계 — 프로필 잔액·내역에 반영
+int cancelDeductOf(String name) => gCancelDecisions
+    .where((d) => d.req.name == name && d.decision == 'deduct' && !d.reverted)
+    .fold(0, (a, _) => a + Policy.cancelDeduct);
+
 // ─── 근무자 프로필 (어디서든 이름 탭 → 상세) ───
 final List<Recovery> gGrants = []; // 보너스 지급 기록 (Recovery 구조 재사용, amount = +)
 int grantedOf(String name) => gGrants.where((r) => r.name == name).fold(0, (a, r) => a + r.amount);
@@ -2461,7 +2477,7 @@ class _ApprovalPageState extends State<ApprovalPage> {
           ),
           const SizedBox(height: 12),
           if (sub == 'apply') ..._applyList(),
-          if (sub == 'cancel') ..._cancelList(),
+          if (sub == 'cancel') ...[..._cancelList(), const SizedBox(height: 6), ..._cancelHistory()],
           if (sub == 'wait') ..._waitList(),
         ],
       ),
@@ -2553,29 +2569,93 @@ class _ApprovalPageState extends State<ApprovalPage> {
                 style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.5)),
             const SizedBox(height: 10),
             Row(children: [
-              Expanded(child: jPill('차감', bg: Colors.white, fg: JColors.red, border: JColors.red, onTap: () {
-                setState(() => cancels.remove(c));
-                gDecided.add('cancel|${c.name}|${c.siteName}');
-                gPendingTick.value++;
-                jSnack(context, '${c.name} — 취소 승인 · 1,000P 차감');
-              })),
+              Expanded(child: jPill('차감', bg: Colors.white, fg: JColors.red, border: JColors.red,
+                  onTap: () => _decideCancel(c, 'deduct'))),
               const SizedBox(width: 7),
-              Expanded(child: jPill('면제', bg: JColors.blue, fg: Colors.white, onTap: () {
-                setState(() => cancels.remove(c));
-                gDecided.add('cancel|${c.name}|${c.siteName}');
-                gPendingTick.value++;
-                jSnack(context, '${c.name} — 취소 승인 · 차감 면제');
-              })),
+              Expanded(child: jPill('면제', bg: JColors.blue, fg: Colors.white,
+                  onTap: () => _decideCancel(c, 'exempt'))),
               const SizedBox(width: 7),
-              Expanded(child: jPill('반려', bg: Colors.white, fg: JColors.ink, border: JColors.muted, onTap: () {
-                setState(() => cancels.remove(c));
-                gDecided.add('cancel|${c.name}|${c.siteName}');
-                gPendingTick.value++;
-                jSnack(context, '${c.name} — 반려 · 신청 복원 (출근 의무)');
-              })),
+              Expanded(child: jPill('반려', bg: Colors.white, fg: JColors.ink, border: JColors.muted,
+                  onTap: () => _decideCancel(c, 'reject'))),
             ]),
           ])),
         )).toList();
+  }
+
+  void _decideCancel(CancelReq c, String d) {
+    setState(() => cancels.remove(c));
+    gDecided.add('cancel|${c.name}|${c.siteName}');
+    gCancelDecisions.add(CancelDecision(c, d, widget.admin.name, DateTime.now()));
+    gPendingTick.value++;
+    jSnack(
+        context,
+        switch (d) {
+          'deduct' => '${c.name} — 취소 승인 · ${Policy.cancelDeduct ~/ 1000},000P 차감 (처리 내역에서 되돌리기 가능)',
+          'exempt' => '${c.name} — 취소 승인 · 차감 면제',
+          _ => '${c.name} — 반려 · 신청 복원 (출근 의무)',
+        });
+  }
+
+  // 잘못 눌렀을 때 — 다시 검토 대기로, 차감이었으면 포인트 복원
+  void _undoCancel(CancelDecision r) {
+    setState(() {
+      r.reverted = true;
+      cancels.add(r.req);
+    });
+    gDecided.remove('cancel|${r.req.name}|${r.req.siteName}');
+    gPendingTick.value++;
+    jSnack(context,
+        r.decision == 'deduct'
+            ? '${r.req.name} — 차감 취소 · ${Policy.cancelDeduct ~/ 1000},000P 복원 · 다시 검토 대기'
+            : '${r.req.name} — 처리 취소 · 다시 검토 대기');
+  }
+
+  // 취소 처리 내역 (담당 범위) — 되돌리기 가능
+  List<Widget> _cancelHistory() {
+    final recs = gCancelDecisions.reversed
+        .where((r) => widget.admin.sites == null || widget.admin.sites!.contains(r.req.siteName))
+        .take(10)
+        .toList();
+    if (recs.isEmpty) return const [];
+    String hm(DateTime t) => '${t.month}/${t.day} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    return [
+      jSect('취소 처리 내역 · ${recs.length}건 — 잘못 눌렀으면 되돌리기'),
+      ...recs.map((r) {
+        final (label, color) = switch (r.decision) {
+          'deduct' => ('차감 −${Policy.cancelDeduct ~/ 1000},000P', JColors.red),
+          'exempt' => ('면제', JColors.blue),
+          _ => ('반려 · 신청 복원', JColors.ink),
+        };
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: jCard(Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  jName(context, r.req.name,
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700,
+                          color: r.reverted ? JColors.inactive : JColors.ink,
+                          decoration: r.reverted ? TextDecoration.lineThrough : null)),
+                  const SizedBox(width: 8),
+                  Text(r.reverted ? '되돌림' : label,
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
+                          color: r.reverted ? JColors.inactive : color)),
+                ]),
+                const SizedBox(height: 2),
+                Text('${r.req.siteName} · ${r.req.slotTime} · ${r.by} · ${hm(r.at)}',
+                    style: const TextStyle(fontSize: 10.5, color: JColors.inactive)),
+              ]),
+            ),
+            if (!r.reverted)
+              SizedBox(
+                width: 78,
+                child: jPill('되돌리기', bg: Colors.white, fg: JColors.muted, border: JColors.muted,
+                    onTap: () => _undoCancel(r)),
+              ),
+          ])),
+        );
+      }),
+    ];
   }
 
   List<Widget> _waitList() {
@@ -2904,7 +2984,7 @@ class _WorkerPageState extends State<WorkerPage> {
       final s = effStatus(e.$1, e.$2);
       return s == 'ok' || s == 'late' || s == 'early';
     }).length;
-    final balance = mockBalance(name) - recoveredOf(name) + grantedOf(name);
+    final balance = mockBalance(name) - recoveredOf(name) + grantedOf(name) - cancelDeductOf(name);
 
     // 포인트 내역 (최신순): 근무 보상 + 지급 + 회수
     final pts = <(DateTime, String, int)>[
@@ -2918,6 +2998,9 @@ class _WorkerPageState extends State<WorkerPage> {
         if (g.name == name) (g.at, '지급 · ${g.memo}', g.amount),
       for (final r in gRecoveries)
         if (r.name == name) (r.at, '회수 · ${r.memo}', -r.amount),
+      for (final d in gCancelDecisions)
+        if (d.req.name == name && d.decision == 'deduct' && !d.reverted)
+          (d.at, '취소 차감 · ${d.req.siteName.split(' ').first} ${d.req.slotTime} (단순변심)', -Policy.cancelDeduct),
     ]..sort((a, b) => b.$1.compareTo(a.$1));
 
     final inq = _inquiriesAll.where((q) => q.name == name).firstOrNull;
