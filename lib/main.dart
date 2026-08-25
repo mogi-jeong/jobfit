@@ -189,12 +189,16 @@ String? outOf(Job j, Worker w) {
 int manualCount(Job j) {
   final now = DateTime.now();
   if (!now.isAfter(j.end) || now.difference(j.end).inHours >= Policy.autoCheckoutHours) return 0;
-  final pendingOut = rosterOf(j).where((w) {
+  // 사람 기준으로 합산 (사유 제출자도 퇴근 기록이 없으므로 같은 사람 = 1명)
+  final names = <String>{};
+  for (final w in rosterOf(j)) {
     final s = effStatus(j, w);
-    return (s == 'ok' || s == 'late') && outOf(j, w) == null;
-  }).length;
-  final gps = gpsReqsOf(j).where((r) => !gGpsDone.contains('${jobKey(j)}|${r.name}')).length;
-  return pendingOut + gps;
+    if ((s == 'ok' || s == 'late') && outOf(j, w) == null) names.add(w.name);
+  }
+  for (final r in gpsReqsOf(j)) {
+    if (!gGpsDone.contains('${jobKey(j)}|${r.name}')) names.add(r.name);
+  }
+  return names.length;
 }
 
 bool needsManual(Job j) => manualCount(j) > 0;
@@ -1477,6 +1481,8 @@ class _AttendancePageState extends State<AttendancePage> {
         : mapped.where((w) => (statusOf(w) == 'ok' || statusOf(w) == 'late') && outOf_(w) == null).toList();
     final done = mapped.where((w) => !pending.contains(w)).toList();
     final eligible = mapped.where(_eligible).length; // 포인트 자동 지급 대상
+    final gpsBy = {for (final r in gpsReqs) r.name: r}; // 사유 제출자 (퇴근 미처리와 같은 사람 → 한 카드로 합침)
+    final bulkTargets = pending.where((w) => !gpsBy.containsKey(w.name)).toList(); // 일괄 처리는 사유 없는 사람만
 
     Future<void> bulkOut() async {
       final go = await showDialog<bool>(
@@ -1485,10 +1491,10 @@ class _AttendancePageState extends State<AttendancePage> {
           backgroundColor: Colors.white,
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          title: Text('${pending.length}명 정상 퇴근 처리',
+          title: Text('${bulkTargets.length}명 정상 퇴근 처리',
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: JColors.ink)),
           content: Text(
-              '${pending.map((w) => w.name).join(', ')}\n\n위 인원을 근무 종료 시각(${Job._hm(widget.job.end)}) 기준 정상 퇴근으로 기록합니다.\n조퇴·무단이탈자가 있다면 먼저 개별로 표시하세요.',
+              '${bulkTargets.map((w) => w.name).join(', ')}\n\n위 인원을 근무 종료 시각(${Job._hm(widget.job.end)}) 기준 정상 퇴근으로 기록합니다.\n조퇴·무단이탈자가 있다면 먼저 개별로 표시하세요. (사유 제출자는 제외)',
               style: const TextStyle(fontSize: 12.5, color: JColors.muted, height: 1.5)),
           actions: [
             TextButton(onPressed: () => Navigator.pop(d),
@@ -1500,11 +1506,11 @@ class _AttendancePageState extends State<AttendancePage> {
       );
       if (go != true || !mounted) return;
       setState(() {
-        for (final w in pending) {
+        for (final w in bulkTargets) {
           outs[w.name] = Job._hm(widget.job.end);
         }
       });
-      snack('${pending.length}명 — 종료 시각 기준 퇴근 처리했어요');
+      snack('${bulkTargets.length}명 — 종료 시각 기준 퇴근 처리했어요');
     }
 
     return [
@@ -1547,18 +1553,54 @@ class _AttendancePageState extends State<AttendancePage> {
                 style: const TextStyle(fontSize: 11, color: JColors.amber, fontWeight: FontWeight.w600)),
         ])),
       ])),
-      ..._gpsSection(),
+      // 6시간 지나 자동 처리된 뒤에도 사유가 남아 있으면 그것만 따로
+      if (pending.isEmpty) ..._gpsSection(),
+      // ── 퇴근 확인 필요 — 한 섹션으로 통합: 사유 제출자는 승인/반려, 나머지는 퇴근/조퇴/이탈 ──
       if (pending.isNotEmpty) ...[
         const SizedBox(height: 12),
-        _sect('퇴근 미처리 · ${pending.length}명 — 한 명씩 확인'),
-        ...pending.map((w) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  Text(w.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: JColors.ink)),
-                  Text('${_stMeta(statusOf(w)).$1}${w.time != null ? ' ${w.time}' : ''} · 퇴근 기록 없음',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: JColors.amber)),
+        _sect('퇴근 확인 필요 · ${pending.length}명 — 한 명씩'),
+        ...pending.map((w) {
+          final r = gpsBy[w.name];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                jName(context, w.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: JColors.ink)),
+                Text(
+                    r != null
+                        ? r.dist
+                        : '${_stMeta(statusOf(w)).$1}${w.time != null ? ' ${w.time}' : ''} · 퇴근 기록 없음',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                        color: r != null ? JColors.red : JColors.amber)),
+              ]),
+              if (r != null) ...[
+                // 알바생이 낸 사유 → 승인(정상 퇴근 인정) / 반려(미인정 · 포인트 없음)
+                const SizedBox(height: 3),
+                Text('"${r.reason}" · ${r.time} 제출 · ${_stMeta(statusOf(w)).$1}${w.time != null ? ' ${w.time}' : ''}',
+                    style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(
+                      child: _pill('승인 · 퇴근 인정', bg: JColors.blue, fg: Colors.white, onTap: () {
+                    setState(() {
+                      gpsReqs.remove(r);
+                      gGpsDone.add('${jobKey(widget.job)}|${r.name}');
+                      outs[r.name] = r.time;
+                    });
+                    snack('${r.name} — 퇴근 인정 · 정산 때 포인트 지급 대상');
+                  })),
+                  const SizedBox(width: 7),
+                  Expanded(
+                      child: _pill('반려', bg: Colors.white, fg: JColors.red, border: JColors.red, onTap: () {
+                    setState(() {
+                      gpsReqs.remove(r);
+                      gGpsDone.add('${jobKey(widget.job)}|${r.name}');
+                      outs[r.name] = '반려 ${r.time}';
+                    });
+                    snack('${r.name} — 반려 · 퇴근 미인정, 포인트 없음');
+                  })),
                 ]),
+              ] else ...[
                 const SizedBox(height: 10),
                 Row(children: [
                   Expanded(child: _pill('퇴근 처리', bg: JColors.amber, fg: Colors.white, onTap: () {
@@ -1572,11 +1614,15 @@ class _AttendancePageState extends State<AttendancePage> {
                   Expanded(child: _pill('무단이탈', bg: Colors.white, fg: JColors.red, border: JColors.red,
                       onTap: () => mark(w.name, 'runaway'))),
                 ]),
-              ])),
-            )),
-        const SizedBox(height: 4),
-        _pill('나머지 ${pending.length}명 정상 퇴근 처리', bg: Colors.white, fg: JColors.amber, border: JColors.amber,
-            onTap: bulkOut),
+              ],
+            ])),
+          );
+        }),
+        if (bulkTargets.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          _pill('나머지 ${bulkTargets.length}명 정상 퇴근 처리', bg: Colors.white, fg: JColors.amber, border: JColors.amber,
+              onTap: bulkOut),
+        ],
       ],
       const SizedBox(height: 12),
       // 정정 허용 7일 (사용자 결정 2026-08-24, N30)
