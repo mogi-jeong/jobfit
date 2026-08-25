@@ -1467,9 +1467,15 @@ class _AttendancePageState extends State<AttendancePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  Text(w.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: JColors.ink)),
+                  jName(context, w.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: JColors.ink)),
                   const Text('미도착', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: JColors.inactive)),
                 ]),
+                // 같이하기 짝 힌트 — 안 온 사람 확인할 때만 필요한 맥락 정보
+                if (buddyOf(widget.job, w.name) != null) ...[
+                  const SizedBox(height: 4),
+                  Text(_buddyHint(w),
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: JColors.blue)),
+                ],
                 const SizedBox(height: 10),
                 Row(children: [
                   Expanded(child: _pill('수동 출근', bg: JColors.blue, fg: Colors.white, onTap: () => mark(w.name, 'ok'))),
@@ -1751,6 +1757,18 @@ class _AttendancePageState extends State<AttendancePage> {
         ),
       ],
     ];
+  }
+
+  // 미도착자의 짝꿍 상태 → "짝한테 물어보세요" 힌트
+  String _buddyHint(Worker w) {
+    final p = buddyOf(widget.job, w.name)!;
+    final pw = [...rosterOf(widget.job), ...invited].where((x) => x.name == p).firstOrNull;
+    final s = pw == null ? 'none' : statusOf(pw);
+    return switch (s) {
+      'none' => '짝 $p도 미도착',
+      'ok' || 'late' => '짝 $p — 출근함 · 어디쯤인지 물어보세요',
+      _ => '짝 $p — ${_stMeta(s).$1}',
+    };
   }
 
   // ── 공고 공지 — 확정자 대상 · 게시물처럼 남아 이후 확정자에게 자동 전달 ──
