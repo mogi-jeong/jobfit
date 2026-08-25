@@ -2506,11 +2506,19 @@ class _ApprovalPageState extends State<ApprovalPage> {
       child: Padding(padding: const EdgeInsets.symmetric(vertical: 10),
           child: Text(t, style: const TextStyle(fontSize: 12, color: JColors.inactive)))));
 
-  // 신청 — 협의대상(신중히) 먼저, 그다음 12시간 이내
+  // 신청한 공고 시작까지 남은 시간 (없으면 null)
+  Duration? _leftOf(PendingApp a) {
+    final j = a.jobId == null ? null : gJobs.where((x) => x.id == a.jobId).firstOrNull;
+    return j?.start.difference(DateTime.now());
+  }
+
+  // 신청 — 협의대상(신중히) 먼저, 그다음 12시간 이내 · 각 묶음은 시작 임박순
   List<Widget> _applyList() {
     if (apps.isEmpty) return [_empty('승인 대기 없음')];
-    final danger = apps.where((a) => a.danger).toList();
-    final normal = apps.where((a) => !a.danger).toList();
+    int byLeft(PendingApp x, PendingApp y) =>
+        (_leftOf(x) ?? const Duration(days: 99)).compareTo(_leftOf(y) ?? const Duration(days: 99));
+    final danger = apps.where((a) => a.danger).toList()..sort(byLeft);
+    final normal = apps.where((a) => !a.danger).toList()..sort(byLeft);
     Widget head(String t, Color c) => Padding(
         padding: const EdgeInsets.only(bottom: 7, left: 2, top: 2),
         child: Text(t, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c)));
@@ -2531,9 +2539,23 @@ class _ApprovalPageState extends State<ApprovalPage> {
           child: jCard(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               jName(context, a.name),
-              Text(a.flag,
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                      color: a.danger ? JColors.red : const Color(0xFF9A6B00))),
+              // 알바 시작까지 남은 시간 — 1시간 미만·이미 시작이면 빨강 (매초 갱신)
+              Builder(builder: (_) {
+                final left = _leftOf(a);
+                final timeTxt = left == null
+                    ? null
+                    : left.isNegative
+                        ? '이미 시작'
+                        : '시작까지 ${beforeLabel(left.inMinutes)}';
+                final urgent = left != null && left.inMinutes < 60;
+                final txt = timeTxt == null
+                    ? a.flag
+                    : (a.danger ? '협의대상 · $timeTxt' : timeTxt);
+                return Text(txt,
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                        color: (a.danger || urgent) ? JColors.red : JColors.amber,
+                        fontFeatures: const [FontFeature.tabularFigures()]));
+              }),
             ]),
             const SizedBox(height: 2),
             Text('${a.siteName} · ${a.slotTime}\n${a.note}',
