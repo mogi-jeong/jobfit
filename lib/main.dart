@@ -1780,6 +1780,42 @@ Widget jPill(String t,
       ),
     );
 
+// 건수 배지 '+N' — 기본 앰버(처리 필요) · muted 회색(정보) · urgent 빨강 + 은은한 펄스(시간 임박·주의)
+Widget jBadge(int n, {bool urgent = false, bool muted = false}) {
+  final t = Text('+$n',
+      style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          color: urgent ? JColors.red : (muted ? JColors.inactive : JColors.amber),
+          fontFeatures: const [FontFeature.tabularFigures()]));
+  return urgent ? _Pulse(child: t) : t;
+}
+
+// 1초 주기 페이드 펄스 — 진짜 급한 것에만 (장식 아님)
+class _Pulse extends StatefulWidget {
+  final Widget child;
+  const _Pulse({required this.child});
+  @override
+  State<_Pulse> createState() => _PulseState();
+}
+
+class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+        opacity: Tween<double>(begin: 1, end: .3).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut)),
+        child: widget.child,
+      );
+}
+
 void jSnack(BuildContext context, String msg) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
     content: Text(msg, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
@@ -2113,12 +2149,22 @@ class _ApprovalPageState extends State<ApprovalPage> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
         children: [
-          jHeader('승인', widget.admin.sites == null ? '전 근무지 · 현장 즉시 처리' : '담당 근무지 · 현장 즉시 처리'),
+          jHeader('승인',
+              '${widget.admin.sites == null ? '전 근무지' : '담당 근무지'} · 처리 필요 ${apps.length + cancels.length}건'
+              '${apps.any((a) => a.danger) ? ' · 협의대상 포함' : ''}'),
           Container(
             padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(color: const Color(0xFFE8E8ED), borderRadius: BorderRadius.circular(10)),
             child: Row(children: [
-              for (final s in [('apply', '신청 ${apps.length}'), ('cancel', '취소 ${cancels.length}'), ('wait', '대기열 ${waits.length}')])
+              // (키, 라벨, 건수, 긴급) — 긴급: 협의대상 신청 / 대기열 마감 5분 이내 → 빨강 + 펄스
+              for (final s in <(String, String, int, bool)>[
+                ('apply', '신청', apps.length, apps.any((a) => a.danger)),
+                ('cancel', '취소', cancels.length, false),
+                ('wait', '대기열', waits.length, waits.any((w) {
+                  final left = w.deadline.difference(DateTime.now());
+                  return !left.isNegative && left.inMinutes < 5;
+                })),
+              ])
                 Expanded(
                   child: InkWell(
                     onTap: () => setState(() => sub = s.$1),
@@ -2133,10 +2179,16 @@ class _ApprovalPageState extends State<ApprovalPage> {
                             ? [BoxShadow(color: Colors.black.withValues(alpha: .12), blurRadius: 3)]
                             : null,
                       ),
-                      child: Text(s.$2,
-                          style: TextStyle(fontSize: 12,
-                              fontWeight: sub == s.$1 ? FontWeight.w700 : FontWeight.w600,
-                              color: sub == s.$1 ? JColors.ink : JColors.muted)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text(s.$2,
+                            style: TextStyle(fontSize: 12,
+                                fontWeight: sub == s.$1 ? FontWeight.w700 : FontWeight.w600,
+                                color: sub == s.$1 ? JColors.ink : JColors.muted)),
+                        if (s.$3 > 0) ...[
+                          const SizedBox(width: 3),
+                          jBadge(s.$3, urgent: s.$4, muted: s.$1 == 'wait' && !s.$4),
+                        ],
+                      ]),
                     ),
                   ),
                 ),
