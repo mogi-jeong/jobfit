@@ -381,9 +381,13 @@ class _JobListPageState extends State<JobListPage> {
   // 공고 등록 (1등급 전용) — 근무지·날짜·시간대·인원·일급·포인트
   void _registerSheet() {
     String site = allSites.first;
-    int dayOffset = 1; // 0 오늘 / 1 내일 / 2 모레
-    String slot = '주간';
+    final picked = <DateTime>{}; // 달력에서 여러 날 선택 → 날짜별 공고 N건
+    var month = DateTime(DateTime.now().year, DateTime.now().month);
+    var start = const TimeOfDay(hour: 8, minute: 0); // 시간 직접 설정
+    var end = const TimeOfDay(hour: 17, minute: 0);
     int cap = 8;
+    String tod(TimeOfDay t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    String slotLabel(TimeOfDay s) => (s.hour >= 20 || s.hour < 5) ? '야간' : (s.hour >= 11 ? '오후' : '주간');
     final wageCtrl = TextEditingController(text: '110000');
     final pointCtrl = TextEditingController(text: '1000');
 
@@ -431,10 +435,32 @@ class _JobListPageState extends State<JobListPage> {
                     style: TextStyle(fontSize: 11.5, color: JColors.muted)),
                 label('근무지'),
                 chips(allSites.map((s) => (s, s.split(' ').first)).toList(), site, (v) => site = v),
-                label('날짜'),
-                chips(const [(0, '오늘'), (1, '내일'), (2, '모레')], dayOffset, (v) => dayOffset = v),
-                label('시간대'),
-                chips(const [('주간', '주간 08–17'), ('야간', '야간 22–06'), ('오후', '오후 11–19')], slot, (v) => slot = v),
+                label('날짜 — 여러 날 선택 가능 (${picked.length}일 선택)'),
+                _calendar(ctx, month, picked, setSheet, (m) => month = m),
+                label('시간 — 직접 설정'),
+                Row(children: [
+                  Expanded(child: _timeBox(ctx, '시작', tod(start), () async {
+                    final t = await showTimePicker(context: ctx, initialTime: start);
+                    if (t != null) setSheet(() => start = t);
+                  })),
+                  const SizedBox(width: 8),
+                  Expanded(child: _timeBox(ctx, '종료', tod(end), () async {
+                    final t = await showTimePicker(context: ctx, initialTime: end);
+                    if (t != null) setSheet(() => end = t);
+                  })),
+                ]),
+                const SizedBox(height: 8),
+                chips(
+                    const [
+                      ((8, 17), '주간 08–17'),
+                      ((22, 6), '야간 22–06'),
+                      ((11, 19), '오후 11–19'),
+                    ],
+                    (start.hour, end.hour),
+                    (v) {
+                      start = TimeOfDay(hour: v.$1, minute: 0);
+                      end = TimeOfDay(hour: v.$2, minute: 0);
+                    }),
                 label('모집 인원'),
                 Row(children: [
                   _stepBtn('−', () => setSheet(() => cap = (cap - 1).clamp(1, 50))),
@@ -457,17 +483,20 @@ class _JobListPageState extends State<JobListPage> {
                 const SizedBox(height: 16),
                 SizedBox(
                   height: 42, width: double.infinity,
-                  child: jPill('등록하기', bg: JColors.blue, fg: Colors.white, onTap: () {
-                    final now = DateTime.now();
-                    final base = DateTime(now.year, now.month, now.day).add(Duration(days: dayOffset));
-                    final (sh, eh) = switch (slot) { '야간' => (22, 6), '오후' => (11, 19), _ => (8, 17) };
-                    final start = base.add(Duration(hours: sh));
-                    final end = slot == '야간'
-                        ? base.add(Duration(days: 1, hours: eh))
-                        : base.add(Duration(hours: eh));
+                  child: jPill(picked.isEmpty ? '날짜를 선택하세요' : '${picked.length}건 등록하기',
+                      bg: picked.isEmpty ? const Color(0xFFC7C7CC) : JColors.blue, fg: Colors.white, onTap: () {
+                    if (picked.isEmpty) return;
+                    final label = slotLabel(start);
+                    final dates = picked.toList()..sort();
+                    for (final d in dates) {
+                      final s = DateTime(d.year, d.month, d.day, start.hour, start.minute);
+                      var e = DateTime(d.year, d.month, d.day, end.hour, end.minute);
+                      if (!e.isAfter(s)) e = e.add(const Duration(days: 1)); // 야간 = 다음날 종료
+                      gJobs.add(Job(site, label, '모집중', s, e, cap, 0, cap));
+                    }
                     Navigator.pop(ctx);
-                    setState(() => gJobs.add(Job(site, slot, '모집중', start, end, cap, 0, cap)));
-                    jSnack(context, '공고 등록 완료 — 알바생 앱에 게시됐어요');
+                    setState(() {});
+                    jSnack(context, '공고 ${dates.length}건 등록 완료 — 알바생 앱에 게시됐어요');
                   }),
                 ),
               ]),
@@ -477,6 +506,108 @@ class _JobListPageState extends State<JobListPage> {
       }),
     );
   }
+
+  // 등록용 달력 — 여러 날 선택, 지난 날짜 비활성
+  static Widget _calendar(BuildContext ctx, DateTime month, Set<DateTime> picked,
+      void Function(void Function()) setSheet, void Function(DateTime) setMonth) {
+    final n = DateTime.now();
+    final today0 = DateTime(n.year, n.month, n.day);
+    final first = DateTime(month.year, month.month, 1);
+    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+    final lead = first.weekday % 7; // 일요일 시작
+    final canPrev = month.isAfter(DateTime(n.year, n.month));
+    final cells = <Widget>[
+      for (var i = 0; i < lead; i++) const SizedBox(),
+      for (var d = 1; d <= daysInMonth; d++)
+        () {
+          final date = DateTime(month.year, month.month, d);
+          final past = date.isBefore(today0);
+          final sel = picked.contains(date);
+          final isToday = date == today0;
+          return InkWell(
+            onTap: past ? null : () => setSheet(() => sel ? picked.remove(date) : picked.add(date)),
+            borderRadius: BorderRadius.circular(18),
+            child: Container(
+              alignment: Alignment.center,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: sel ? JColors.ink : Colors.transparent),
+              child: Text('$d',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: sel || isToday ? FontWeight.w800 : FontWeight.w600,
+                      color: sel
+                          ? Colors.white
+                          : past
+                              ? const Color(0xFFC7C7CC)
+                              : isToday
+                                  ? JColors.blue
+                                  : JColors.ink)),
+            ),
+          );
+        }(),
+    ];
+    Widget nav(String t, bool on, VoidCallback f) => InkWell(
+          onTap: on ? f : null,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+            child: Text(t, style: TextStyle(fontSize: 22, height: 1, color: on ? JColors.blue : const Color(0xFFC7C7CC))),
+          ),
+        );
+    return Container(
+      decoration: BoxDecoration(
+          color: const Color(0xFFF5F5F7), borderRadius: BorderRadius.circular(14)),
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+      child: Column(children: [
+        Row(children: [
+          nav('‹', canPrev, () => setSheet(() => setMonth(DateTime(month.year, month.month - 1)))),
+          Expanded(
+              child: Text('${month.year}년 ${month.month}월',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: JColors.ink))),
+          nav('›', true, () => setSheet(() => setMonth(DateTime(month.year, month.month + 1)))),
+        ]),
+        Row(children: [
+          for (final w in const ['일', '월', '화', '수', '목', '금', '토'])
+            Expanded(
+                child: Text(w,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: w == '일' ? JColors.red : (w == '토' ? JColors.blue : JColors.inactive)))),
+        ]),
+        const SizedBox(height: 4),
+        GridView.count(
+          crossAxisCount: 7,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          childAspectRatio: 1.15,
+          children: cells,
+        ),
+      ]),
+    );
+  }
+
+  static Widget _timeBox(BuildContext ctx, String label, String value, VoidCallback onTap) => Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+            decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12), border: Border.all(color: JColors.hairline)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(label, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: JColors.muted)),
+              const SizedBox(height: 1),
+              Text(value,
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: JColors.ink,
+                      fontFeatures: [FontFeature.tabularFigures()])),
+            ]),
+          ),
+        ),
+      );
 
   static Widget _stepBtn(String t, VoidCallback f) => InkWell(
         onTap: f,
