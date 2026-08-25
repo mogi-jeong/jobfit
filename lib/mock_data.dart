@@ -219,10 +219,19 @@ List<Worker> rosterOf(Job job) {
 
 String _hmOf(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
+// 날짜별로 이미 배정된 이름 — 정책 '하루 1건'을 더미에서도 지킴 (같은 날 두 공고에 같은 사람 X)
+final Map<String, Set<String>> _usedByDate = {};
+
 List<Worker> _genRoster(Job job) {
   final rnd = Random(job.id.hashCode);
   final now = DateTime.now();
-  final names = List.of(_names)..shuffle(rnd);
+  final dayKey = '${job.start.year}-${job.start.month}-${job.start.day}';
+  final used = _usedByDate.putIfAbsent(dayKey, () => {});
+  final names = (List.of(_names)..shuffle(rnd)).where((n) => !used.contains(n)).toList();
+  // 이 공고에 들어가는 이름은 같은 날 다른 공고에서 제외
+  for (var i = 0; i < job.cap && i < names.length; i++) {
+    used.add(names[i]);
+  }
   final started = now.isAfter(job.start), ended = now.isAfter(job.end);
   final out = <Worker>[];
 

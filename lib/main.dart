@@ -3092,11 +3092,12 @@ class _WorkerPageState extends State<WorkerPage> {
                         final s = effStatus(j, w);
                         final isEnded = now.isAfter(j.end);
                         final active = !isEnded && now.isAfter(j.start);
+                        // 근무 내역엔 출결만 (포인트는 아래 '포인트 내역'에서)
                         final right = active
                             ? ('진행 중', JColors.blue)
                             : !isEnded
                                 ? ('예정', JColors.inactive)
-                                : (stLabel(s) + (jobPointEligible(j, w) ? ' · +${won(j.point)}P' : ''),
+                                : (stLabel(s),
                                     s == 'ok' || s == 'late' ? JColors.green : (s == 'early' ? JColors.amber : JColors.red));
                         return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                           Text('${j.dateLabel}  ${j.site.split(' ').first} ${j.slot}',
