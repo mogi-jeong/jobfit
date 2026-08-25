@@ -70,8 +70,18 @@ class _RootGateState extends State<RootGate> {
 
   @override
   Widget build(BuildContext context) {
-    if (me == null) return LoginPage(onPick: (a) => setState(() => me = a));
-    return AdminShell(admin: me!, onLogout: () => setState(() => me = null));
+    if (me == null) {
+      return LoginPage(onPick: (a) => setState(() {
+        me = a;
+        gAdmin = a;
+      }));
+    }
+    return AdminShell(
+        admin: me!,
+        onLogout: () => setState(() {
+              me = null;
+              gAdmin = null;
+            }));
   }
 }
 
@@ -194,6 +204,24 @@ bool jobPointEligible(Job j, Worker w) {
   final o = outOf(j, w);
   return pointEligible(effStatus(j, w), o == null ? null : (o.startsWith('반려') ? CheckoutSource.rejected : CheckoutSource.manual));
 }
+
+// ─── 포인트 회수 (관리자 판단 · 메시지 필수 · 알바생 앱에 그대로 전달) → Supabase point_txs(type=deduct) 교체 지점 ───
+Admin? gAdmin; // 로그인한 관리자 (권한별 회수 한도 판정용)
+
+class Recovery {
+  final String name, memo, by, jobRef;
+  final int amount;
+  final DateTime at;
+  const Recovery(this.name, this.amount, this.memo, this.by, this.jobRef, this.at);
+}
+
+final List<Recovery> gRecoveries = [];
+
+// Mock 보유 포인트 (이름 기반 고정값) → Supabase workers.points 교체 지점
+int mockBalance(String name) => 5000 + (name.codeUnits.fold(0, (a, b) => a + b) % 30) * 1000;
+
+// 이미 회수된 합계 (가용 잔액 계산)
+int recoveredOf(String name) => gRecoveries.where((r) => r.name == name).fold(0, (a, r) => a + r.amount);
 
 // GPS 영역 밖 퇴근 — 사유 검토 대기 (알바생 앱에서 제출 → 여기서 승인/반려)
 class GpsReq {
@@ -839,6 +867,16 @@ class _AttendancePageState extends State<AttendancePage> {
                   snack('${w.name} — ${had ? '퇴근 기록 취소' : '퇴근 처리'}');
                 }),
               ],
+            ],
+            // 포인트 회수 — 종료 후 출근·지각자에게 (관리자 판단, 메시지 필수)
+            if (!ext && DateTime.now().isAfter(widget.job.end) &&
+                (statusOf(w) == 'ok' || statusOf(w) == 'late')) ...[
+              const SizedBox(height: 10),
+              _pill('포인트 회수 · 알바생에게 메시지', bg: Colors.white, fg: JColors.red, border: JColors.red, onTap: () {
+                Navigator.pop(ctx);
+                openRecoverSheet(context, name: w.name, jobRef: '${widget.job.site} ${widget.job.dateLabel} ${widget.job.slot}')
+                    .then((_) { if (mounted) setState(() {}); });
+              }),
             ],
             if (ext) ...[
               const SizedBox(height: 14),
@@ -2266,6 +2304,12 @@ class _CommPageState extends State<CommPage> {
             height: 44,
             child: jPill('담당 근무지에 공지 발송', bg: JColors.blue, fg: Colors.white, onTap: _notice),
           ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 44,
+            child: jPill('포인트 회수 · 근무자 검색', bg: Colors.white, fg: JColors.red, border: JColors.red,
+                onTap: () => openRecoverSheet(context).then((_) { if (mounted) setState(() {}); })),
+          ),
           const SizedBox(height: 6),
           jSect('늦어요 보고 · ${lates.length}건'),
           if (lates.isEmpty)
@@ -2289,6 +2333,26 @@ class _CommPageState extends State<CommPage> {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: _inqRow(context, q),
               )),
+          // 회수 메시지 기록 — 알바생 앱에서도 같은 내용이 포인트 내역 + 알림으로 보임
+          if (gRecoveries.isNotEmpty) ...[
+            jSect('포인트 회수 메시지 · ${gRecoveries.length}건'),
+            ...gRecoveries.reversed.map((r) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: jCard(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                      Text(r.name, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: JColors.ink)),
+                      Text('−${r.amount.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},')}P',
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: JColors.red,
+                              fontFeatures: [FontFeature.tabularFigures()])),
+                    ]),
+                    const SizedBox(height: 4),
+                    Text('"${r.memo}"', style: const TextStyle(fontSize: 12, color: JColors.ink, height: 1.5)),
+                    const SizedBox(height: 3),
+                    Text('${r.jobRef.isEmpty ? '' : '${r.jobRef} · '}${r.by} · ${r.at.month}/${r.at.day} ${r.at.hour.toString().padLeft(2, '0')}:${r.at.minute.toString().padLeft(2, '0')} · 알바생에게 전송됨',
+                        style: const TextStyle(fontSize: 10.5, color: JColors.inactive)),
+                  ])),
+                )),
+          ],
         ],
       ),
     );
@@ -2691,4 +2755,178 @@ Future<bool> openRegisterSheet(BuildContext context, {Set<DateTime>? preselected
     );
 
   return changed;
+}
+
+// ─── 포인트 회수 시트 — 근무자 검색 → 금액(1,000P 단위, 권한별 한도) → 메시지(필수, 알바생에게 전달) ───
+Future<void> openRecoverSheet(BuildContext context, {String? name, String? jobRef}) async {
+  final admin = gAdmin;
+  final int? limit = (admin == null || admin.isA1) ? null : 3000; // 기획 §6-4: 1급 무제한 / 2급 3,000P
+  String? picked = name;
+  final q = TextEditingController();
+  final memo = TextEditingController();
+  int amount = 1000;
+
+  await showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+    builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+      Widget title(String t, String s) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(t, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JColors.ink)),
+            const SizedBox(height: 2),
+            Text(s, style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.45)),
+          ]);
+
+      List<Widget> body;
+      if (picked == null) {
+        // 1단계 — 근무자 검색
+        final kw = q.text.trim();
+        final list = mockMembers.where((m) => kw.isEmpty || m.name.contains(kw) || m.phone.contains(kw)).toList();
+        body = [
+          title('포인트 회수 — 근무자 검색', '이름 또는 전화번호로 찾아 선택하세요'),
+          const SizedBox(height: 11),
+          TextField(
+            controller: q,
+            autofocus: true,
+            onChanged: (_) => setS(() {}),
+            style: const TextStyle(fontSize: 14, color: JColors.ink),
+            decoration: const InputDecoration(hintText: '이름 · 전화번호'),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 260,
+            child: ListView(children: [
+              for (final m in list)
+                InkWell(
+                  onTap: () => setS(() => picked = m.name),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 9),
+                    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                      Text.rich(TextSpan(children: [
+                        TextSpan(text: m.name,
+                            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: JColors.ink)),
+                        TextSpan(text: '  ${m.phone}', style: const TextStyle(fontSize: 10.5, color: JColors.inactive)),
+                      ])),
+                      Text('보유 ${(mockBalance(m.name) - recoveredOf(m.name)).toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (x) => '${x[1]},')}P',
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.muted)),
+                    ]),
+                  ),
+                ),
+            ]),
+          ),
+        ];
+      } else {
+        // 2단계 — 금액 + 메시지
+        final bal = mockBalance(picked!) - recoveredOf(picked!);
+        final maxAmt = [bal, ?limit].reduce((a, b) => a < b ? a : b);
+        if (amount > maxAmt) amount = (maxAmt ~/ 1000) * 1000;
+        final canSubmit = amount >= 1000 && memo.text.trim().isNotEmpty;
+        String won(int v) => v.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (x) => '${x[1]},');
+        body = [
+          title('$picked 포인트 회수',
+              '보유 ${won(bal)}P · 회수 한도 ${limit == null ? '무제한 (1등급)' : '${won(limit)}P (2등급)'}${jobRef != null ? '\n관련 근무: $jobRef' : ''}'),
+          const SizedBox(height: 12),
+          const Text('회수 금액', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.muted)),
+          const SizedBox(height: 6),
+          Row(children: [
+            _JobListPageState._stepBtn('−', () => setS(() => amount = (amount - 1000).clamp(1000, maxAmt < 1000 ? 1000 : maxAmt))),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Text('${won(amount)}P',
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: JColors.red,
+                      fontFeatures: [FontFeature.tabularFigures()])),
+            ),
+            _JobListPageState._stepBtn('＋', () => setS(() => amount = (amount + 1000).clamp(1000, maxAmt < 1000 ? 1000 : maxAmt))),
+            const Spacer(),
+            for (final a in [1000, 3000, 5000])
+              if (a <= maxAmt)
+                Padding(
+                  padding: const EdgeInsets.only(left: 5),
+                  child: InkWell(
+                    onTap: () => setS(() => amount = a),
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                      decoration: BoxDecoration(
+                          color: amount == a ? JColors.ink : Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: amount == a ? JColors.ink : JColors.hairline)),
+                      child: Text('${a ~/ 1000}천',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                              color: amount == a ? Colors.white : JColors.ink)),
+                    ),
+                  ),
+                ),
+          ]),
+          const SizedBox(height: 12),
+          const Text('회수 사유 — 알바생에게 그대로 전달돼요 (필수)',
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.muted)),
+          const SizedBox(height: 6),
+          TextField(
+            controller: memo,
+            autofocus: true,
+            maxLines: 3,
+            maxLength: 200,
+            onChanged: (_) => setS(() {}),
+            style: const TextStyle(fontSize: 13, color: JColors.ink, height: 1.5),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: '예: 8/24 곤지암 주간 40분 지각 — 사전 연락 없어 포인트 1,000P 회수합니다',
+              contentPadding: const EdgeInsets.all(12),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: JColors.hairline)),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(children: [
+            Expanded(
+              child: jPill('다른 사람', bg: Colors.white, fg: JColors.muted, border: JColors.muted,
+                  onTap: () => setS(() => picked = null)),
+            ),
+            const SizedBox(width: 7),
+            Expanded(
+              flex: 2,
+              child: jPill('${won(amount)}P 회수 · 메시지 전송',
+                  bg: canSubmit ? JColors.red : const Color(0xFFC7C7CC), fg: Colors.white, onTap: () async {
+                if (!canSubmit) return;
+                if (amount > 50000) {
+                  final go = await showDialog<bool>(
+                    context: ctx,
+                    builder: (d) => AlertDialog(
+                      backgroundColor: Colors.white,
+                      surfaceTintColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                      title: const Text('5만P 초과 회수', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: JColors.ink)),
+                      content: Text('${won(amount)}P를 회수합니다. 맞나요?', style: const TextStyle(fontSize: 12.5, color: JColors.muted)),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(d), child: const Text('취소', style: TextStyle(color: JColors.muted))),
+                        TextButton(onPressed: () => Navigator.pop(d, true), child: const Text('회수', style: TextStyle(color: JColors.red, fontWeight: FontWeight.w800))),
+                      ],
+                    ),
+                  );
+                  if (go != true) return;
+                }
+                gRecoveries.add(Recovery(picked!, amount, memo.text.trim(), admin?.name ?? '관리자', jobRef ?? '', DateTime.now()));
+                if (!ctx.mounted) return;
+                Navigator.pop(ctx);
+                jSnack(context, '$picked — ${won(amount)}P 회수 · 메시지를 알바생에게 보냈어요');
+              }),
+            ),
+          ]),
+        ];
+      }
+
+      return Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: body),
+          ),
+        ),
+      );
+    }),
+  );
 }

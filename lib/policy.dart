@@ -60,7 +60,7 @@ class CheckoutSource {
 /// 포인트 자동 지급 규칙 (종료 후 정산에서만 실행)
 ///   status ∈ {ok, late}  AND  checkout 존재  AND  checkout.source != rejected  → point 지급
 ///   early / runaway / absent / none → 자동 지급 없음 (PC에서 수동 판단)
-///   ⚠ 미결정: (1) 지각자 자동 지급 여부 (현재 지급)  (2) auto(6h 자동 퇴근)도 정상 퇴근으로 볼지 (현재 인정)
+///   ✅ 확정(2026-08-24): 지각자도 자동 지급(관리자 판단으로 사후 회수 가능) · auto(6h 자동 퇴근)도 정상 퇴근으로 인정
 bool pointEligible(String status, String? checkoutSource) =>
     (status == AttStatus.ok || status == AttStatus.late) &&
     checkoutSource != null &&
