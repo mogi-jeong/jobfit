@@ -280,7 +280,7 @@ class _AdminShellState extends State<AdminShell> {
               ),
               child: ValueListenableBuilder<int>(
                 valueListenable: gPendingTick,
-                builder: (_, __, ___) {
+                builder: (_, _, _) {
                   // 승인 탭 배지 = 신청 대기 + 취소 검토 (담당 범위)
                   final pendingN = pendingAppsFor(widget.admin).length + cancelReqsFor(widget.admin).length;
                   return Row(
