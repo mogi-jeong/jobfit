@@ -257,6 +257,33 @@ int cancelDeductOf(String name) => gCancelDecisions
     .where((d) => d.req.name == name && d.decision == 'deduct' && !d.reverted)
     .fold(0, (a, _) => a + Policy.cancelDeduct);
 
+// ─── 처리 로그 (감사 기록) — 누가·언제·무엇을 → Supabase audit_log 교체 지점 ───
+class AuditEntry {
+  final String type; // app_approve / app_reject / cancel_decide / gps_approve / gps_reject / att_fix / point_grant / point_recover
+  final String name, detail, by, jobRef;
+  final DateTime at;
+  final PendingApp? app; // 신청 승인/거절 되돌리기용
+  bool reverted = false;
+  AuditEntry(this.type, this.name, this.detail, this.by, this.jobRef, this.at, [this.app]);
+}
+
+final List<AuditEntry> gAudit = [];
+void audit(String type, String name, String detail, {String jobRef = '', PendingApp? app}) =>
+    gAudit.add(AuditEntry(type, name, detail, gAdmin?.name ?? '관리자', jobRef, DateTime.now(), app));
+String hmOf(DateTime t) =>
+    '${t.month}/${t.day} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+String auditTypeLabel(String t) => switch (t) {
+      'app_approve' => '신청 승인',
+      'app_reject' => '신청 거절',
+      'cancel_decide' => '취소 검토',
+      'gps_approve' => '퇴근 인정',
+      'gps_reject' => '퇴근 반려',
+      'att_fix' => '출결 정정',
+      'point_grant' => '포인트 지급',
+      'point_recover' => '포인트 회수',
+      _ => t,
+    };
+
 // ─── 근무자 프로필 (어디서든 이름 탭 → 상세) ───
 final List<Recovery> gGrants = []; // 보너스 지급 기록 (Recovery 구조 재사용, amount = +)
 int grantedOf(String name) => gGrants.where((r) => r.name == name).fold(0, (a, r) => a + r.amount);
@@ -328,6 +355,7 @@ Future<void> openGrantSheet(BuildContext context, String name) async {
   );
   if (ok != true || memo.text.trim().isEmpty || !context.mounted) return;
   gGrants.add(Recovery(name, amount, memo.text.trim(), admin?.name ?? '관리자', '', DateTime.now()));
+  audit('point_grant', name, '+${amount ~/ 1000},000P · ${memo.text.trim()}');
   jSnack(context, '$name — +${amount ~/ 1000},000P 지급 · 메시지 전송');
 }
 
@@ -995,6 +1023,7 @@ class _AttendancePageState extends State<AttendancePage> {
       if (s == 'runaway') outs[name] = '이탈';
       if (s == 'absent' || s == 'none') outs[name] = '';
     });
+    audit('att_fix', name, '→ ${_stMeta(s).$1}', jobRef: '${widget.job.site} ${widget.job.dateLabel} ${widget.job.slot}');
     snack('$name — ${_stMeta(s).$1} 처리');
   }
 
@@ -1693,6 +1722,7 @@ class _AttendancePageState extends State<AttendancePage> {
                       gGpsDone.add('${jobKey(widget.job)}|${r.name}');
                       outs[r.name] = r.time;
                     });
+                    audit('gps_approve', r.name, '영역 밖 퇴근 사유 승인 · ${r.dist}', jobRef: '${widget.job.site} ${widget.job.dateLabel}');
                     snack('${r.name} — 퇴근 인정 · 정산 때 포인트 지급 대상');
                   })),
                   const SizedBox(width: 7),
@@ -1703,6 +1733,7 @@ class _AttendancePageState extends State<AttendancePage> {
                       gGpsDone.add('${jobKey(widget.job)}|${r.name}');
                       outs[r.name] = '반려 ${r.time}';
                     });
+                    audit('gps_reject', r.name, '영역 밖 퇴근 사유 반려 · ${r.dist}', jobRef: '${widget.job.site} ${widget.job.dateLabel}');
                     snack('${r.name} — 반려 · 퇴근 미인정, 포인트 없음');
                   })),
                 ]),
@@ -1889,6 +1920,7 @@ class _AttendancePageState extends State<AttendancePage> {
                       gGpsDone.add('${jobKey(widget.job)}|${r.name}');
                       outs[r.name] = r.time; // 정상 퇴근으로 기록 → 종료 후 정산 때 포인트 대상
                     });
+                    audit('gps_approve', r.name, '영역 밖 퇴근 사유 승인 · ${r.dist}', jobRef: '${widget.job.site} ${widget.job.dateLabel}');
                     snack('${r.name} — 퇴근 인정 · 종료 후 정산 때 포인트 지급 대상');
                   })),
                   const SizedBox(width: 7),
@@ -1899,6 +1931,7 @@ class _AttendancePageState extends State<AttendancePage> {
                       gGpsDone.add('${jobKey(widget.job)}|${r.name}');
                       outs[r.name] = '반려 ${r.time}'; // 퇴근 시각은 남기되 '미인정' → 포인트 대상 제외
                     });
+                    audit('gps_reject', r.name, '영역 밖 퇴근 사유 반려 · ${r.dist}', jobRef: '${widget.job.site} ${widget.job.dateLabel}');
                     snack('${r.name} — 반려 · 퇴근 미인정, 포인트 대상 제외');
                   })),
                 ]),
@@ -2437,6 +2470,11 @@ class _ApprovalPageState extends State<ApprovalPage> {
     });
     gDecided.add('app|${a.name}|${a.siteName}');
     if (mate != null) gDecided.add('app|${mate.name}|${mate.siteName}');
+    audit('app_reject', a.name, '거절 · 사유: ${ctrl.text.trim()}', jobRef: '${a.siteName} ${a.slotTime}', app: a);
+    if (mate != null) {
+      audit('app_reject', mate.name, '거절 (같이하기 짝 ${a.name} 함께) · 사유: ${ctrl.text.trim()}',
+          jobRef: '${mate.siteName} ${mate.slotTime}', app: mate);
+    }
     gPendingTick.value++;
     jSnack(context, mate != null ? '${a.name} · ${mate.name} — 짝 함께 거절 · 사유 전달' : '${a.name} — 거절 · 사유가 전달됐어요');
   }
@@ -2494,7 +2532,7 @@ class _ApprovalPageState extends State<ApprovalPage> {
             ]),
           ),
           const SizedBox(height: 12),
-          if (sub == 'apply') ..._applyList(),
+          if (sub == 'apply') ...[..._applyList(), const SizedBox(height: 6), ..._approvalHistory()],
           if (sub == 'cancel') ...[..._cancelList(), const SizedBox(height: 6), ..._cancelHistory()],
           if (sub == 'wait') ..._waitList(),
         ],
@@ -2577,6 +2615,12 @@ class _ApprovalPageState extends State<ApprovalPage> {
                 });
                 gDecided.add('app|${a.name}|${a.siteName}');
                 if (mate != null) gDecided.add('app|${mate.name}|${mate.siteName}');
+                audit('app_approve', a.name, '승인${mate != null ? ' (같이하기 짝 ${mate.name} 함께)' : ''}',
+                    jobRef: '${a.siteName} ${a.slotTime}', app: a);
+                if (mate != null) {
+                  audit('app_approve', mate.name, '승인 (같이하기 짝 ${a.name} 함께)',
+                      jobRef: '${mate.siteName} ${mate.slotTime}', app: mate);
+                }
                 gPendingTick.value++;
                 // 확정 즉시 그 공고의 기존 공지 자동 전달
                 var delivered = a.jobId == null ? 0 : deliverNotices(a.jobId!, a.name);
@@ -2626,6 +2670,8 @@ class _ApprovalPageState extends State<ApprovalPage> {
     setState(() => cancels.remove(c));
     gDecided.add('cancel|${c.name}|${c.siteName}');
     gCancelDecisions.add(CancelDecision(c, d, widget.admin.name, DateTime.now()));
+    audit('cancel_decide', c.name, switch (d) { 'deduct' => '차감', 'exempt' => '면제', _ => '반려' },
+        jobRef: '${c.siteName} ${c.slotTime}');
     gPendingTick.value++;
     jSnack(
         context,
@@ -2648,6 +2694,60 @@ class _ApprovalPageState extends State<ApprovalPage> {
         r.decision == 'deduct'
             ? '${r.req.name} — 차감 취소 · ${Policy.cancelDeduct ~/ 1000},000P 복원 · 다시 검토 대기'
             : '${r.req.name} — 처리 취소 · 다시 검토 대기');
+  }
+
+  // 신청 승인/거절 처리 내역 (담당 범위) — 누가·언제 + 되돌리기
+  List<Widget> _approvalHistory() {
+    final recs = gAudit.reversed
+        .where((e) =>
+            (e.type == 'app_approve' || e.type == 'app_reject') &&
+            e.app != null &&
+            (widget.admin.sites == null || widget.admin.sites!.contains(e.app!.siteName)))
+        .take(10)
+        .toList();
+    if (recs.isEmpty) return const [];
+    return [
+      jSect('승인 처리 내역 · ${recs.length}건 — 누가 · 언제'),
+      ...recs.map((e) {
+        final approve = e.type == 'app_approve';
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: jCard(Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  jName(context, e.name,
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700,
+                          color: e.reverted ? JColors.inactive : JColors.ink,
+                          decoration: e.reverted ? TextDecoration.lineThrough : null)),
+                  const SizedBox(width: 8),
+                  Text(e.reverted ? '되돌림' : (approve ? '승인' : '거절'),
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
+                          color: e.reverted ? JColors.inactive : (approve ? JColors.blue : JColors.red))),
+                ]),
+                const SizedBox(height: 2),
+                Text('${e.jobRef}\n${e.detail} · ${e.by} · ${hmOf(e.at)}',
+                    maxLines: 3, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 10.5, color: JColors.inactive, height: 1.4)),
+              ]),
+            ),
+            if (!e.reverted)
+              SizedBox(
+                width: 78,
+                child: jPill('되돌리기', bg: Colors.white, fg: JColors.muted, border: JColors.muted, onTap: () {
+                  setState(() {
+                    e.reverted = true;
+                    apps.add(e.app!);
+                  });
+                  gDecided.remove('app|${e.app!.name}|${e.app!.siteName}');
+                  gPendingTick.value++;
+                  jSnack(context, '${e.name} — ${approve ? '승인' : '거절'} 취소 · 다시 검토 대기');
+                }),
+              ),
+          ])),
+        );
+      }),
+    ];
   }
 
   // 취소 처리 내역 (담당 범위) — 되돌리기 가능
@@ -3230,6 +3330,35 @@ class _MePageState extends State<MePage> {
             const Divider(height: 16, thickness: .5, color: JColors.hairline),
             _kvRow('포인트 회수 한도', a.isA1 ? '무제한' : '3,000P'),
           ])),
+          // 내 처리 로그 — 내가 누른 결정 전부 (감사 기록)
+          jSect('내 처리 로그 · ${gAudit.where((e) => e.by == a.name).length}건'),
+          if (gAudit.where((e) => e.by == a.name).isEmpty)
+            jCard(const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('아직 처리한 건이 없어요', style: TextStyle(fontSize: 12, color: JColors.inactive))))),
+          if (gAudit.where((e) => e.by == a.name).isNotEmpty)
+            jCard(Column(children: [
+              for (final (i, e) in gAudit.reversed.where((e) => e.by == a.name).take(15).toList().indexed) ...[
+                if (i > 0) const Divider(height: 14, thickness: .5, color: JColors.hairline),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  SizedBox(
+                    width: 74,
+                    child: Text(hmOf(e.at),
+                        style: const TextStyle(fontSize: 11, color: JColors.inactive,
+                            fontFeatures: [FontFeature.tabularFigures()])),
+                  ),
+                  Expanded(
+                    child: Text.rich(TextSpan(children: [
+                      TextSpan(text: '${auditTypeLabel(e.type)}  ',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                              color: e.reverted ? JColors.inactive : JColors.ink,
+                              decoration: e.reverted ? TextDecoration.lineThrough : null)),
+                      TextSpan(text: '${e.name} ${e.detail}${e.reverted ? ' (되돌림)' : ''}',
+                          style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+                    ]), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  ),
+                ]),
+              ],
+            ])),
           jSect('설정'),
           jCard(Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -3568,6 +3697,7 @@ Future<void> openRecoverSheet(BuildContext context, {String? name, String? jobRe
                   if (go != true) return;
                 }
                 gRecoveries.add(Recovery(picked!, amount, memo.text.trim(), admin?.name ?? '관리자', jobRef ?? '', DateTime.now()));
+                audit('point_recover', picked!, '−${won(amount)}P · ${memo.text.trim()}', jobRef: jobRef ?? '');
                 if (!ctx.mounted) return;
                 Navigator.pop(ctx);
                 jSnack(context, '$picked — ${won(amount)}P 회수 · 메시지를 알바생에게 보냈어요');
