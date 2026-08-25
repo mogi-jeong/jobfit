@@ -133,7 +133,9 @@ class Job {
   final String id; // 공고 id (Mock: j-t-1 등 / Supabase: uuid)
   final DateTime start, end;
   final int cap, ok, short;
-  const Job(this.site, this.slot, this.status, this.start, this.end, this.cap, this.ok, this.short, {this.id = ''});
+  final String desc; // 공고 내용 (템플릿 불러오기 + 수정)
+  const Job(this.site, this.slot, this.status, this.start, this.end, this.cap, this.ok, this.short,
+      {this.id = '', this.desc = ''});
 
   String get timeLabel =>
       '${_hm(start)} – ${_hm(end)}';
@@ -182,7 +184,7 @@ class AdminShell extends StatefulWidget {
 
 class _AdminShellState extends State<AdminShell> {
   int tab = 0;
-  static const tabs = ['공고', '승인', '소통', '내정보'];
+  static const tabs = ['일정', '공고', '승인', '소통', '내정보'];
 
   @override
   Widget build(BuildContext context) {
@@ -191,9 +193,10 @@ class _AdminShellState extends State<AdminShell> {
         children: [
           Positioned.fill(
             child: switch (tab) {
-              0 => JobListPage(admin: widget.admin),
-              1 => ApprovalPage(admin: widget.admin),
-              2 => CommPage(admin: widget.admin),
+              0 => SchedulePage(admin: widget.admin),
+              1 => JobListPage(admin: widget.admin),
+              2 => ApprovalPage(admin: widget.admin),
+              3 => CommPage(admin: widget.admin),
               _ => MePage(admin: widget.admin, onLogout: widget.onLogout),
             },
           ),
@@ -386,6 +389,8 @@ class _JobListPageState extends State<JobListPage> {
     var start = const TimeOfDay(hour: 8, minute: 0); // 시간 직접 설정
     var end = const TimeOfDay(hour: 17, minute: 0);
     int cap = 8;
+    String tpl = 'A';
+    final descCtrl = TextEditingController(text: templateBody('A'));
     String tod(TimeOfDay t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
     String slotLabel(TimeOfDay s) => (s.hour >= 20 || s.hour < 5) ? '야간' : (s.hour >= 11 ? '오후' : '주간');
     final wageCtrl = TextEditingController(text: '110000');
@@ -480,6 +485,25 @@ class _JobListPageState extends State<JobListPage> {
                 TextField(controller: pointCtrl, keyboardType: TextInputType.number,
                     style: const TextStyle(fontSize: 14, color: JColors.ink),
                     decoration: const InputDecoration(isDense: true)),
+                label('공고 내용 — 템플릿 불러오기 (수정 가능)'),
+                chips(jobTemplates.map((t) => (t.key, '${t.key} ${t.title}')).toList(), tpl, (v) {
+                  tpl = v;
+                  descCtrl.text = templateBody(v);
+                }),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: descCtrl,
+                  maxLines: 5,
+                  style: const TextStyle(fontSize: 12.5, color: JColors.ink, height: 1.5),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: '업무 · 준비물 · 특이사항',
+                    contentPadding: const EdgeInsets.all(12),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: JColors.hairline)),
+                  ),
+                ),
                 const SizedBox(height: 16),
                 SizedBox(
                   height: 42, width: double.infinity,
@@ -492,7 +516,7 @@ class _JobListPageState extends State<JobListPage> {
                       final s = DateTime(d.year, d.month, d.day, start.hour, start.minute);
                       var e = DateTime(d.year, d.month, d.day, end.hour, end.minute);
                       if (!e.isAfter(s)) e = e.add(const Duration(days: 1)); // 야간 = 다음날 종료
-                      gJobs.add(Job(site, label, '모집중', s, e, cap, 0, cap));
+                      gJobs.add(Job(site, label, '모집중', s, e, cap, 0, cap, desc: descCtrl.text.trim()));
                     }
                     Navigator.pop(ctx);
                     setState(() {});
@@ -1150,6 +1174,18 @@ class _AttendancePageState extends State<AttendancePage> {
         : started
             ? _activeContent(base)
             : _upcomingContent(base, now);
+    // 공고 내용 카드 (요약 카드 바로 아래)
+    if (job.desc.isNotEmpty) {
+      final descCard = Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('공고 내용', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.muted)),
+          const SizedBox(height: 5),
+          Text(job.desc, style: const TextStyle(fontSize: 12.5, color: JColors.ink, height: 1.55)),
+        ])),
+      );
+      content.insert(content.isEmpty ? 0 : 1, descCard);
+    }
 
     return Scaffold(
       body: SafeArea(
@@ -1588,6 +1624,145 @@ void jSnack(BuildContext context, String msg) {
     duration: const Duration(milliseconds: 1300),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
   ));
+}
+
+// ═══════════ 일정 탭 — 월 달력 + 날짜별 공고 ═══════════
+class SchedulePage extends StatefulWidget {
+  final Admin admin;
+  const SchedulePage({super.key, required this.admin});
+  @override
+  State<SchedulePage> createState() => _SchedulePageState();
+}
+
+class _SchedulePageState extends State<SchedulePage> {
+  late DateTime month = DateTime(DateTime.now().year, DateTime.now().month);
+  late DateTime selected = _d0(DateTime.now());
+  Timer? _tick;
+
+  static DateTime _d0(DateTime t) => DateTime(t.year, t.month, t.day);
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  bool _inScope(Job j) => widget.admin.sites == null || widget.admin.sites!.contains(j.site);
+  List<Job> get all => [...gJobs, ...gPastJobs].where(_inScope).toList();
+  List<Job> onDay(DateTime d) => all.where((j) => _d0(j.start) == d).toList()..sort((a, b) => a.start.compareTo(b.start));
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today0 = _d0(now);
+    final first = DateTime(month.year, month.month, 1);
+    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+    final lead = first.weekday % 7;
+    final monthJobs = all.where((j) => j.start.year == month.year && j.start.month == month.month).length;
+    final dayList = onDay(selected);
+
+    Widget nav(String t, VoidCallback f) => InkWell(
+          onTap: f,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+            child: Text(t, style: const TextStyle(fontSize: 22, height: 1, color: JColors.blue)),
+          ),
+        );
+
+    final cells = <Widget>[
+      for (var i = 0; i < lead; i++) const SizedBox(),
+      for (var d = 1; d <= daysInMonth; d++)
+        () {
+          final date = DateTime(month.year, month.month, d);
+          final jobs = onDay(date);
+          final sel = date == selected;
+          final isToday = date == today0;
+          // 점 색: 부족/미출근 있으면 빨강, 아니면 회색
+          final alert = jobs.any((j) => j.short > 0 && !now.isAfter(j.end));
+          return InkWell(
+            onTap: () => setState(() => selected = date),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12), color: sel ? JColors.ink : Colors.transparent),
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Text('$d',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: sel || isToday ? FontWeight.w800 : FontWeight.w600,
+                        color: sel ? Colors.white : (isToday ? JColors.blue : JColors.ink))),
+                const SizedBox(height: 3),
+                jobs.isEmpty
+                    ? const SizedBox(height: 5)
+                    : Container(
+                        width: jobs.length > 1 ? 11 : 5, height: 5,
+                        decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(3),
+                            color: sel ? Colors.white : (alert ? JColors.red : const Color(0xFFC7C7CC)))),
+              ]),
+            ),
+          );
+        }(),
+    ];
+
+    return SafeArea(
+      bottom: false,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
+        children: [
+          jHeader('일정', '${month.month}월 공고 $monthJobs건 · 빨간 점 = 인원 부족'),
+          jCard(Column(children: [
+            Row(children: [
+              nav('‹', () => setState(() => month = DateTime(month.year, month.month - 1))),
+              Expanded(
+                  child: Text('${month.year}년 ${month.month}월',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: JColors.ink))),
+              nav('›', () => setState(() => month = DateTime(month.year, month.month + 1))),
+            ]),
+            const SizedBox(height: 4),
+            Row(children: [
+              for (final w in const ['일', '월', '화', '수', '목', '금', '토'])
+                Expanded(
+                    child: Text(w,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: w == '일' ? JColors.red : (w == '토' ? JColors.blue : JColors.inactive)))),
+            ]),
+            const SizedBox(height: 4),
+            GridView.count(
+              crossAxisCount: 7,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              childAspectRatio: 1.0,
+              children: cells,
+            ),
+          ])),
+          const SizedBox(height: 4),
+          jSect('${selected.month}/${selected.day}(${Job._wd[selected.weekday - 1]}) · ${dayList.length}건'),
+          if (dayList.isEmpty)
+            jCard(const Center(
+                child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: Text('이 날은 공고가 없어요', style: TextStyle(fontSize: 12, color: JColors.inactive)),
+            ))),
+          ...dayList.map((j) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _JobCard(job: j),
+              )),
+        ],
+      ),
+    );
+  }
 }
 
 // ═══════════ 승인 탭 — 신청 / 취소 / 대기열 (담당 범위로 필터) ═══════════

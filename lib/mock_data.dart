@@ -86,6 +86,35 @@ const _extraNames = [
 ];
 final List<String> _names = [...mockMembers.map((m) => m.name), ..._extraNames];
 
+// ─── 공고 내용 템플릿 5종 (마스터/1급이 미리 작성 → 등록 시 불러오기, 수정 가능) ───
+class JobTemplate {
+  final String key, title, body;
+  const JobTemplate(this.key, this.title, this.body);
+}
+
+const jobTemplates = [
+  JobTemplate('A', '택배 상하차',
+      '업무: 택배 상하차 및 레일 분류\n준비물: 장갑, 편한 운동화, 긴바지\n특이사항: 통근버스 운영 · 휴게 12:00–13:00 식사 제공 · 무거운 물품 있음'),
+  JobTemplate('B', '소형 분류·스캔',
+      '업무: 소형 택배 스캔 및 구역별 분류\n준비물: 장갑\n특이사항: 서서 하는 작업 · 초보 가능 · 휴게 시간 교대'),
+  JobTemplate('C', '웨딩홀 서빙',
+      '업무: 연회 서빙, 테이블 세팅·정리\n준비물: 검정 정장 바지, 흰 셔츠, 검정 구두 (유니폼 상의 대여)\n특이사항: 두발 단정, 손톱 짧게 · 식사 제공 · 예식 사이 대기 있음'),
+  JobTemplate('D', '야간 간선 상차',
+      '업무: 야간 간선 차량 상차\n준비물: 장갑, 방한 복장(겨울)\n특이사항: 야간수당 포함 일급 · 휴게 02:00–02:30 · 통근버스 심야 운행'),
+  JobTemplate('E', '행사 세팅·철수',
+      '업무: 행사장 의자·테이블 세팅 및 철수\n준비물: 편한 복장, 운동화\n특이사항: 단시간 고강도 · 조기 종료 시 일급 전액 지급'),
+];
+
+String templateBody(String key) => jobTemplates.where((t) => t.key == key).firstOrNull?.body ?? '';
+
+// 근무지·시간대 기준 기본 내용 (Mock 공고용)
+String _defaultDesc(String site, String slot) {
+  final p = siteOf(site)?.partner ?? '';
+  if (p == '컨벤션') return templateBody(slot == '오후' ? 'C' : 'E');
+  if (slot == '야간') return templateBody('D');
+  return templateBody(p == '롯데택배' ? 'B' : 'A');
+}
+
 // ─── 공고 ───
 DateTime _today0() {
   final n = DateTime.now();
@@ -118,7 +147,7 @@ Job _mk(String id, String site, String slot, int dayOffset, int cap, int ok, int
           : now.isAfter(start)
               ? '진행중'
               : (short > 0 ? '모집중' : '마감'));
-  return Job(site, slot, st, start, end, cap, ok, short, id: id);
+  return Job(site, slot, st, start, end, cap, ok, short, id: id, desc: _defaultDesc(site, slot));
 }
 
 // 오늘 + 예정 공고 — 오늘 건은 "항상 그럴듯하게" 현재 시각 기준으로 배치

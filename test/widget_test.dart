@@ -9,7 +9,11 @@ void main() {
     expect(find.textContaining('김현장'), findsOneWidget);
     await tester.tap(find.textContaining('김현장'));
     await tester.pumpAndSettle(const Duration(milliseconds: 300));
+    expect(find.text('일정'), findsWidgets); // 첫 탭 = 일정(달력)
+    // 공고 탭으로 이동
+    await tester.tap(find.text('공고').last);
+    await tester.pumpAndSettle(const Duration(milliseconds: 300));
     expect(find.text('곤지암 MegaHub'), findsWidgets);
-    expect(find.text('지난'), findsOneWidget); // 오늘/지난 전환 스위치
+    expect(find.text('지난'), findsOneWidget); // 오늘/예정/지난 전환 스위치
   });
 }
