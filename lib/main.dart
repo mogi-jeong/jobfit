@@ -702,7 +702,9 @@ class _JobCard extends StatelessWidget {
                       ? Text(short ? '${job.short}명 미출근 · 확인해주세요' : '이상 없음',
                           style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
                               color: short ? JColors.red : JColors.green))
-                      : Text(short ? '${job.short}명 부족' : '충원 완료',
+                      : Text(
+                          (short ? '${job.short}명 부족' : '충원 완료') +
+                              (waitlistOf(job).isNotEmpty ? ' · 대기 ${waitlistOf(job).length}' : ''),
                           style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
                               color: short ? JColors.red : JColors.green)),
             ],
@@ -1203,6 +1205,7 @@ class _AttendancePageState extends State<AttendancePage> {
         ]),
       ],
       ..._gpsSection(),
+      ..._waitSection(),
       const SizedBox(height: 12),
       _sect(none.isEmpty ? '보정 필요 없음' : '보정 필요 · ${none.length}명'),
       if (none.isEmpty)
@@ -1285,6 +1288,7 @@ class _AttendancePageState extends State<AttendancePage> {
               onTap: () => snack('긴급 구인 알림 발송 (동의자 대상)'))),
         ]),
       ],
+      ..._waitSection(),
       const SizedBox(height: 12),
       _sect('확정 명단 · ${roster.length}명'),
       if (roster.isEmpty)
@@ -1437,6 +1441,58 @@ class _AttendancePageState extends State<AttendancePage> {
               style: const TextStyle(fontSize: 11, color: JColors.inactive)),
         ),
       ],
+    ];
+  }
+
+  // ── 대기열 (FULL 시 줄서기, 모집×2까지) — 자리 나면 1번에게 자동 제안 ──
+  List<Widget> _waitSection() {
+    final rows = waitlistOf(widget.job);
+    if (rows.isEmpty) return const [];
+    final now = DateTime.now();
+    String fmt(Duration d) {
+      final h = d.inHours, m = d.inMinutes % 60, s = d.inSeconds % 60;
+      final ss = s.toString().padLeft(2, '0');
+      return h > 0 ? '$h:${m.toString().padLeft(2, '0')}:$ss' : '$m:$ss';
+    }
+
+    return [
+      const SizedBox(height: 12),
+      _sect('대기열 · ${rows.length}명 (최대 ${widget.job.cap * 2}명)'),
+      _card(Column(children: [
+        for (var i = 0; i < rows.length; i++) ...[
+          if (i > 0) const Divider(height: 14, thickness: .5, color: JColors.hairline),
+          () {
+            final r = rows[i];
+            String right;
+            Color color;
+            if (r.status == 'offered') {
+              final left = r.deadline!.difference(now);
+              if (left.isNegative) {
+                right = '시간 초과 · 다음 대기자로';
+                color = JColors.inactive;
+              } else {
+                right = '자리 제안 중 · ${fmt(left)}';
+                color = left.inMinutes < 5 ? JColors.red : JColors.amber;
+              }
+            } else {
+              right = '대기 중';
+              color = JColors.inactive;
+            }
+            return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text('${r.order}번  ${r.name}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: JColors.ink)),
+              Text(right,
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color,
+                      fontFeatures: const [FontFeature.tabularFigures()])),
+            ]);
+          }(),
+        ],
+      ])),
+      const Padding(
+        padding: EdgeInsets.only(top: 6, left: 2),
+        child: Text('자리가 나면 1번에게 자동 제안 · 수락 제한 24시간 전 2시간 / 이내 30분 · 전원 실패 시 일반 모집 재개',
+            style: TextStyle(fontSize: 11, color: JColors.inactive)),
+      ),
     ];
   }
 

@@ -321,21 +321,47 @@ const _cancelAll = [
   CancelReq('감우주', 'L타워 웨딩홀', '모레 오후 11:00 – 19:00', '가족 응급', '5시간 전'),
 ];
 
-List<WaitEntry> buildWaitlist() {
-  final now = DateTime.now();
-  return [
-    WaitEntry('서지우', '곤지암 MegaHub', '오늘 야간 22:00 – 06:00', 1, now.add(const Duration(minutes: 28, seconds: 14))),
-    WaitEntry('조은비', '이천 MpHub', '내일 야간 22:00 – 06:00', 1, now.add(const Duration(hours: 1, minutes: 52))),
-    WaitEntry('배수지', '진천 MegaHub', '내일 주간 09:00 – 18:00', 2, now.add(const Duration(minutes: 4, seconds: 30))),
-  ];
+// ─── 대기열 (공고별) — FULL 시 줄서기, 모집×2까지. 취소 나면 1번에게 자동 제안 ───
+class WaitRow {
+  final String name, status; // waiting(대기 중) / offered(자리 제안 중) / auto_rejected
+  final int order;
+  final DateTime? deadline; // offered일 때 수락 마감
+  const WaitRow(this.name, this.order, this.status, [this.deadline]);
 }
 
-final List<WaitEntry> gWaitlist = buildWaitlist();
+// 공고 id → (이름, 상태, 제안 마감까지 초)
+const _waitSpecs = {
+  'j-t-5': [('서지우', 'offered', 28 * 60 + 14), ('임하늘', 'waiting', 0), ('조은비', 'waiting', 0)],
+  'j-u-2': [('조은비', 'offered', 112 * 60), ('배수지', 'waiting', 0)],
+  'j-u-5': [('배수지', 'offered', 4 * 60 + 30), ('고은채', 'waiting', 0), ('김철수', 'waiting', 0)],
+};
+
+final Map<String, List<WaitRow>> _waitCache = {};
+
+List<WaitRow> waitlistOf(Job job) {
+  final spec = _waitSpecs[job.id];
+  if (spec == null) return const [];
+  return _waitCache.putIfAbsent(job.id, () {
+    final now = DateTime.now();
+    return [
+      for (var i = 0; i < spec.length; i++)
+        WaitRow(spec[i].$1, i + 1, spec[i].$2,
+            spec[i].$2 == 'offered' ? now.add(Duration(seconds: spec[i].$3)) : null),
+    ];
+  });
+}
 
 bool _scoped(Admin a, String siteName) => a.sites == null || a.sites!.contains(siteName);
 List<PendingApp> pendingAppsFor(Admin a) => _pendingAll.where((p) => _scoped(a, p.siteName)).toList();
 List<CancelReq> cancelReqsFor(Admin a) => _cancelAll.where((c) => _scoped(a, c.siteName)).toList();
-List<WaitEntry> waitlistFor(Admin a) => gWaitlist.where((w) => _scoped(a, w.siteName)).toList();
+// 승인 탭용 — 전 공고의 대기열 중 '자리 제안 중'인 건만 (공고 상세와 같은 데이터)
+List<WaitEntry> waitlistFor(Admin a) => [
+      for (final j in gJobs)
+        if (_scoped(a, j.site))
+          for (final r in waitlistOf(j))
+            if (r.status == 'offered')
+              WaitEntry(r.name, j.site, '${j.dateLabel} ${j.slot} ${j.timeLabel}', r.order, r.deadline!),
+    ];
 
 // ─── 소통 탭 ───
 class Inquiry {
