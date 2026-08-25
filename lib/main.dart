@@ -2348,11 +2348,13 @@ class _ApprovalPageState extends State<ApprovalPage> {
           child: jCard(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               jName(context, c.name),
-              Text('12시간 이내 · ${c.when}',
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF9A6B00))),
+              // 근무 시작 기준 — 1시간 미만이면 사실상 노쇼급이라 빨강
+              Text('근무 시작 ${beforeLabel(c.beforeMin)} 전 취소',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                      color: c.beforeMin < 60 ? JColors.red : JColors.amber)),
             ]),
             const SizedBox(height: 2),
-            Text('${c.siteName} · ${c.slotTime}\n사유: ${c.reason}',
+            Text('${c.siteName} · ${c.slotTime}\n신청 ${c.appliedAt}  →  취소 ${c.cancelledAt}\n사유: ${c.reason}',
                 style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.5)),
             const SizedBox(height: 10),
             Row(children: [

@@ -294,8 +294,18 @@ class PendingApp {
 }
 
 class CancelReq {
-  final String name, siteName, slotTime, reason, when;
-  const CancelReq(this.name, this.siteName, this.slotTime, this.reason, this.when);
+  final String name, siteName, slotTime, reason, appliedAt, cancelledAt;
+  final int beforeMin; // 근무 시작 몇 분 전에 취소했나 (12시간 이내만 검토 대상)
+  const CancelReq(this.name, this.siteName, this.slotTime, this.reason, this.beforeMin,
+      this.appliedAt, this.cancelledAt);
+}
+
+// 40 → '40분', 200 → '3시간 20분', 660 → '11시간'
+String beforeLabel(int m) {
+  final h = m ~/ 60, mm = m % 60;
+  if (h > 0 && mm > 0) return '$h시간 $mm분';
+  if (h > 0) return '$h시간';
+  return '$m분';
 }
 
 class WaitEntry {
@@ -316,9 +326,9 @@ const _pendingAll = [
 ];
 
 const _cancelAll = [
-  CancelReq('홍길동', '곤지암 MegaHub', '오늘 야간 22:00 – 06:00', '개인사정 (단순 변심)', '40분 전'),
-  CancelReq('나예린', '이천 MpHub', '내일 야간 22:00 – 06:00', '본인 질병 (병원 진단서 있음)', '2시간 전'),
-  CancelReq('감우주', 'L타워 웨딩홀', '모레 오후 11:00 – 19:00', '가족 응급', '5시간 전'),
+  CancelReq('홍길동', '곤지암 MegaHub', '오늘 야간 22:00 – 06:00', '개인사정 (단순 변심)', 40, '3일 전 09:14', '오늘 21:20'),
+  CancelReq('나예린', '이천 MpHub', '내일 야간 22:00 – 06:00', '본인 질병 (병원 진단서 있음)', 200, '5일 전 18:02', '내일 18:40'),
+  CancelReq('감우주', 'L타워 웨딩홀', '내일 오후 11:00 – 19:00', '가족 응급', 660, '어제 11:30', '오늘 23:58'),
 ];
 
 // ─── 대기열 (공고별) — FULL 시 줄서기, 모집×2까지. 취소 나면 1번에게 자동 제안 ───
