@@ -291,7 +291,9 @@ class PendingApp {
   final String name, siteName, slotTime, note, flag;
   final bool danger;
   final String? buddy; // 같이하기 짝꿍 이름 — 승인·거절이 둘 다 같이 처리됨 (기획 §4-9)
-  const PendingApp(this.name, this.siteName, this.slotTime, this.note, this.flag, [this.danger = false, this.buddy]);
+  final String? jobId; // 신청한 공고 — 승인 시 그 공고의 공지를 자동 전달
+  const PendingApp(this.name, this.siteName, this.slotTime, this.note, this.flag,
+      [this.danger = false, this.buddy, this.jobId]);
 }
 
 // ─── 같이하기(Buddy) 페어 — 공고별 (→ applications.buddy_app_id 교체 지점) ───
@@ -334,13 +336,13 @@ class WaitEntry {
 }
 
 const _pendingAll = [
-  PendingApp('한지민', '곤지암 MegaHub', '오늘 야간 22:00 – 06:00', '단골 · 출근 12회', '12시간 이내', false, '류지안'),
-  PendingApp('류지안', '곤지암 MegaHub', '오늘 야간 22:00 – 06:00', '성실 A', '12시간 이내', false, '한지민'),
-  PendingApp('오세훈', '이천 MpHub', '오늘 야간 22:00 – 06:00', '경고 3회', '협의대상', true),
-  PendingApp('백소라', '곤지암 MegaHub', '내일 주간 08:00 – 17:00', '경고 2회', '12시간 이내'),
-  PendingApp('전소민', '이천 MpHub', '내일 야간 22:00 – 06:00', '협의대상 등록 8/1', '협의대상', true),
-  PendingApp('김민준', '용인 Hub', '오늘 주간 09:00 – 18:00', '보통 C', '12시간 이내'),
-  PendingApp('도경수', '남양주 Hub', '내일 주간 09:00 – 18:00', '경고 2회', '12시간 이내'),
+  PendingApp('한지민', '곤지암 MegaHub', '오늘 야간 22:00 – 06:00', '단골 · 출근 12회', '12시간 이내', false, '류지안', 'j-t-3'),
+  PendingApp('류지안', '곤지암 MegaHub', '오늘 야간 22:00 – 06:00', '성실 A', '12시간 이내', false, '한지민', 'j-t-3'),
+  PendingApp('오세훈', '이천 MpHub', '오늘 야간 22:00 – 06:00', '경고 3회', '협의대상', true, null, 'j-t-2'),
+  PendingApp('백소라', '곤지암 MegaHub', '내일 주간 08:00 – 17:00', '경고 2회', '12시간 이내', false, null, 'j-u-1'),
+  PendingApp('전소민', '이천 MpHub', '내일 야간 22:00 – 06:00', '협의대상 등록 8/1', '협의대상', true, null, 'j-u-2'),
+  PendingApp('김민준', '용인 Hub', '오늘 주간 09:00 – 18:00', '보통 C', '12시간 이내', false, null, 'j-t-5'),
+  PendingApp('도경수', '남양주 Hub', '내일 주간 09:00 – 18:00', '경고 2회', '12시간 이내', false, null, 'j-u-3'),
 ];
 
 const _cancelAll = [

@@ -315,6 +315,61 @@ Future<void> openGrantSheet(BuildContext context, String name) async {
   jSnack(context, '$name — +${amount ~/ 1000},000P 지급 · 메시지 전송');
 }
 
+// ─── 공고 공지 — 공고별 · 확정자에게만 · 이후 확정되는 사람도 자동 수신 (→ Supabase notifications 교체 지점) ───
+class JobNotice {
+  final String jobKey, text, by;
+  final DateTime at;
+  final int sentTo; // 발송 당시 확정자 수
+  const JobNotice(this.jobKey, this.text, this.by, this.at, this.sentTo);
+}
+
+final List<JobNotice> gNotices = [];
+final List<(String, String, DateTime)> gNoticeLate = []; // (jobKey, 이름, 시각) — 확정 후 자동 수신 기록
+List<JobNotice> noticesOf(String key) => gNotices.where((n) => n.jobKey == key).toList();
+
+// 승인·직접추가로 확정되는 순간 호출 → 그 공고의 기존 공지를 자동 전달, 전달 건수 반환
+int deliverNotices(String key, String name) {
+  final n = noticesOf(key).length;
+  if (n > 0) gNoticeLate.add((key, name, DateTime.now()));
+  return n;
+}
+
+Future<void> openNoticeSheet(BuildContext context, Job job, int confirmed) async {
+  final ctrl = TextEditingController();
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      title: const Text('공고 공지 발송',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JColors.ink)),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('${job.site} ${job.dateLabel} ${job.slot}\n대상: 확정자 $confirmed명 · 이후 확정되는 사람도 자동 수신\n22~08시엔 아침 8시에 발송돼요',
+            style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.5)),
+        const SizedBox(height: 8),
+        TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLines: 3,
+          maxLength: 500,
+          style: const TextStyle(fontSize: 14, color: JColors.ink),
+          decoration: const InputDecoration(hintText: '예: 오늘 물량 많아요, 10분 일찍 와주세요'),
+        ),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx),
+            child: const Text('취소', style: TextStyle(color: JColors.muted, fontWeight: FontWeight.w600))),
+        TextButton(onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('발송', style: TextStyle(color: JColors.blue, fontWeight: FontWeight.w800))),
+      ],
+    ),
+  );
+  if (ok != true || ctrl.text.trim().isEmpty || !context.mounted) return;
+  gNotices.add(JobNotice(jobKey(job), ctrl.text.trim(), gAdmin?.name ?? '관리자', DateTime.now(), confirmed));
+  jSnack(context, '공지 발송 · 확정 $confirmed명 (이후 확정자도 자동 수신)');
+}
+
 // GPS 영역 밖 퇴근 — 사유 검토 대기 (알바생 앱에서 제출 → 여기서 승인/반려)
 class GpsReq {
   final String name, reason, dist, time;
@@ -1185,7 +1240,8 @@ class _AttendancePageState extends State<AttendancePage> {
         void doAdd(Member m) {
           Navigator.pop(ctx);
           setState(() => invited.add(Worker(m.name, 'none')));
-          snack('${m.name} — 배정했어요 (즉시 승인)');
+          final n = deliverNotices(jobKey(widget.job), m.name); // 확정 즉시 기존 공지 자동 전달
+          snack('${m.name} — 배정했어요 (즉시 승인)${n > 0 ? ' · 공고 공지 $n건 자동 전달' : ''}');
         }
 
         return Padding(
@@ -1298,6 +1354,15 @@ class _AttendancePageState extends State<AttendancePage> {
         ])),
       );
       content.insert(content.isEmpty ? 0 : 1, descCard);
+    }
+    // 공고 공지 — 시작 전·진행 중엔 발송 가능, 종료 후엔 기록만
+    final notice = _noticeSection(canSend: !ended, confirmed: base.length + invited.length);
+    if (notice.isNotEmpty) {
+      if (ended) {
+        content.addAll(notice);
+      } else {
+        content.insertAll(content.length < 2 ? content.length : 2, notice);
+      }
     }
 
     return Scaffold(
@@ -1669,6 +1734,39 @@ class _AttendancePageState extends State<AttendancePage> {
               style: const TextStyle(fontSize: 11, color: JColors.inactive)),
         ),
       ],
+    ];
+  }
+
+  // ── 공고 공지 — 확정자 대상 · 게시물처럼 남아 이후 확정자에게 자동 전달 ──
+  List<Widget> _noticeSection({required bool canSend, required int confirmed}) {
+    final key = jobKey(widget.job);
+    final list = noticesOf(key).reversed.toList();
+    final late = gNoticeLate.where((e) => e.$1 == key).map((e) => e.$2).toSet().toList();
+    if (!canSend && list.isEmpty) return const [];
+    String hm(DateTime t) => '${t.month}/${t.day} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    return [
+      const SizedBox(height: 12),
+      _sect('공고 공지 · ${list.length}건 — 확정자에게만'),
+      if (canSend)
+        _pill('＋ 공지 발송 · 확정 $confirmed명', bg: Colors.white, fg: JColors.blue, border: JColors.blue,
+            onTap: () => openNoticeSheet(context, widget.job, confirmed).then((_) {
+                  if (mounted) setState(() {});
+                })),
+      ...list.map((n) => Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(n.text, style: const TextStyle(fontSize: 12.5, color: JColors.ink, height: 1.5)),
+              const SizedBox(height: 4),
+              Text('${n.by} · ${hm(n.at)} · 확정 ${n.sentTo}명 전송 · 이후 확정자 자동 수신',
+                  style: const TextStyle(fontSize: 10.5, color: JColors.inactive)),
+            ])),
+          )),
+      if (late.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 6, left: 2),
+          child: Text('확정 후 자동 수신: ${late.join(', ')}',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: JColors.blue)),
+        ),
     ];
   }
 
@@ -2424,7 +2522,12 @@ class _ApprovalPageState extends State<ApprovalPage> {
                 gDecided.add('app|${a.name}|${a.siteName}');
                 if (mate != null) gDecided.add('app|${mate.name}|${mate.siteName}');
                 gPendingTick.value++;
-                jSnack(context, mate != null ? '${a.name} · ${mate.name} — 같이하기 짝 함께 승인' : '${a.name} — 승인했어요');
+                // 확정 즉시 그 공고의 기존 공지 자동 전달
+                var delivered = a.jobId == null ? 0 : deliverNotices(a.jobId!, a.name);
+                if (mate?.jobId != null) delivered += deliverNotices(mate!.jobId!, mate.name);
+                jSnack(context,
+                    (mate != null ? '${a.name} · ${mate.name} — 같이하기 짝 함께 승인' : '${a.name} — 승인했어요') +
+                        (delivered > 0 ? ' · 공고 공지 자동 전달' : ''));
               })),
               const SizedBox(width: 7),
               Expanded(child: jPill('거절', bg: Colors.white, fg: JColors.red, border: JColors.red,
@@ -2533,44 +2636,6 @@ class _CommPageState extends State<CommPage> {
   late final List<LateReport> lates = lateReportsFor(widget.admin);
   late final List<Inquiry> inqs = inquiriesFor(widget.admin);
 
-  Future<void> _notice() async {
-    final ctrl = TextEditingController();
-    final scope = widget.admin.sites == null ? '전 근무지 오늘 근무자 74명' : '담당 근무지 오늘 근무자 24명';
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text('공지 발송',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JColors.ink)),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Align(alignment: Alignment.centerLeft,
-              child: Text('대상: $scope', style: const TextStyle(fontSize: 11.5, color: JColors.muted))),
-          const SizedBox(height: 6),
-          TextField(
-            controller: ctrl,
-            autofocus: true,
-            maxLines: 3,
-            maxLength: 500,
-            style: const TextStyle(fontSize: 14, color: JColors.ink),
-            decoration: const InputDecoration(hintText: '내용 입력 (예: 오늘 물량 많아요, 10분 일찍 와주세요)'),
-          ),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx),
-              child: const Text('취소', style: TextStyle(color: JColors.muted, fontWeight: FontWeight.w600))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('발송', style: TextStyle(color: JColors.blue, fontWeight: FontWeight.w800))),
-        ],
-      ),
-    );
-    if (!mounted) return;
-    if (ok == true && ctrl.text.trim().isNotEmpty) {
-      jSnack(context, '공지 발송 완료 · $scope (야간엔 아침 8시에 나가요)');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -2578,12 +2643,7 @@ class _CommPageState extends State<CommPage> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
         children: [
-          jHeader('소통', '알바생 알림 · 문의'),
-          SizedBox(
-            height: 44,
-            child: jPill('담당 근무지에 공지 발송', bg: JColors.blue, fg: Colors.white, onTap: _notice),
-          ),
-          const SizedBox(height: 8),
+          jHeader('소통', '문의 · 늦어요 · 포인트 (공지는 각 공고 상세에서)'),
           SizedBox(
             height: 44,
             child: jPill('포인트 회수 · 근무자 검색', bg: Colors.white, fg: JColors.red, border: JColors.red,
