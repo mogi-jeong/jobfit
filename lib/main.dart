@@ -1485,7 +1485,7 @@ class SchedulePage extends StatefulWidget {
 
 class _SchedulePageState extends State<SchedulePage> {
   late DateTime month = DateTime(DateTime.now().year, DateTime.now().month);
-  late DateTime selected = _d0(DateTime.now());
+  DateTime? selected = _d0(DateTime.now()); // null = 펼침 없음 (같은 날 다시 탭하면 접힘)
   String filter = 'all'; // all | 파트너명(1급) | 근무지명(2급)
   bool onlyShort = false; // 부족·미출근만
   Timer? _tick;
@@ -1513,6 +1513,34 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   List<Job> get all => [...gJobs, ...gPastJobs].where((j) => _inScope(j) && _pass(j)).toList();
+
+  // 이 달 안에서 날짜가 몇 번째 주인지 (달 밖이면 -1)
+  int _weekOf(DateTime d, int lead) =>
+      (d.year == month.year && d.month == month.month) ? (d.day - 1 + lead) ~/ 7 : -1;
+
+  // 주 사이에 끼어드는 그날 공고 패널
+  Widget _dayPanel(DateTime d, List<Job> list) => AnimatedSize(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        alignment: Alignment.topCenter,
+        child: Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(top: 4, bottom: 8),
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 2),
+          decoration: BoxDecoration(color: JColors.bg, borderRadius: BorderRadius.circular(14)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${d.month}/${d.day}(${Job._wd[d.weekday - 1]}) · ${list.length}건',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: JColors.muted)),
+            const SizedBox(height: 8),
+            if (list.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 10),
+                child: Text('이 날은 공고가 없어요', style: TextStyle(fontSize: 12, color: JColors.inactive)),
+              ),
+            ...list.map((j) => Padding(padding: const EdgeInsets.only(bottom: 8), child: _JobCard(job: j))),
+          ]),
+        ),
+      );
 
   Widget _chip(String t, bool on, VoidCallback f, {bool alert = false}) => Padding(
         padding: const EdgeInsets.only(right: 6),
@@ -1542,7 +1570,7 @@ class _SchedulePageState extends State<SchedulePage> {
     final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
     final lead = first.weekday % 7;
     final monthJobs = all.where((j) => j.start.year == month.year && j.start.month == month.month).length;
-    final dayList = onDay(selected);
+    final dayList = selected == null ? <Job>[] : onDay(selected!);
 
     Widget nav(String t, VoidCallback f) => InkWell(
           onTap: f,
@@ -1564,7 +1592,7 @@ class _SchedulePageState extends State<SchedulePage> {
           // 칸 안에 근무지 라벨 최대 2개 (+N) — 부족/미출근은 빨강
           final shown = jobs.take(2).toList();
           return InkWell(
-            onTap: () => setState(() => selected = date),
+            onTap: () => setState(() => selected = sel ? null : date),
             borderRadius: BorderRadius.circular(10),
             child: Container(
               padding: const EdgeInsets.fromLTRB(2, 4, 2, 2),
@@ -1634,7 +1662,7 @@ class _SchedulePageState extends State<SchedulePage> {
               // 공고 등록 — 1등급 전용, 달력에서 고른 날짜가 미리 선택됨
               if (widget.admin.isA1)
                 InkWell(
-                  onTap: () => openRegisterSheet(context, preselected: {selected})
+                  onTap: () => openRegisterSheet(context, preselected: selected == null ? null : {selected!})
                       .then((ok) { if (ok && mounted) setState(() {}); }),
                   borderRadius: BorderRadius.circular(10),
                   child: const Padding(
@@ -1683,26 +1711,18 @@ class _SchedulePageState extends State<SchedulePage> {
                             color: w == '일' ? JColors.red : (w == '토' ? JColors.blue : JColors.inactive)))),
             ]),
             const SizedBox(height: 4),
-            GridView.count(
-              crossAxisCount: 7,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              childAspectRatio: 0.68, // 라벨 2줄 들어가게 세로로 길게
-              children: cells,
-            ),
+            // 주 단위 행 — 탭한 날짜가 있는 주 바로 아래가 벌어지며 그날 공고가 펼쳐짐
+            for (var w = 0; w < (cells.length + 6) ~/ 7; w++) ...[
+              SizedBox(
+                height: 66,
+                child: Row(children: [
+                  for (var i = 0; i < 7; i++)
+                    Expanded(child: w * 7 + i < cells.length ? cells[w * 7 + i] : const SizedBox()),
+                ]),
+              ),
+              if (selected != null && _weekOf(selected!, lead) == w) _dayPanel(selected!, dayList),
+            ],
           ])),
-          const SizedBox(height: 4),
-          jSect('${selected.month}/${selected.day}(${Job._wd[selected.weekday - 1]}) · ${dayList.length}건'),
-          if (dayList.isEmpty)
-            jCard(const Center(
-                child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 10),
-              child: Text('이 날은 공고가 없어요', style: TextStyle(fontSize: 12, color: JColors.inactive)),
-            ))),
-          ...dayList.map((j) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _JobCard(job: j),
-              )),
         ],
       ),
     );
