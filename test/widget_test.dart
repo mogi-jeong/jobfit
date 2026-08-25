@@ -9,7 +9,7 @@ void main() {
     expect(find.textContaining('김현장'), findsOneWidget);
     await tester.tap(find.textContaining('김현장'));
     await tester.pumpAndSettle(const Duration(milliseconds: 300));
-    expect(find.text('곤지암 MegaHub'), findsOneWidget);
+    expect(find.text('곤지암 MegaHub'), findsWidgets);
     expect(find.text('지난'), findsOneWidget); // 오늘/지난 전환 스위치
   });
 }

@@ -3,7 +3,10 @@
 // 데이터: 현재 Mock — 이후 Supabase 저장소로 교체 (repository 패턴)
 
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
+
+part 'mock_data.dart';
 
 // ─── 디자인 토큰 (디자인 가이드 v1) ───
 class JColors {
@@ -34,7 +37,6 @@ class Admin {
 const demoAdmin1 = Admin('김운영', 'admin1'); // 전 근무지 + 공고 등록
 const demoAdmin2 = Admin('김현장', 'admin2', ['곤지암 MegaHub', '이천 MpHub']);
 
-const allSites = ['곤지암 MegaHub', '이천 MpHub', '용인 Hub', '군포 Hub', '진천 MegaHub', 'L타워 웨딩홀'];
 
 class JobpitAdminApp extends StatelessWidget {
   const JobpitAdminApp({super.key});
@@ -128,9 +130,10 @@ class LoginPage extends StatelessWidget {
 // ─── Mock 데이터 (→ Supabase 교체 지점) ───
 class Job {
   final String site, slot, status;
+  final String id; // 공고 id (Mock: j-t-1 등 / Supabase: uuid)
   final DateTime start, end;
   final int cap, ok, short;
-  const Job(this.site, this.slot, this.status, this.start, this.end, this.cap, this.ok, this.short);
+  const Job(this.site, this.slot, this.status, this.start, this.end, this.cap, this.ok, this.short, {this.id = ''});
 
   String get timeLabel =>
       '${_hm(start)} – ${_hm(end)}';
@@ -141,49 +144,6 @@ class Job {
   String get dateLabel => '${start.month}/${start.day}(${_wd[start.weekday - 1]})';
 }
 
-// 데모용: 항상 그럴듯하게 보이도록 현재 시각 기준으로 생성
-List<Job> buildMockJobs() {
-  final now = DateTime.now();
-  return [
-    // 1시간 41분 전에 시작한 근무 (진행 중 · 2명 부족)
-    Job('곤지암 MegaHub', '주간', '진행중',
-        now.subtract(const Duration(hours: 1, minutes: 41)),
-        now.add(const Duration(hours: 7, minutes: 19)), 8, 6, 2),
-    // 2시간 15분 뒤 시작 (부족 1명 → 임박하면 빨강)
-    Job('이천 MpHub', '야간', '마감',
-        now.add(const Duration(hours: 2, minutes: 15)),
-        now.add(const Duration(hours: 10, minutes: 15)), 6, 5, 1),
-    // 25분 뒤 시작 (충원 완료)
-    Job('용인 Hub', '주간', '대기',
-        now.add(const Duration(minutes: 25)),
-        now.add(const Duration(hours: 9, minutes: 25)), 8, 8, 0),
-    // 1시간 전에 끝난 근무 (종료)
-    Job('군포 Hub', '주간', '완료',
-        now.subtract(const Duration(hours: 10)),
-        now.subtract(const Duration(hours: 1)), 6, 5, 0),
-  ];
-}
-
-// 지난 공고 (수동 관리·사후 정정용 — N30: 허용 기간 추후 결정)
-List<Job> buildPastJobs() {
-  final now = DateTime.now();
-  DateTime d(int daysAgo, int h, [int m = 0]) {
-    final t = now.subtract(Duration(days: daysAgo));
-    return DateTime(t.year, t.month, t.day, h, m);
-  }
-
-  return [
-    Job('곤지암 MegaHub', '주간', '완료', d(1, 8), d(1, 17), 8, 7, 0),
-    Job('이천 MpHub', '야간', '완료', d(1, 22), d(0, 6), 6, 6, 0),
-    Job('L타워 웨딩홀', '오후', '완료', d(2, 11), d(2, 19), 12, 11, 0),
-    Job('곤지암 MegaHub', '주간', '완료', d(3, 8), d(3, 17), 8, 8, 0),
-    Job('군포 Hub', '주간', '완료', d(9, 9), d(9, 18), 6, 6, 0), // 7일 경과 → 정정 잠김 데모
-  ];
-}
-
-// 앱 전역 공고 목록 (1급이 등록하면 여기 추가 → Supabase jobs 테이블 교체 지점)
-final List<Job> gJobs = buildMockJobs();
-final List<Job> gPastJobs = buildPastJobs();
 
 // ─── 알바생 출결 Mock (→ Supabase attendance 교체 지점) ───
 class Worker {
@@ -201,40 +161,7 @@ class GpsReq {
   const GpsReq(this.name, this.reason, this.dist, this.time);
 }
 
-const mockGpsReqs = {
-  '곤지암 MegaHub': [
-    GpsReq('정하늘', '셔틀 정류장까지 이동 후 퇴근 처리했어요', '영역 밖 180m', '17:04'),
-  ],
-};
 
-const mockWorkers = {
-  '곤지암 MegaHub': [
-    Worker('한지민', 'none'), Worker('강도윤', 'none'),
-    Worker('박서준', 'ok', '08:02'), Worker('이지은', 'late', '08:14'),
-    Worker('최민호', 'ok', '07:58'), Worker('윤아름', 'ok', '08:01'),
-    Worker('오세훈', 'out'), Worker('정하늘', 'ok', '08:05'),
-  ],
-  '이천 MpHub': [
-    Worker('김도현', 'none'), Worker('이수민', 'ok', '21:55'),
-    Worker('박준영', 'ok', '22:01'), Worker('최유나', 'late', '22:12'),
-    Worker('장민석', 'ok', '21:58'),
-  ],
-  '용인 Hub': [
-    Worker('서지우', 'none'), Worker('임하늘', 'none'), Worker('조은비', 'none'),
-    Worker('김민준', 'none'), Worker('나예린', 'none'), Worker('도경수', 'none'),
-    Worker('류지안', 'none'), Worker('문서연', 'none'),
-  ],
-  '군포 Hub': [
-    Worker('고은채', 'ok', '08:58'), Worker('박도윤', 'late', '09:12'),
-    Worker('신유나', 'ok', '08:55'), Worker('이준호', 'out'),
-    Worker('전소민', 'absent'), Worker('차민규', 'out'),
-  ],
-  'L타워 웨딩홀': [
-    Worker('감우주', 'out'), Worker('민들레', 'out'),
-    Worker('송가온', 'late', '11:14'), Worker('오하람', 'out'),
-    Worker('한별이', 'absent'),
-  ],
-};
 
 // ─── 가입 알바생 풀 Mock (직접 추가 검색용 → Supabase workers 교체 지점) ───
 class Member {
@@ -243,14 +170,6 @@ class Member {
   const Member(this.name, this.phone, this.label, [this.neg = false]);
 }
 
-const mockMembers = [
-  Member('권나라', '010-2222-1111', '단골 · 출근 14회'),
-  Member('김철수', '010-3333-2222', '성실 B'),
-  Member('안재현', '010-4444-3333', '보통 C'),
-  Member('백소라', '010-5555-4444', '경고 2회'),
-  Member('유지태', '010-6666-5555', '협의대상', true),
-  Member('박서준', '010-7777-6666', '성실 A'),
-];
 
 // ─── 앱 셸 (하단 독 + 탭) ───
 class AdminShell extends StatefulWidget {
@@ -273,8 +192,8 @@ class _AdminShellState extends State<AdminShell> {
           Positioned.fill(
             child: switch (tab) {
               0 => JobListPage(admin: widget.admin),
-              1 => const ApprovalPage(),
-              2 => const CommPage(),
+              1 => ApprovalPage(admin: widget.admin),
+              2 => CommPage(admin: widget.admin),
               _ => MePage(admin: widget.admin, onLogout: widget.onLogout),
             },
           ),
@@ -339,7 +258,19 @@ class _JobListPageState extends State<JobListPage> {
   Timer? _tick;
 
   bool _inScope(Job j) => widget.admin.sites == null || widget.admin.sites!.contains(j.site);
-  List<Job> get jobs => gJobs.where(_inScope).toList()..sort((a, b) => a.start.compareTo(b.start));
+  // 오늘 = 오늘 시작 or 지금 진행 중(어제 밤 시작한 야간 포함)
+  bool _isToday(Job j) {
+    final n = DateTime.now();
+    final sameDay = j.start.year == n.year && j.start.month == n.month && j.start.day == n.day;
+    return sameDay || (j.start.isBefore(n) && j.end.isAfter(n));
+  }
+
+  List<Job> get jobs =>
+      gJobs.where((j) => _inScope(j) && _isToday(j)).toList()..sort((a, b) => a.start.compareTo(b.start));
+  List<Job> get upcomingJobs => gJobs
+      .where((j) => _inScope(j) && !_isToday(j) && j.start.isAfter(DateTime.now()))
+      .toList()
+    ..sort((a, b) => a.start.compareTo(b.start));
   List<Job> get pastJobs => gPastJobs.where(_inScope).toList();
 
   @override
@@ -375,9 +306,13 @@ class _JobListPageState extends State<JobListPage> {
                           style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -.6, color: JColors.ink)),
                       const SizedBox(height: 2),
                       Text(
-                          view == 'today'
-                              ? '${widget.admin.sites == null ? '전 근무지' : '담당 ${widget.admin.sites!.length} 근무지'} · 오늘 ${jobs.length}건'
-                              : '지난 공고 · 사후 정정 가능',
+                          switch (view) {
+                            'today' =>
+                              '${widget.admin.sites == null ? '전 근무지' : '담당 ${widget.admin.sites!.length} 근무지'} · 오늘 ${jobs.length}건',
+                            'upcoming' =>
+                              '${widget.admin.sites == null ? '전 근무지' : '담당 ${widget.admin.sites!.length} 근무지'} · 예정 ${upcomingJobs.length}건',
+                            _ => '지난 공고 2주 · 종료 후 7일까지 정정 가능',
+                          },
                           style: const TextStyle(fontSize: 12.5, color: JColors.muted)),
                     ],
                   ),
@@ -401,7 +336,7 @@ class _JobListPageState extends State<JobListPage> {
             padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(color: const Color(0xFFE8E8ED), borderRadius: BorderRadius.circular(10)),
             child: Row(children: [
-              for (final v in const [('today', '오늘'), ('past', '지난')])
+              for (final v in const [('today', '오늘'), ('upcoming', '예정'), ('past', '지난')])
                 Expanded(
                   child: InkWell(
                     onTap: () => setState(() => view = v.$1),
@@ -428,10 +363,14 @@ class _JobListPageState extends State<JobListPage> {
           ),
           const SizedBox(height: 12),
           if (view == 'today')
-            ...jobs.map((j) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _JobCard(job: j),
-                ))
+            ...(jobs.isEmpty
+                ? [_emptyCard('오늘 공고가 없어요')]
+                : jobs.map((j) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _JobCard(job: j),
+                    )))
+          else if (view == 'upcoming')
+            ..._grouped(upcomingJobs, '예정된 공고가 없어요')
           else
             ..._pastList(),
         ],
@@ -550,11 +489,19 @@ class _JobListPageState extends State<JobListPage> {
         ),
       );
 
-  // 지난 공고 — 날짜별 그룹
-  List<Widget> _pastList() {
+  List<Widget> _pastList() => _grouped(pastJobs, '지난 공고가 없어요');
+
+  static Widget _emptyCard(String msg) => jCard(Center(
+      child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Text(msg, style: const TextStyle(fontSize: 12, color: JColors.inactive)))));
+
+  // 날짜별 그룹 리스트 (예정·지난 공통)
+  List<Widget> _grouped(List<Job> list, String emptyMsg) {
+    if (list.isEmpty) return [_emptyCard(emptyMsg)];
     final out = <Widget>[];
     String? lastDate;
-    for (final j in pastJobs) {
+    for (final j in list) {
       if (j.dateLabel != lastDate) {
         lastDate = j.dateLabel;
         out.add(Padding(
@@ -708,7 +655,7 @@ class _AttendancePageState extends State<AttendancePage> {
   final List<Worker> extWorkers = []; // 외부인력 (기획안: 외부 구인)
   final List<Worker> invited = []; // 직접 추가한 가입 알바생 (기획안 §5-3, 즉시 승인)
   late final List<GpsReq> gpsReqs =
-      List.of(mockGpsReqs[widget.job.site] ?? const <GpsReq>[]); // 퇴근 승인 대기
+      List.of(gpsReqsOf(widget.job)); // 퇴근 승인 대기
   Timer? _tick;
 
   @override
@@ -957,7 +904,7 @@ class _AttendancePageState extends State<AttendancePage> {
   // 자격 검증: 이미 배정=불가 / 협의대상=확인 후 강제 가능
   void _inviteSheet() {
     final ctrl = TextEditingController();
-    final base = mockWorkers[widget.job.site] ?? const <Worker>[];
+    final base = rosterOf(widget.job);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1064,7 +1011,7 @@ class _AttendancePageState extends State<AttendancePage> {
     final job = widget.job;
     final started = now.isAfter(job.start);
     final ended = now.isAfter(job.end);
-    final base = mockWorkers[job.site] ?? const <Worker>[];
+    final base = rosterOf(widget.job);
 
     // 상태별로 완전히 다른 페이지 내용
     final content = ended
@@ -1512,36 +1459,19 @@ void jSnack(BuildContext context, String msg) {
   ));
 }
 
-// ═══════════ 승인 탭 — 신청 / 취소 / 대기열 ═══════════
-class PendingApp {
-  final String name, site, time, flag; // flag: 12h이내 / 협의대상 / 경고2회 ...
-  final bool danger;
-  const PendingApp(this.name, this.site, this.time, this.flag, [this.danger = false]);
-}
-
-class CancelReq {
-  final String name, site, reason;
-  const CancelReq(this.name, this.site, this.reason);
-}
-
+// ═══════════ 승인 탭 — 신청 / 취소 / 대기열 (담당 범위로 필터) ═══════════
 class ApprovalPage extends StatefulWidget {
-  const ApprovalPage({super.key});
+  final Admin admin;
+  const ApprovalPage({super.key, required this.admin});
   @override
   State<ApprovalPage> createState() => _ApprovalPageState();
 }
 
 class _ApprovalPageState extends State<ApprovalPage> {
   String sub = 'apply';
-  final apps = <PendingApp>[
-    const PendingApp('한지민', '곤지암 · 주간 08:00 – 17:00', '단골 · 출근 12회', '12시간 이내'),
-    const PendingApp('오세훈', '이천 · 야간 22:00 – 06:00', '경고 3회', '협의대상', true),
-  ];
-  final cancels = <CancelReq>[
-    const CancelReq('홍길동', '곤지암 · 주간 · 12시간 이내 취소', '개인사정 (단순 변심)'),
-  ];
-  // 대기열 자리 제안 — 수락 마감 카운트다운 (정책: 24h 전 2시간 / 24h 이내 30분)
-  late DateTime wlDeadline = DateTime.now().add(const Duration(minutes: 28, seconds: 14));
-  bool wlAlive = true;
+  late final List<PendingApp> apps = List.of(pendingAppsFor(widget.admin));
+  late final List<CancelReq> cancels = List.of(cancelReqsFor(widget.admin));
+  late final List<WaitEntry> waits = List.of(waitlistFor(widget.admin));
   Timer? _tick;
 
   @override
@@ -1596,13 +1526,12 @@ class _ApprovalPageState extends State<ApprovalPage> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
         children: [
-          jHeader('승인', '현장 즉시 처리'),
-          // 서브탭
+          jHeader('승인', widget.admin.sites == null ? '전 근무지 · 현장 즉시 처리' : '담당 근무지 · 현장 즉시 처리'),
           Container(
             padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(color: const Color(0xFFE8E8ED), borderRadius: BorderRadius.circular(10)),
             child: Row(children: [
-              for (final s in [('apply', '신청 ${apps.length}'), ('cancel', '취소 ${cancels.length}'), ('wait', '대기열 1')])
+              for (final s in [('apply', '신청 ${apps.length}'), ('cancel', '취소 ${cancels.length}'), ('wait', '대기열 ${waits.length}')])
                 Expanded(
                   child: InkWell(
                     onTap: () => setState(() => sub = s.$1),
@@ -1635,11 +1564,12 @@ class _ApprovalPageState extends State<ApprovalPage> {
     );
   }
 
+  Widget _empty(String t) => jCard(Center(
+      child: Padding(padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Text(t, style: const TextStyle(fontSize: 12, color: JColors.inactive)))));
+
   List<Widget> _applyList() {
-    if (apps.isEmpty) {
-      return [jCard(const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 10),
-          child: Text('승인 대기 없음', style: TextStyle(fontSize: 12, color: JColors.inactive)))))];
-    }
+    if (apps.isEmpty) return [_empty('승인 대기 없음')];
     return apps.map((a) => Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: jCard(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1650,7 +1580,8 @@ class _ApprovalPageState extends State<ApprovalPage> {
                       color: a.danger ? JColors.red : const Color(0xFF9A6B00))),
             ]),
             const SizedBox(height: 2),
-            Text('${a.site} · ${a.time}', style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+            Text('${a.siteName} · ${a.slotTime}\n${a.note}',
+                style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.5)),
             const SizedBox(height: 10),
             Row(children: [
               Expanded(child: jPill('승인', bg: JColors.blue, fg: Colors.white, onTap: () {
@@ -1666,20 +1597,18 @@ class _ApprovalPageState extends State<ApprovalPage> {
   }
 
   List<Widget> _cancelList() {
-    if (cancels.isEmpty) {
-      return [jCard(const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 10),
-          child: Text('취소 검토 대기 없음', style: TextStyle(fontSize: 12, color: JColors.inactive)))))];
-    }
+    if (cancels.isEmpty) return [_empty('취소 검토 대기 없음')];
     return cancels.map((c) => Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: jCard(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               Text(c.name, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: JColors.ink)),
-              const Text('12시간 이내',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF9A6B00))),
+              Text('12시간 이내 · ${c.when}',
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF9A6B00))),
             ]),
             const SizedBox(height: 2),
-            Text('${c.site}\n사유: ${c.reason}', style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.5)),
+            Text('${c.siteName} · ${c.slotTime}\n사유: ${c.reason}',
+                style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.5)),
             const SizedBox(height: 10),
             Row(children: [
               Expanded(child: jPill('차감', bg: Colors.white, fg: JColors.red, border: JColors.red, onTap: () {
@@ -1702,47 +1631,62 @@ class _ApprovalPageState extends State<ApprovalPage> {
   }
 
   List<Widget> _waitList() {
-    final left = wlDeadline.difference(DateTime.now());
-    final expired = left.isNegative;
-    final mm = (left.inMinutes).clamp(0, 999);
-    final ss = (left.inSeconds % 60).clamp(0, 59);
+    if (waits.isEmpty) return [_empty('대기열 진행 중인 건 없음')];
+    final now = DateTime.now();
     return [
-      jCard(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          const Text('곤지암 대기 1번 · 서지우',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: JColors.ink)),
-          Text(expired ? '시간 초과' : '$mm:${ss.toString().padLeft(2, '0')}',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                  color: expired ? JColors.inactive : (mm < 5 ? JColors.red : const Color(0xFF9A6B00)))),
-        ]),
-        const SizedBox(height: 3),
-        Text(
-            expired
-                ? '수락 시간이 지나 자동 거절 — 다음 대기자에게 자리 제안이 갔어요'
-                : '자리 제안 발송됨 · 수락 대기 중 (제한: 24시간 전 2시간 / 이내 30분)\n시간이 지나면 자동으로 다음 대기자에게 넘어가요',
-            style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.5)),
-      ])),
-      const SizedBox(height: 8),
+      ...waits.map((w) {
+        final left = w.deadline.difference(now);
+        final expired = left.isNegative;
+        final h = left.inHours, m = left.inMinutes % 60, s = left.inSeconds % 60;
+        final txt = expired
+            ? '시간 초과'
+            : h > 0
+                ? '$h:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}'
+                : '$m:${s.toString().padLeft(2, '0')}';
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: jCard(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text('${w.siteName} 대기 ${w.order}번 · ${w.name}',
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: JColors.ink)),
+              Text(txt,
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                      color: expired ? JColors.inactive : (left.inMinutes < 5 ? JColors.red : const Color(0xFF9A6B00)))),
+            ]),
+            const SizedBox(height: 3),
+            Text(
+                expired
+                    ? '${w.slotTime} · 수락 시간이 지나 자동 거절 — 다음 대기자에게 자리 제안이 갔어요'
+                    : '${w.slotTime} · 자리 제안 발송됨 · 수락 대기 중',
+                style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.5)),
+          ])),
+        );
+      }),
       const Padding(
         padding: EdgeInsets.only(left: 2),
-        child: Text('대기열은 자동으로 처리돼요 — 여기선 상황만 확인합니다',
+        child: Text('대기열은 자동 처리 (수락 제한: 24시간 전 2시간 · 이내 30분) — 여기선 상황만 확인해요',
             style: TextStyle(fontSize: 11, color: JColors.inactive)),
       ),
     ];
   }
 }
 
-// ═══════════ 소통 탭 — 공지 / 늦어요 / 1:1 문의 ═══════════
+// ═══════════ 소통 탭 — 공지 / 늦어요 / 1:1 문의 (담당 범위로 필터) ═══════════
 class CommPage extends StatefulWidget {
-  const CommPage({super.key});
+  final Admin admin;
+  const CommPage({super.key, required this.admin});
   @override
   State<CommPage> createState() => _CommPageState();
 }
 
 class _CommPageState extends State<CommPage> {
+  late final List<LateReport> lates = lateReportsFor(widget.admin);
+  late final List<Inquiry> inqs = inquiriesFor(widget.admin);
+
   Future<void> _notice() async {
     final ctrl = TextEditingController();
+    final scope = widget.admin.sites == null ? '전 근무지 오늘 근무자 74명' : '담당 근무지 오늘 근무자 24명';
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1752,9 +1696,8 @@ class _CommPageState extends State<CommPage> {
         title: const Text('공지 발송',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JColors.ink)),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Align(alignment: Alignment.centerLeft,
-              child: Text('대상: 담당 근무지 오늘 근무자 12명',
-                  style: TextStyle(fontSize: 11.5, color: JColors.muted))),
+          Align(alignment: Alignment.centerLeft,
+              child: Text('대상: $scope', style: const TextStyle(fontSize: 11.5, color: JColors.muted))),
           const SizedBox(height: 6),
           TextField(
             controller: ctrl,
@@ -1775,7 +1718,7 @@ class _CommPageState extends State<CommPage> {
     );
     if (!mounted) return;
     if (ok == true && ctrl.text.trim().isNotEmpty) {
-      jSnack(context, '공지 발송 완료 · 12명 (야간엔 아침 8시에 나가요)');
+      jSnack(context, '공지 발송 완료 · $scope (야간엔 아침 8시에 나가요)');
     }
   }
 
@@ -1792,35 +1735,45 @@ class _CommPageState extends State<CommPage> {
             child: jPill('담당 근무지에 공지 발송', bg: JColors.blue, fg: Colors.white, onTap: _notice),
           ),
           const SizedBox(height: 6),
-          jSect('늦어요 보고 · 1건'),
-          jCard(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: const [
-              Text('이지은 — 10분 늦어요',
-                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: JColors.ink)),
-              Text('방금', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF9A6B00))),
-            ]),
-            const SizedBox(height: 2),
-            const Text('곤지암 주간 · 사유: 버스 지연', style: TextStyle(fontSize: 11.5, color: JColors.muted)),
-          ])),
-          jSect('1:1 문의 · 2건'),
-          _inqRow(context, '박서준', '출근 인증이 안 돼요', '답변 대기', JColors.red,
-              const [('me', '출근 인증이 안 돼요', '18:22')]),
-          const SizedBox(height: 8),
-          _inqRow(context, '최민호', '주차는 어디에 하나요?', '진행중', JColors.blue,
-              const [('me', '주차는 어디에 하나요?', '어제'), ('adm', '정문 옆 B주차장 이용하시면 돼요', '어제')]),
+          jSect('늦어요 보고 · ${lates.length}건'),
+          if (lates.isEmpty)
+            jCard(const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('보고 없음', style: TextStyle(fontSize: 12, color: JColors.inactive))))),
+          ...lates.map((l) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: jCard(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    Text('${l.name} — ${l.delayMin}분 늦어요',
+                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: JColors.ink)),
+                    Text(l.ago, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF9A6B00))),
+                  ]),
+                  const SizedBox(height: 2),
+                  Text('${l.siteName} ${l.slot} · 사유: ${l.reason}',
+                      style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+                ])),
+              )),
+          jSect('1:1 문의 · ${inqs.length}건'),
+          ...inqs.map((q) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _inqRow(context, q),
+              )),
         ],
       ),
     );
   }
 
-  Widget _inqRow(BuildContext context, String name, String preview, String badge, Color badgeColor,
-      List<(String, String, String)> msgs) {
+  Widget _inqRow(BuildContext context, Inquiry q) {
+    final color = switch (q.status) {
+      '답변 대기' => JColors.red,
+      '진행중' => JColors.blue,
+      _ => JColors.inactive,
+    };
     return Material(
       color: JColors.card,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => InquiryChatPage(name: name, initial: msgs))),
+            MaterialPageRoute(builder: (_) => InquiryChatPage(name: q.name, initial: q.msgs))),
         borderRadius: BorderRadius.circular(16),
         child: Container(
           decoration: BoxDecoration(
@@ -1829,12 +1782,17 @@ class _CommPageState extends State<CommPage> {
           ),
           padding: const EdgeInsets.all(14),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(name, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: JColors.ink)),
-              const SizedBox(height: 1),
-              Text(preview, style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
-            ]),
-            Text(badge, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: badgeColor)),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${q.name}  ·  ${q.siteName}',
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: JColors.ink)),
+                const SizedBox(height: 1),
+                Text(q.preview, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            Text(q.status, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
           ]),
         ),
       ),
