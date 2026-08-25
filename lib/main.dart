@@ -5,6 +5,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'policy.dart';
 
 part 'mock_data.dart';
 
@@ -135,8 +136,9 @@ class Job {
   final DateTime start, end;
   final int cap, ok, short;
   final String desc; // 공고 내용 (템플릿 불러오기 + 수정)
+  final int point; // 잡핏 포인트 (기본 1,000P · 공고별 조정) — 종료 후 정상 출근+퇴근자에게만 자동 지급
   const Job(this.site, this.slot, this.status, this.start, this.end, this.cap, this.ok, this.short,
-      {this.id = '', this.desc = ''});
+      {this.id = '', this.desc = '', this.point = 1000});
 
   String get timeLabel =>
       '${_hm(start)} – ${_hm(end)}';
@@ -176,7 +178,7 @@ String? outOf(Job j, Worker w) {
 // 종료 후 수동 처리 필요 인원 (출근/지각인데 퇴근 기록 없음 + 퇴근 승인 대기) — 종료 6시간 지나면 자동 처리로 간주
 int manualCount(Job j) {
   final now = DateTime.now();
-  if (!now.isAfter(j.end) || now.difference(j.end).inHours >= 6) return 0;
+  if (!now.isAfter(j.end) || now.difference(j.end).inHours >= Policy.autoCheckoutHours) return 0;
   final pendingOut = rosterOf(j).where((w) {
     final s = effStatus(j, w);
     return (s == 'ok' || s == 'late') && outOf(j, w) == null;
@@ -186,6 +188,12 @@ int manualCount(Job j) {
 }
 
 bool needsManual(Job j) => manualCount(j) > 0;
+
+// 포인트 자동 지급 대상 판정 — policy.dart 규칙 사용 (알바생 앱과 동일)
+bool jobPointEligible(Job j, Worker w) {
+  final o = outOf(j, w);
+  return pointEligible(effStatus(j, w), o == null ? null : (o.startsWith('반려') ? CheckoutSource.rejected : CheckoutSource.manual));
+}
 
 // GPS 영역 밖 퇴근 — 사유 검토 대기 (알바생 앱에서 제출 → 여기서 승인/반려)
 class GpsReq {
@@ -734,6 +742,13 @@ class _AttendancePageState extends State<AttendancePage> {
     final v = outs[w.name];
     if (v != null) return v.isEmpty ? null : v;
     return w.outTime;
+  }
+
+  // 포인트 자동 지급 대상 = 정상 출근(출근·지각) + 정상 퇴근 기록(반려 제외). 조퇴·이탈·결근은 자동 지급 없음
+  bool _eligible(Worker w) {
+    final s = statusOf(w);
+    final o = outOf_(w);
+    return (s == 'ok' || s == 'late') && o != null && !o.startsWith('반려');
   }
   final List<Worker> extWorkers = []; // 외부인력 (기획안: 외부 구인)
   final List<Worker> invited = []; // 직접 추가한 가입 알바생 (기획안 §5-3, 즉시 승인)
@@ -1320,13 +1335,14 @@ class _AttendancePageState extends State<AttendancePage> {
       }
     }
     final attended = ok + late + early;
-    final autoDone = DateTime.now().difference(widget.job.end).inHours >= 6;
-    final locked = DateTime.now().difference(widget.job.end).inDays >= 7;
+    final autoDone = DateTime.now().difference(widget.job.end).inHours >= Policy.autoCheckoutHours;
+    final locked = DateTime.now().difference(widget.job.end).inDays >= Policy.correctionDays;
     // 퇴근 미처리 = 출근/지각인데 퇴근 기록 없음 (종료 6시간 후엔 시스템이 자동 처리)
     final pending = autoDone
         ? <Worker>[]
         : mapped.where((w) => (statusOf(w) == 'ok' || statusOf(w) == 'late') && outOf_(w) == null).toList();
     final done = mapped.where((w) => !pending.contains(w)).toList();
+    final eligible = mapped.where(_eligible).length; // 포인트 자동 지급 대상
 
     Future<void> bulkOut() async {
       final go = await showDialog<bool>(
@@ -1383,6 +1399,19 @@ class _AttendancePageState extends State<AttendancePage> {
               '${Job._hm(widget.job.end)} 종료',
             ].join(' · '),
             style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+        const SizedBox(height: 6),
+        // 포인트 정산 — 종료 후, 정상 출근+퇴근자에게만 자동
+        Text.rich(TextSpan(children: [
+          const TextSpan(text: '정산  ', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.muted)),
+          TextSpan(
+              text: '정상 출근·퇴근 $eligible명 → +${(eligible * widget.job.point).toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},')}P 지급 예정',
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
+                  color: eligible > 0 ? JColors.green : JColors.inactive)),
+          if (pending.isNotEmpty)
+            TextSpan(
+                text: '  ·  퇴근 미처리 ${pending.length}명은 처리 후 확정',
+                style: const TextStyle(fontSize: 11, color: JColors.amber, fontWeight: FontWeight.w600)),
+        ])),
       ])),
       ..._gpsSection(),
       if (pending.isNotEmpty) ...[
@@ -1519,13 +1548,13 @@ class _AttendancePageState extends State<AttendancePage> {
                 const SizedBox(height: 10),
                 Row(children: [
                   Expanded(
-                      child: _pill('승인 · 포인트 지급', bg: JColors.blue, fg: Colors.white, onTap: () {
+                      child: _pill('승인 · 퇴근 인정', bg: JColors.blue, fg: Colors.white, onTap: () {
                     setState(() {
                       gpsReqs.remove(r);
                       gGpsDone.add('${jobKey(widget.job)}|${r.name}');
-                      outs[r.name] = r.time; // 퇴근 시각 기록 (승인·반려 모두 퇴근은 남김)
+                      outs[r.name] = r.time; // 정상 퇴근으로 기록 → 종료 후 정산 때 포인트 대상
                     });
-                    snack('${r.name} — 퇴근 승인 · 포인트 지급');
+                    snack('${r.name} — 퇴근 인정 · 종료 후 정산 때 포인트 지급 대상');
                   })),
                   const SizedBox(width: 7),
                   Expanded(
@@ -1533,9 +1562,9 @@ class _AttendancePageState extends State<AttendancePage> {
                     setState(() {
                       gpsReqs.remove(r);
                       gGpsDone.add('${jobKey(widget.job)}|${r.name}');
-                      outs[r.name] = r.time; // 퇴근 시각 기록 (승인·반려 모두 퇴근은 남김)
+                      outs[r.name] = '반려 ${r.time}'; // 퇴근 시각은 남기되 '미인정' → 포인트 대상 제외
                     });
-                    snack('${r.name} — 반려 · 퇴근 기록만, 포인트 미지급');
+                    snack('${r.name} — 반려 · 퇴근 미인정, 포인트 대상 제외');
                   })),
                 ]),
               ],
@@ -1606,6 +1635,13 @@ class _AttendancePageState extends State<AttendancePage> {
           if (pendingOut)
             const TextSpan(text: ' · 퇴근 미처리',
                 style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: JColors.amber)),
+          // 종료 후에만 포인트 대상 표시 (정상 출근+퇴근 = 자동 / 조퇴·이탈·반려 = 없음)
+          if (DateTime.now().isAfter(widget.job.end) && !pendingOut &&
+              (s == 'ok' || s == 'late' || s == 'early' || s == 'runaway'))
+            TextSpan(
+                text: _eligible(w) ? ' · +${widget.job.point}P' : ' · 포인트 없음',
+                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700,
+                    color: _eligible(w) ? JColors.green : JColors.inactive)),
           TextSpan(
               text: '  ${isExt(w.name) ? '외부' : isInvited(w.name) ? '추가' : (s == 'wait' ? '' : (manual ? '수동' : '자동'))}',
               style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFFC7C7CC))),
@@ -2639,7 +2675,8 @@ Future<bool> openRegisterSheet(BuildContext context, {Set<DateTime>? preselected
                       final s = DateTime(d.year, d.month, d.day, start.hour, start.minute);
                       var e = DateTime(d.year, d.month, d.day, end.hour, end.minute);
                       if (!e.isAfter(s)) e = e.add(const Duration(days: 1)); // 야간 = 다음날 종료
-                      gJobs.add(Job(site, label, '모집중', s, e, cap, 0, cap, desc: descCtrl.text.trim()));
+                      gJobs.add(Job(site, label, '모집중', s, e, cap, 0, cap,
+                          desc: descCtrl.text.trim(), point: int.tryParse(pointCtrl.text.trim()) ?? 1000));
                     }
                     Navigator.pop(ctx);
                     changed = true;

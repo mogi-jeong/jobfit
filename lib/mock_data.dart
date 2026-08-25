@@ -236,7 +236,7 @@ List<Worker> _genRoster(Job job) {
   if (ended) {
     // 종료: 결근 = cap - ok, 나머지 출근/지각 + 퇴근 기록 (6h 지나면 전원 자동 퇴근 처리됨)
     final absent = (job.cap - job.ok).clamp(0, job.cap);
-    final autoDone = now.difference(job.end).inHours >= 6;
+    final autoDone = now.difference(job.end).inHours >= Policy.autoCheckoutHours;
     for (var i = 0; i < job.cap; i++) {
       if (i < absent) {
         out.add(Worker(names[i], 'absent'));
@@ -273,8 +273,8 @@ List<Worker> _genRoster(Job job) {
 
 // ─── GPS 영역 밖 퇴근 승인 대기 (공고별) ───
 const _gpsSpecs = {
-  'j-t-1': ('셔틀 정류장까지 이동 후 퇴근 처리했어요', '영역 밖 180m', '17:04'),
-  'j-t-7': ('상차장 뒤편 출구로 나왔어요', '영역 밖 95m', '16:58'),
+  'j-t-4': ('셔틀 정류장까지 이동 후 퇴근 처리했어요', '영역 밖 180m', '17:04'),
+  'j-t-6': ('상차장 뒤편 출구로 나왔어요', '영역 밖 95m', '16:58'),
   'j-p-0': ('배터리 방전으로 늦게 켰어요', '영역 밖 420m', '17:31'),
 };
 
