@@ -19,6 +19,7 @@ class JColors {
   static const red = Color(0xFFC22A2A); // 경고
   static const green = Color(0xFF1D7A35); // 긍정
   static const yellow = Color(0xFFFEBC2E); // 검정 카드 안 라벨
+  static const amber = Color(0xFF9A6B00); // 수동 처리 필요 · 대기 · 주의
   static const hairline = Color(0x121D1D1F); // 카드 테두리
   static const track = Color(0xFFE8E8ED); // 진행 막대 트랙
 }
@@ -157,6 +158,26 @@ class Worker {
   const Worker(this.name, this.status, [this.time, this.org, this.phone]);
 }
 
+// ─── 출결 정정 기록 (앱 전역 — 화면을 나갔다 와도 유지 → Supabase attendance 교체 지점) ───
+String jobKey(Job j) => j.id.isNotEmpty ? j.id : '${j.site}|${j.start.toIso8601String()}';
+final Map<String, Map<String, String>> gOverrides = {}; // jobKey → (이름 → 상태)
+final Set<String> gGpsDone = {}; // 'jobKey|이름' 처리 완료한 퇴근 승인
+String effStatus(Job j, Worker w) => gOverrides[jobKey(j)]?[w.name] ?? w.status;
+
+// 종료 후 수동 처리 필요 인원 (퇴근 기록 없는 출근자 + 퇴근 승인 대기) — 종료 6시간 지나면 자동 처리로 간주
+int manualCount(Job j) {
+  final now = DateTime.now();
+  if (!now.isAfter(j.end) || now.difference(j.end).inHours >= 6) return 0;
+  final pendingOut = rosterOf(j).where((w) {
+    final s = effStatus(j, w);
+    return s == 'ok' || s == 'late';
+  }).length;
+  final gps = gpsReqsOf(j).where((r) => !gGpsDone.contains('${jobKey(j)}|${r.name}')).length;
+  return pendingOut + gps;
+}
+
+bool needsManual(Job j) => manualCount(j) > 0;
+
 // GPS 영역 밖 퇴근 — 사유 검토 대기 (알바생 앱에서 제출 → 여기서 승인/반려)
 class GpsReq {
   final String name, reason, dist, time;
@@ -261,20 +282,31 @@ class _JobListPageState extends State<JobListPage> {
   Timer? _tick;
 
   bool _inScope(Job j) => widget.admin.sites == null || widget.admin.sites!.contains(j.site);
-  // 오늘 = 오늘 시작 or 지금 진행 중(어제 밤 시작한 야간 포함)
-  bool _isToday(Job j) {
-    final n = DateTime.now();
-    final sameDay = j.start.year == n.year && j.start.month == n.month && j.start.day == n.day;
-    return sameDay || (j.start.isBefore(n) && j.end.isAfter(n));
+  // 24시간 = 진행 중 + 지금부터 24시간 안에 시작 (자정 넘는 야간도 자연히 포함)
+  List<Job> get jobs {
+    final now = DateTime.now();
+    final limit = now.add(const Duration(hours: 24));
+    return gJobs
+        .where((j) => _inScope(j) && !now.isAfter(j.end) && !j.start.isAfter(limit))
+        .toList()
+      ..sort((a, b) => a.start.compareTo(b.start));
   }
 
-  List<Job> get jobs =>
-      gJobs.where((j) => _inScope(j) && _isToday(j)).toList()..sort((a, b) => a.start.compareTo(b.start));
-  List<Job> get upcomingJobs => gJobs
-      .where((j) => _inScope(j) && !_isToday(j) && j.start.isAfter(DateTime.now()))
-      .toList()
-    ..sort((a, b) => a.start.compareTo(b.start));
-  List<Job> get pastJobs => gPastJobs.where(_inScope).toList();
+  // 예정 = 24시간 이후 시작
+  List<Job> get upcomingJobs {
+    final limit = DateTime.now().add(const Duration(hours: 24));
+    return gJobs.where((j) => _inScope(j) && j.start.isAfter(limit)).toList()
+      ..sort((a, b) => a.start.compareTo(b.start));
+  }
+
+  // 종료 = 끝난 공고 전부 (오늘 끝난 것 + 지난 2주), 최신순
+  List<Job> get pastJobs {
+    final now = DateTime.now();
+    return [...gJobs, ...gPastJobs].where((j) => _inScope(j) && now.isAfter(j.end)).toList()
+      ..sort((a, b) => b.end.compareTo(a.end));
+  }
+
+  int get manualPending => pastJobs.where(needsManual).length; // 종료 탭 배지 (+N)
 
   @override
   void initState() {
@@ -311,10 +343,12 @@ class _JobListPageState extends State<JobListPage> {
                       Text(
                           switch (view) {
                             'today' =>
-                              '${widget.admin.sites == null ? '전 근무지' : '담당 ${widget.admin.sites!.length} 근무지'} · 오늘 ${jobs.length}건',
+                              '${widget.admin.sites == null ? '전 근무지' : '담당 ${widget.admin.sites!.length} 근무지'} · 진행 ${jobs.where((j) => DateTime.now().isAfter(j.start)).length} · 24시간 내 시작 ${jobs.where((j) => !DateTime.now().isAfter(j.start)).length}',
                             'upcoming' =>
-                              '${widget.admin.sites == null ? '전 근무지' : '담당 ${widget.admin.sites!.length} 근무지'} · 예정 ${upcomingJobs.length}건',
-                            _ => '지난 공고 2주 · 종료 후 7일까지 정정 가능',
+                              '${widget.admin.sites == null ? '전 근무지' : '담당 ${widget.admin.sites!.length} 근무지'} · 24시간 이후 예정 ${upcomingJobs.length}건',
+                            _ => manualPending > 0
+                                ? '수동 처리 필요 $manualPending건 · 종료 후 7일까지 정정 가능'
+                                : '종료된 공고 · 종료 후 7일까지 정정 가능',
                           },
                           style: const TextStyle(fontSize: 12.5, color: JColors.muted)),
                     ],
@@ -339,7 +373,7 @@ class _JobListPageState extends State<JobListPage> {
             padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(color: const Color(0xFFE8E8ED), borderRadius: BorderRadius.circular(10)),
             child: Row(children: [
-              for (final v in const [('today', '오늘'), ('upcoming', '예정'), ('past', '지난')])
+              for (final v in const [('today', '24시간'), ('upcoming', '예정'), ('past', '종료')])
                 Expanded(
                   child: InkWell(
                     onTap: () => setState(() => view = v.$1),
@@ -354,11 +388,19 @@ class _JobListPageState extends State<JobListPage> {
                             ? [BoxShadow(color: Colors.black.withValues(alpha: .12), blurRadius: 3)]
                             : null,
                       ),
-                      child: Text(v.$2,
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: view == v.$1 ? FontWeight.w700 : FontWeight.w600,
-                              color: view == v.$1 ? JColors.ink : JColors.muted)),
+                      child: Text.rich(TextSpan(children: [
+                        TextSpan(
+                            text: v.$2,
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: view == v.$1 ? FontWeight.w700 : FontWeight.w600,
+                                color: view == v.$1 ? JColors.ink : JColors.muted)),
+                        // 종료 탭 배지 — 수동 처리 필요 공고 수 (앰버)
+                        if (v.$1 == 'past' && manualPending > 0)
+                          TextSpan(
+                              text: ' +$manualPending',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: JColors.amber)),
+                      ])),
                     ),
                   ),
                 ),
@@ -366,14 +408,9 @@ class _JobListPageState extends State<JobListPage> {
           ),
           const SizedBox(height: 12),
           if (view == 'today')
-            ...(jobs.isEmpty
-                ? [_emptyCard('오늘 공고가 없어요')]
-                : jobs.map((j) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _JobCard(job: j),
-                    )))
+            ..._todayList()
           else if (view == 'upcoming')
-            ..._grouped(upcomingJobs, '예정된 공고가 없어요')
+            ..._grouped(upcomingJobs, '24시간 이후 예정 공고가 없어요')
           else
             ..._pastList(),
         ],
@@ -493,7 +530,24 @@ class _JobListPageState extends State<JobListPage> {
         ),
       );
 
-  List<Widget> _pastList() => _grouped(pastJobs, '지난 공고가 없어요');
+  // 24시간 보기 — 진행 중 / 앞으로 24시간 두 묶음
+  List<Widget> _todayList() {
+    final now = DateTime.now();
+    final active = jobs.where((j) => now.isAfter(j.start)).toList();
+    final soon = jobs.where((j) => !now.isAfter(j.start)).toList();
+    if (active.isEmpty && soon.isEmpty) return [_emptyCard('24시간 안에 진행·시작하는 공고가 없어요')];
+    Widget head(String t) => Padding(
+        padding: const EdgeInsets.only(bottom: 7, left: 2, top: 4),
+        child: Text(t, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: JColors.muted)));
+    return [
+      if (active.isNotEmpty) head('진행 중 · ${active.length}'),
+      ...active.map((j) => Padding(padding: const EdgeInsets.only(bottom: 10), child: _JobCard(job: j))),
+      if (soon.isNotEmpty) head('앞으로 24시간 · ${soon.length}'),
+      ...soon.map((j) => Padding(padding: const EdgeInsets.only(bottom: 10), child: _JobCard(job: j))),
+    ];
+  }
+
+  List<Widget> _pastList() => _grouped(pastJobs, '종료된 공고가 없어요');
 
   static Widget _emptyCard(String msg) => jCard(Center(
       child: Padding(
@@ -551,8 +605,9 @@ class _JobCard extends StatelessWidget {
     Color timerColor;
     double? progress; // 진행 중일 때만 막대 표시
     if (ended) {
-      timerText = '근무 종료';
-      timerColor = JColors.inactive;
+      final manual = manualCount(job);
+      timerText = manual > 0 ? '근무 종료 · 수동 처리 $manual건' : '근무 종료';
+      timerColor = manual > 0 ? JColors.amber : JColors.inactive;
     } else if (started) {
       final elapsed = now.difference(job.start);
       timerText = '${_dur(elapsed)} 경과 · 종료 ${Job._hm(job.end)}';
@@ -588,7 +643,9 @@ class _JobCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 3),
-          Text('${job.slot} ${job.timeLabel}', style: const TextStyle(fontSize: 12, color: JColors.muted)),
+          Text(
+              '${(job.start.year == now.year && job.start.month == now.month && job.start.day == now.day) ? '' : '${job.dateLabel} '}${job.slot} ${job.timeLabel}',
+              style: const TextStyle(fontSize: 12, color: JColors.muted)),
           const SizedBox(height: 4),
           // 타이머 줄 — 맥 점 + 색 글씨
           Row(children: [
@@ -627,8 +684,11 @@ class _JobCard extends StatelessWidget {
               ])),
               // 시작 전엔 '부족'(모집), 시작 후엔 '미출근'(출결) — 단어 구분
               ended
-                  ? const Text('근무 완료',
-                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.inactive))
+                  ? (manualCount(job) > 0
+                      ? Text('퇴근 미처리 ${manualCount(job)}명',
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.amber))
+                      : const Text('근무 완료',
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.inactive)))
                   : started
                       ? Text(short ? '${job.short}명 미출근 · 확인해주세요' : '이상 없음',
                           style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
@@ -655,11 +715,12 @@ class AttendancePage extends StatefulWidget {
 }
 
 class _AttendancePageState extends State<AttendancePage> {
-  final Map<String, String> overrides = {}; // 이름 → 수동 상태 (ok/absent)
+  // 이름 → 수동 상태 (앱 전역 저장소 사용 → 화면 나갔다 와도 유지)
+  Map<String, String> get overrides => gOverrides.putIfAbsent(jobKey(widget.job), () => {});
   final List<Worker> extWorkers = []; // 외부인력 (기획안: 외부 구인)
   final List<Worker> invited = []; // 직접 추가한 가입 알바생 (기획안 §5-3, 즉시 승인)
-  late final List<GpsReq> gpsReqs =
-      List.of(gpsReqsOf(widget.job)); // 퇴근 승인 대기
+  late final List<GpsReq> gpsReqs = List.of(gpsReqsOf(widget.job)
+      .where((r) => !gGpsDone.contains('${jobKey(widget.job)}|${r.name}'))); // 퇴근 승인 대기 (처리분 제외)
   Timer? _tick;
 
   @override
@@ -1221,6 +1282,12 @@ class _AttendancePageState extends State<AttendancePage> {
       }
     }
     final attended = ok + late + out + early;
+    // 종료됐는데 퇴근 기록 없음 → 수동 처리 필요 (종료 6시간 후엔 자동 처리로 간주)
+    final autoDone = DateTime.now().difference(widget.job.end).inHours >= 6;
+    final pendingNames = autoDone
+        ? const <String>[]
+        : mapped.where((w) => statusOf(w) == 'ok' || statusOf(w) == 'late').map((w) => w.name).toList();
+    final pendingOut = pendingNames.length;
 
     return [
       _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1229,9 +1296,12 @@ class _AttendancePageState extends State<AttendancePage> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             _bigCount(attended, widget.job.cap, '출근'),
-            Text(absent > 0 ? '결근 $absent명' : '결근 없음',
-                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
-                    color: absent > 0 ? JColors.red : JColors.green)),
+            pendingOut > 0
+                ? Text('퇴근 미처리 $pendingOut명',
+                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.amber))
+                : Text(absent > 0 ? '결근 $absent명' : '결근 없음',
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
+                        color: absent > 0 ? JColors.red : JColors.green)),
           ],
         ),
         const SizedBox(height: 4),
@@ -1246,6 +1316,17 @@ class _AttendancePageState extends State<AttendancePage> {
             ].join(' · '),
             style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
       ])),
+      if (pendingOut > 0) ...[
+        const SizedBox(height: 8),
+        _pill('전원 퇴근 처리 · $pendingOut명', bg: JColors.amber, fg: Colors.white, onTap: () {
+          setState(() {
+            for (final n in pendingNames) {
+              overrides[n] = 'out';
+            }
+          });
+          snack('$pendingOut명 퇴근 처리 — 종료 6시간 후엔 자동으로 처리돼요');
+        }),
+      ],
       ..._gpsSection(),
       const SizedBox(height: 12),
       // 정정 허용 7일 (사용자 결정 2026-08-24, N30)
@@ -1299,6 +1380,7 @@ class _AttendancePageState extends State<AttendancePage> {
                       child: _pill('승인 · 포인트 지급', bg: JColors.blue, fg: Colors.white, onTap: () {
                     setState(() {
                       gpsReqs.remove(r);
+                      gGpsDone.add('${jobKey(widget.job)}|${r.name}');
                       overrides[r.name] = 'out';
                     });
                     snack('${r.name} — 퇴근 승인 · 포인트 지급');
@@ -1308,6 +1390,7 @@ class _AttendancePageState extends State<AttendancePage> {
                       child: _pill('반려', bg: Colors.white, fg: JColors.red, border: JColors.red, onTap: () {
                     setState(() {
                       gpsReqs.remove(r);
+                      gGpsDone.add('${jobKey(widget.job)}|${r.name}');
                       overrides[r.name] = 'out';
                     });
                     snack('${r.name} — 반려 · 퇴근 기록만, 포인트 미지급');

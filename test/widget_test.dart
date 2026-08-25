@@ -14,6 +14,6 @@ void main() {
     await tester.tap(find.text('공고').last);
     await tester.pumpAndSettle(const Duration(milliseconds: 300));
     expect(find.text('곤지암 MegaHub'), findsWidgets);
-    expect(find.text('지난'), findsOneWidget); // 오늘/예정/지난 전환 스위치
+    expect(find.textContaining('종료'), findsWidgets); // 24시간/예정/종료 전환 스위치
   });
 }
