@@ -1684,28 +1684,53 @@ class _SchedulePageState extends State<SchedulePage> {
           final jobs = onDay(date);
           final sel = date == selected;
           final isToday = date == today0;
-          // 점 색: 부족/미출근 있으면 빨강, 아니면 회색
-          final alert = jobs.any((j) => j.short > 0 && !now.isAfter(j.end));
+          // 칸 안에 근무지 라벨 최대 2개 (+N) — 부족/미출근은 빨강
+          final shown = jobs.take(2).toList();
           return InkWell(
             onTap: () => setState(() => selected = date),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
             child: Container(
+              padding: const EdgeInsets.fromLTRB(2, 4, 2, 2),
               decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12), color: sel ? JColors.ink : Colors.transparent),
-              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  borderRadius: BorderRadius.circular(10), color: sel ? JColors.ink : Colors.transparent),
+              child: Column(children: [
                 Text('$d',
                     style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 12.5,
+                        height: 1.1,
                         fontWeight: sel || isToday ? FontWeight.w800 : FontWeight.w600,
                         color: sel ? Colors.white : (isToday ? JColors.blue : JColors.ink))),
-                const SizedBox(height: 3),
-                jobs.isEmpty
-                    ? const SizedBox(height: 5)
-                    : Container(
-                        width: jobs.length > 1 ? 11 : 5, height: 5,
-                        decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(3),
-                            color: sel ? Colors.white : (alert ? JColors.red : const Color(0xFFC7C7CC)))),
+                const SizedBox(height: 2),
+                for (final j in shown)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(top: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1.5),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(4),
+                      color: sel
+                          ? Colors.white.withValues(alpha: .18)
+                          : (j.short > 0 && !now.isAfter(j.end) ? const Color(0x1AC22A2A) : const Color(0xFFF0F0F2)),
+                    ),
+                    child: Text(j.site.split(' ').first,
+                        maxLines: 1,
+                        overflow: TextOverflow.clip,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 8.5,
+                            height: 1.2,
+                            fontWeight: FontWeight.w700,
+                            color: sel
+                                ? Colors.white
+                                : (j.short > 0 && !now.isAfter(j.end) ? JColors.red : JColors.ink))),
+                  ),
+                if (jobs.length > 2)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Text('+${jobs.length - 2}',
+                        style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700,
+                            color: sel ? Colors.white70 : JColors.inactive)),
+                  ),
               ]),
             ),
           );
@@ -1717,7 +1742,7 @@ class _SchedulePageState extends State<SchedulePage> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
         children: [
-          jHeader('일정', '${month.month}월 공고 $monthJobs건 · 빨간 점 = 인원 부족'),
+          jHeader('일정', '${month.month}월 공고 $monthJobs건 · 빨강 = 인원 부족'),
           jCard(Column(children: [
             Row(children: [
               nav('‹', () => setState(() => month = DateTime(month.year, month.month - 1))),
@@ -1743,7 +1768,7 @@ class _SchedulePageState extends State<SchedulePage> {
               crossAxisCount: 7,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              childAspectRatio: 1.0,
+              childAspectRatio: 0.68, // 라벨 2줄 들어가게 세로로 길게
               children: cells,
             ),
           ])),
