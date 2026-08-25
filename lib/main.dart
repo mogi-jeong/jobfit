@@ -224,6 +224,80 @@ int mockBalance(String name) => 5000 + (name.codeUnits.fold(0, (a, b) => a + b) 
 // 이미 회수된 합계 (가용 잔액 계산)
 int recoveredOf(String name) => gRecoveries.where((r) => r.name == name).fold(0, (a, r) => a + r.amount);
 
+// ─── 근무자 프로필 (어디서든 이름 탭 → 상세) ───
+final List<Recovery> gGrants = []; // 보너스 지급 기록 (Recovery 구조 재사용, amount = +)
+int grantedOf(String name) => gGrants.where((r) => r.name == name).fold(0, (a, r) => a + r.amount);
+Member memberOf(String name) =>
+    mockMembers.where((m) => m.name == name).firstOrNull ?? Member(name, '010-0000-0000', '성실 B');
+int warningsOf(Member m) => int.tryParse(RegExp(r'경고 (\d)').firstMatch(m.label)?.group(1) ?? '') ?? 0;
+
+void openWorker(BuildContext context, String name) =>
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => WorkerPage(name: name)));
+
+// 이름을 누르면 프로필 — 화면 어디서나 같은 동작
+Widget jName(BuildContext context, String name, {TextStyle? style}) => InkWell(
+      onTap: () => openWorker(context, name),
+      borderRadius: BorderRadius.circular(6),
+      child: Text(name,
+          style: style ?? const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: JColors.ink)),
+    );
+
+// 포인트 지급 (보너스) — 권한별 한도: 1급 5,000P / 2급 3,000P (기획 §6-4), 사유 필수
+Future<void> openGrantSheet(BuildContext context, String name) async {
+  final admin = gAdmin;
+  final limit = (admin == null || admin.isA1) ? 5000 : 3000;
+  int amount = 1000;
+  final memo = TextEditingController();
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setS) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text('$name 포인트 지급',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JColors.ink)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('한도 ${limit ~/ 1000},000P (${admin?.roleLabel ?? '관리자'})',
+              style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+          const SizedBox(height: 10),
+          Row(children: [
+            _JobListPageState._stepBtn('−', () => setS(() => amount = (amount - 1000).clamp(1000, limit))),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Text('+${amount ~/ 1000},000P',
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: JColors.green,
+                      fontFeatures: [FontFeature.tabularFigures()])),
+            ),
+            _JobListPageState._stepBtn('＋', () => setS(() => amount = (amount + 1000).clamp(1000, limit))),
+          ]),
+          const SizedBox(height: 10),
+          TextField(
+            controller: memo,
+            autofocus: true,
+            maxLines: 2,
+            onChanged: (_) => setS(() {}),
+            style: const TextStyle(fontSize: 13, color: JColors.ink),
+            decoration: const InputDecoration(labelText: '지급 사유 (필수 · 알바생에게 전달)'),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx),
+              child: const Text('취소', style: TextStyle(color: JColors.muted, fontWeight: FontWeight.w600))),
+          TextButton(
+              onPressed: memo.text.trim().isEmpty ? null : () => Navigator.pop(ctx, true),
+              child: Text('지급',
+                  style: TextStyle(color: memo.text.trim().isEmpty ? JColors.inactive : JColors.green,
+                      fontWeight: FontWeight.w800))),
+        ],
+      ),
+    ),
+  );
+  if (ok != true || memo.text.trim().isEmpty || !context.mounted) return;
+  gGrants.add(Recovery(name, amount, memo.text.trim(), admin?.name ?? '관리자', '', DateTime.now()));
+  jSnack(context, '$name — +${amount ~/ 1000},000P 지급 · 메시지 전송');
+}
+
 // GPS 영역 밖 퇴근 — 사유 검토 대기 (알바생 앱에서 제출 → 여기서 승인/반려)
 class GpsReq {
   final String name, reason, dist, time;
@@ -863,6 +937,13 @@ class _AttendancePageState extends State<AttendancePage> {
             const SizedBox(height: 2),
             Text(ext ? '외부인력' : '출결 정정 — 변경 내용은 기록에 남아요',
                 style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+            if (!ext) ...[
+              const SizedBox(height: 8),
+              _pill('프로필 보기 · 근무·포인트 내역', bg: Colors.white, fg: JColors.blue, border: JColors.blue, onTap: () {
+                Navigator.pop(ctx);
+                openWorker(context, w.name);
+              }),
+            ],
             if (statusEditable) ...[
               const SizedBox(height: 13),
               Wrap(spacing: 7, runSpacing: 7, children: [
@@ -1366,7 +1447,7 @@ class _AttendancePageState extends State<AttendancePage> {
           child: Text('아직 확정된 인원이 없어요', style: TextStyle(fontSize: 12, color: JColors.inactive)),
         )))
       else
-        _rosterCard(roster),
+        _rosterCard(roster, onTap: (w) => openWorker(context, w.name)), // 시작 전엔 이름 탭 → 프로필
       ..._extSection(statusEditable: false),
     ];
   }
@@ -1500,8 +1581,8 @@ class _AttendancePageState extends State<AttendancePage> {
       const SizedBox(height: 12),
       // 정정 허용 7일 (사용자 결정 2026-08-24, N30)
       if (locked) ...[
-        _sect('최종 명단 · ${done.length}명'),
-        _rosterCard(done),
+        _sect('최종 명단 · ${done.length}명 — 이름 누르면 프로필'),
+        _rosterCard(done, onTap: (w) => openWorker(context, w.name)),
         ..._extSection(statusEditable: false),
         const SizedBox(height: 10),
         const Padding(
@@ -1561,8 +1642,12 @@ class _AttendancePageState extends State<AttendancePage> {
               color = JColors.inactive;
             }
             return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text('${r.order}번  ${r.name}',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: JColors.ink)),
+              InkWell(
+                onTap: () => openWorker(context, r.name),
+                borderRadius: BorderRadius.circular(6),
+                child: Text('${r.order}번  ${r.name}',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: JColors.ink)),
+              ),
               Text(right,
                   style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color,
                       fontFeatures: const [FontFeature.tabularFigures()])),
@@ -2207,13 +2292,31 @@ class _ApprovalPageState extends State<ApprovalPage> {
       child: Padding(padding: const EdgeInsets.symmetric(vertical: 10),
           child: Text(t, style: const TextStyle(fontSize: 12, color: JColors.inactive)))));
 
+  // 신청 — 협의대상(신중히) 먼저, 그다음 12시간 이내
   List<Widget> _applyList() {
     if (apps.isEmpty) return [_empty('승인 대기 없음')];
-    return apps.map((a) => Padding(
+    final danger = apps.where((a) => a.danger).toList();
+    final normal = apps.where((a) => !a.danger).toList();
+    Widget head(String t, Color c) => Padding(
+        padding: const EdgeInsets.only(bottom: 7, left: 2, top: 2),
+        child: Text(t, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c)));
+    return [
+      if (danger.isNotEmpty) ...[
+        head('협의대상 · ${danger.length}명 — 신중히 검토', JColors.red),
+        ...danger.map(_applyCard),
+      ],
+      if (normal.isNotEmpty) ...[
+        head('12시간 이내 신청 · ${normal.length}명', JColors.muted),
+        ...normal.map(_applyCard),
+      ],
+    ];
+  }
+
+  Widget _applyCard(PendingApp a) => Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: jCard(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text(a.name, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: JColors.ink)),
+              jName(context, a.name),
               Text(a.flag,
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
                       color: a.danger ? JColors.red : const Color(0xFF9A6B00))),
@@ -2236,8 +2339,7 @@ class _ApprovalPageState extends State<ApprovalPage> {
                   onTap: () => _reject(a))),
             ]),
           ])),
-        )).toList();
-  }
+        );
 
   List<Widget> _cancelList() {
     if (cancels.isEmpty) return [_empty('취소 검토 대기 없음')];
@@ -2245,7 +2347,7 @@ class _ApprovalPageState extends State<ApprovalPage> {
           padding: const EdgeInsets.only(bottom: 10),
           child: jCard(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text(c.name, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: JColors.ink)),
+              jName(context, c.name),
               Text('12시간 이내 · ${c.when}',
                   style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF9A6B00))),
             ]),
@@ -2296,8 +2398,12 @@ class _ApprovalPageState extends State<ApprovalPage> {
           padding: const EdgeInsets.only(bottom: 10),
           child: jCard(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text('${w.siteName} 대기 ${w.order}번 · ${w.name}',
-                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: JColors.ink)),
+              InkWell(
+                onTap: () => openWorker(context, w.name),
+                borderRadius: BorderRadius.circular(6),
+                child: Text('${w.siteName} 대기 ${w.order}번 · ${w.name}',
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: JColors.ink)),
+              ),
               Text(txt,
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800,
                       fontFeatures: const [FontFeature.tabularFigures()],
@@ -2398,8 +2504,12 @@ class _CommPageState extends State<CommPage> {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: jCard(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Text('${l.name} — ${l.delayMin}분 늦어요',
-                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: JColors.ink)),
+                    InkWell(
+                      onTap: () => openWorker(context, l.name),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Text('${l.name} — ${l.delayMin}분 늦어요',
+                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: JColors.ink)),
+                    ),
                     Text(l.ago, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF9A6B00))),
                   ]),
                   const SizedBox(height: 2),
@@ -2419,7 +2529,8 @@ class _CommPageState extends State<CommPage> {
                   padding: const EdgeInsets.only(bottom: 8),
                   child: jCard(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                      Text(r.name, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: JColors.ink)),
+                      jName(context, r.name,
+                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: JColors.ink)),
                       Text('−${r.amount.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},')}P',
                           style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: JColors.red,
                               fontFeatures: [FontFeature.tabularFigures()])),
@@ -2517,9 +2628,13 @@ class _InquiryChatPageState extends State<InquiryChatPage> {
               ),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(widget.name,
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -.4, color: JColors.ink)),
-                  const Text('1:1 문의', style: TextStyle(fontSize: 11.5, color: JColors.muted)),
+                  InkWell(
+                    onTap: () => openWorker(context, widget.name),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Text(widget.name,
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -.4, color: JColors.ink)),
+                  ),
+                  const Text('1:1 문의 · 이름 누르면 프로필', style: TextStyle(fontSize: 11.5, color: JColors.muted)),
                 ]),
               ),
               InkWell(
@@ -2597,6 +2712,190 @@ class _InquiryChatPageState extends State<InquiryChatPage> {
                 child: jPill('전송', bg: JColors.blue, fg: Colors.white, onTap: _send),
               ),
             ]),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+// ═══════════ 근무자 프로필 — 정보 · 대화 · 포인트 지급/회수 · 근무 내역 · 포인트 내역 ═══════════
+class WorkerPage extends StatefulWidget {
+  final String name;
+  const WorkerPage({super.key, required this.name});
+  @override
+  State<WorkerPage> createState() => _WorkerPageState();
+}
+
+class _WorkerPageState extends State<WorkerPage> {
+  String won(int v) => v.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (x) => '${x[1]},');
+
+  @override
+  Widget build(BuildContext context) {
+    final name = widget.name;
+    final m = memberOf(name);
+    final warns = warningsOf(m);
+    final now = DateTime.now();
+
+    // 근무 내역 — 모든 공고 명단에서 이 사람 찾기 (→ Supabase applications+attendance 조회로 교체)
+    final work = <(Job, Worker)>[];
+    for (final j in [...gJobs, ...gPastJobs]) {
+      for (final w in rosterOf(j)) {
+        if (w.name == name) work.add((j, w));
+      }
+    }
+    work.sort((a, b) => b.$1.start.compareTo(a.$1.start));
+    final ended = work.where((e) => now.isAfter(e.$1.end)).toList();
+    final attended = ended.where((e) {
+      final s = effStatus(e.$1, e.$2);
+      return s == 'ok' || s == 'late' || s == 'early';
+    }).length;
+    final balance = mockBalance(name) - recoveredOf(name) + grantedOf(name);
+
+    // 포인트 내역 (최신순): 근무 보상 + 지급 + 회수
+    final pts = <(DateTime, String, int)>[
+      for (final e in ended)
+        if (jobPointEligible(e.$1, e.$2))
+          (e.$1.end, '근무 보상 · ${e.$1.site.split(' ').first} ${e.$1.dateLabel}', e.$1.point),
+      for (final g in gGrants)
+        if (g.name == name) (g.at, '지급 · ${g.memo}', g.amount),
+      for (final r in gRecoveries)
+        if (r.name == name) (r.at, '회수 · ${r.memo}', -r.amount),
+    ]..sort((a, b) => b.$1.compareTo(a.$1));
+
+    final inq = _inquiriesAll.where((q) => q.name == name).firstOrNull;
+
+    String stLabel(String s) => switch (s) {
+          'ok' => '출근',
+          'late' => '지각',
+          'early' => '조퇴',
+          'runaway' => '무단이탈',
+          'absent' || 'none' => '결근',
+          _ => '출근 전',
+        };
+
+    return Scaffold(
+      body: SafeArea(
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 16, 6),
+            child: Row(children: [
+              InkWell(
+                onTap: () => Navigator.of(context).pop(),
+                borderRadius: BorderRadius.circular(10),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  child: Text('‹', style: TextStyle(fontSize: 26, color: JColors.blue, height: 1)),
+                ),
+              ),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(name,
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -.4, color: JColors.ink)),
+                Text(m.phone, style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+              ]),
+            ]),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+              children: [
+                jCard(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text.rich(TextSpan(children: [
+                    TextSpan(text: m.label,
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: JColors.ink)),
+                    if (warns > 0)
+                      TextSpan(text: '  ·  경고 $warns회',
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700,
+                              color: warns >= 2 ? JColors.red : JColors.amber)),
+                    if (m.neg)
+                      const TextSpan(text: '  ·  협의대상',
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: JColors.red)),
+                  ])),
+                  const SizedBox(height: 8),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Text.rich(TextSpan(children: [
+                      TextSpan(text: '${won(balance)}P ',
+                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: JColors.ink,
+                              fontFeatures: [FontFeature.tabularFigures()])),
+                      const TextSpan(text: '보유', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: JColors.muted)),
+                    ])),
+                    Text('누적 근무 $attended회', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.muted)),
+                  ]),
+                ])),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(child: jPill('1:1 대화', bg: JColors.blue, fg: Colors.white, onTap: () =>
+                      Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => InquiryChatPage(name: name, initial: inq?.msgs ?? const []))))),
+                  const SizedBox(width: 7),
+                  Expanded(child: jPill('포인트 지급', bg: Colors.white, fg: JColors.green, border: JColors.green,
+                      onTap: () => openGrantSheet(context, name).then((_) { if (mounted) setState(() {}); }))),
+                  const SizedBox(width: 7),
+                  Expanded(child: jPill('포인트 회수', bg: Colors.white, fg: JColors.red, border: JColors.red,
+                      onTap: () => openRecoverSheet(context, name: name).then((_) { if (mounted) setState(() {}); }))),
+                ]),
+                if (m.neg)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8, left: 2),
+                    child: Text('협의대상 해제는 마스터 전용 (PC 관리자 웹)', style: TextStyle(fontSize: 11, color: JColors.inactive)),
+                  ),
+                jSect('근무 내역 · ${work.length}건'),
+                if (work.isEmpty)
+                  jCard(const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text('근무 기록 없음', style: TextStyle(fontSize: 12, color: JColors.inactive))))),
+                if (work.isNotEmpty)
+                  jCard(Column(children: [
+                    for (var i = 0; i < work.length && i < 20; i++) ...[
+                      if (i > 0) const Divider(height: 14, thickness: .5, color: JColors.hairline),
+                      () {
+                        final (j, w) = work[i];
+                        final s = effStatus(j, w);
+                        final isEnded = now.isAfter(j.end);
+                        final active = !isEnded && now.isAfter(j.start);
+                        final right = active
+                            ? ('진행 중', JColors.blue)
+                            : !isEnded
+                                ? ('예정', JColors.inactive)
+                                : (stLabel(s) + (jobPointEligible(j, w) ? ' · +${won(j.point)}P' : ''),
+                                    s == 'ok' || s == 'late' ? JColors.green : (s == 'early' ? JColors.amber : JColors.red));
+                        return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                          Text('${j.dateLabel}  ${j.site.split(' ').first} ${j.slot}',
+                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: JColors.ink)),
+                          Text(right.$1,
+                              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: right.$2,
+                                  fontFeatures: const [FontFeature.tabularFigures()])),
+                        ]);
+                      }(),
+                    ],
+                  ])),
+                jSect('포인트 내역 · ${pts.length}건'),
+                if (pts.isEmpty)
+                  jCard(const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text('내역 없음', style: TextStyle(fontSize: 12, color: JColors.inactive))))),
+                if (pts.isNotEmpty)
+                  jCard(Column(children: [
+                    for (var i = 0; i < pts.length && i < 20; i++) ...[
+                      if (i > 0) const Divider(height: 14, thickness: .5, color: JColors.hairline),
+                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                        Expanded(
+                          child: Text('${pts[i].$1.month}/${pts[i].$1.day}  ${pts[i].$2}',
+                              maxLines: 1, overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12, color: JColors.ink)),
+                        ),
+                        Text('${pts[i].$3 > 0 ? '+' : '−'}${won(pts[i].$3.abs())}P',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800,
+                                color: pts[i].$3 > 0 ? JColors.green : JColors.red,
+                                fontFeatures: const [FontFeature.tabularFigures()])),
+                      ]),
+                    ],
+                  ])),
+                const Padding(
+                  padding: EdgeInsets.only(top: 10, left: 2),
+                  child: Text('경고 이력 상세·협의대상 해제·출금 처리는 PC 관리자 웹에서',
+                      style: TextStyle(fontSize: 11, color: JColors.inactive)),
+                ),
+              ],
+            ),
           ),
         ]),
       ),
