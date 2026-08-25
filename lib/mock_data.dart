@@ -290,8 +290,26 @@ List<GpsReq> gpsReqsOf(Job job) {
 class PendingApp {
   final String name, siteName, slotTime, note, flag;
   final bool danger;
-  const PendingApp(this.name, this.siteName, this.slotTime, this.note, this.flag, [this.danger = false]);
+  final String? buddy; // 같이하기 짝꿍 이름 — 승인·거절이 둘 다 같이 처리됨 (기획 §4-9)
+  const PendingApp(this.name, this.siteName, this.slotTime, this.note, this.flag, [this.danger = false, this.buddy]);
 }
+
+// ─── 같이하기(Buddy) 페어 — 공고별 (→ applications.buddy_app_id 교체 지점) ───
+// 1:1 페어만 · 보너스 +3,000P 각자 = 둘 다 정시 출근(ok) + 정상 퇴근일 때만 자동
+const _buddyJobs = {'j-t-1', 'j-t-4', 'j-t-5', 'j-u-1', 'j-u-2', 'j-p-0', 'j-p-3', 'j-p-8'};
+final Map<String, Map<String, String>> _buddyCache = {};
+
+Map<String, String> buddyMapOf(Job job) {
+  if (!_buddyJobs.contains(job.id)) return const {};
+  return _buddyCache.putIfAbsent(job.id, () {
+    final r = rosterOf(job);
+    if (r.length < 4) return {};
+    final a = r[r.length - 1].name, b = r[r.length - 2].name; // 명단 뒤쪽 두 명을 짝으로
+    return {a: b, b: a};
+  });
+}
+
+String? buddyOf(Job job, String name) => buddyMapOf(job)[name];
 
 class CancelReq {
   final String name, siteName, slotTime, reason, appliedAt, cancelledAt;
@@ -316,12 +334,12 @@ class WaitEntry {
 }
 
 const _pendingAll = [
-  PendingApp('한지민', '곤지암 MegaHub', '오늘 야간 22:00 – 06:00', '단골 · 출근 12회', '12시간 이내'),
+  PendingApp('한지민', '곤지암 MegaHub', '오늘 야간 22:00 – 06:00', '단골 · 출근 12회', '12시간 이내', false, '류지안'),
+  PendingApp('류지안', '곤지암 MegaHub', '오늘 야간 22:00 – 06:00', '성실 A', '12시간 이내', false, '한지민'),
   PendingApp('오세훈', '이천 MpHub', '오늘 야간 22:00 – 06:00', '경고 3회', '협의대상', true),
   PendingApp('백소라', '곤지암 MegaHub', '내일 주간 08:00 – 17:00', '경고 2회', '12시간 이내'),
   PendingApp('전소민', '이천 MpHub', '내일 야간 22:00 – 06:00', '협의대상 등록 8/1', '협의대상', true),
   PendingApp('김민준', '용인 Hub', '오늘 주간 09:00 – 18:00', '보통 C', '12시간 이내'),
-  PendingApp('류지안', 'W힐스 웨딩홀', '오늘 오후 11:00 – 19:00', '성실 A', '12시간 이내'),
   PendingApp('도경수', '남양주 Hub', '내일 주간 09:00 – 18:00', '경고 2회', '12시간 이내'),
 ];
 

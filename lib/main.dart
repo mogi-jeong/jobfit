@@ -203,6 +203,19 @@ int manualCount(Job j) {
 
 bool needsManual(Job j) => manualCount(j) > 0;
 
+// 같이하기 보너스 자격 — 짝꿍 둘 다 정시 출근(ok, 지각 X) + 정상 퇴근(반려 X)일 때만 (기획 §4-9 정책4)
+bool buddyBonusEligible(Job j, Worker w) {
+  final p = buddyOf(j, w.name);
+  if (p == null) return false;
+  final pw = rosterOf(j).where((x) => x.name == p).firstOrNull;
+  if (pw == null) return false;
+  bool onTime(Worker x) {
+    final o = outOf(j, x);
+    return effStatus(j, x) == 'ok' && o != null && !o.startsWith('반려');
+  }
+  return onTime(w) && onTime(pw);
+}
+
 // 포인트 자동 지급 대상 판정 — policy.dart 규칙 사용 (알바생 앱과 동일)
 bool jobPointEligible(Job j, Worker w) {
   final o = outOf(j, w);
@@ -1481,6 +1494,8 @@ class _AttendancePageState extends State<AttendancePage> {
         : mapped.where((w) => (statusOf(w) == 'ok' || statusOf(w) == 'late') && outOf_(w) == null).toList();
     final done = mapped.where((w) => !pending.contains(w)).toList();
     final eligible = mapped.where(_eligible).length; // 포인트 자동 지급 대상
+    final bonusN = mapped.where((w) => buddyBonusEligible(widget.job, w)).length; // 같이하기 보너스 대상 인원
+    final totalP = eligible * widget.job.point + bonusN * Policy.buddyBonus;
     final gpsBy = {for (final r in gpsReqs) r.name: r}; // 사유 제출자 (퇴근 미처리와 같은 사람 → 한 카드로 합침)
     final bulkTargets = pending.where((w) => !gpsBy.containsKey(w.name)).toList(); // 일괄 처리는 사유 없는 사람만
 
@@ -1544,9 +1559,13 @@ class _AttendancePageState extends State<AttendancePage> {
         Text.rich(TextSpan(children: [
           const TextSpan(text: '정산  ', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.muted)),
           TextSpan(
-              text: '정상 출근·퇴근 $eligible명 → +${(eligible * widget.job.point).toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},')}P 지급 예정',
+              text: '정상 출근·퇴근 $eligible명 → +${totalP.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},')}P 지급 예정',
               style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
                   color: eligible > 0 ? JColors.green : JColors.inactive)),
+          if (bonusN > 0)
+            TextSpan(
+                text: ' (같이하기 보너스 $bonusN명 포함)',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: JColors.green)),
           if (pending.isNotEmpty)
             TextSpan(
                 text: '  ·  퇴근 미처리 ${pending.length}명은 처리 후 확정',
@@ -1826,6 +1845,17 @@ class _AttendancePageState extends State<AttendancePage> {
                 text: _eligible(w) ? ' · +${widget.job.point}P' : ' · 포인트 없음',
                 style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700,
                     color: _eligible(w) ? JColors.green : JColors.inactive)),
+          // 같이하기 짝꿍 + 보너스 (종료 후, 둘 다 정시 출근·정상 퇴근일 때만)
+          if (buddyOf(widget.job, w.name) != null) ...[
+            TextSpan(
+                text: ' · 짝 ${buddyOf(widget.job, w.name)}',
+                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: JColors.muted)),
+            if (DateTime.now().isAfter(widget.job.end) && !pendingOut)
+              TextSpan(
+                  text: buddyBonusEligible(widget.job, w) ? ' +${Policy.buddyBonus ~/ 1000},000P' : ' 보너스 없음',
+                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700,
+                      color: buddyBonusEligible(widget.job, w) ? JColors.green : JColors.inactive)),
+          ],
           TextSpan(
               text: '  ${isExt(w.name) ? '외부' : isInvited(w.name) ? '추가' : (s == 'wait' ? '' : (manual ? '수동' : '자동'))}',
               style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFFC7C7CC))),
@@ -2267,10 +2297,16 @@ class _ApprovalPageState extends State<ApprovalPage> {
       if (ok == true) jSnack(context, '거절 사유를 입력해야 해요');
       return;
     }
-    setState(() => apps.remove(a));
+    // 같이하기: 짝꿍도 함께 거절 (cascade) — 짝은 자리 여유 있을 때 단독 재신청 가능
+    final mate = a.buddy == null ? null : apps.where((x) => x.name == a.buddy).firstOrNull;
+    setState(() {
+      apps.remove(a);
+      if (mate != null) apps.remove(mate);
+    });
     gDecided.add('app|${a.name}|${a.siteName}');
+    if (mate != null) gDecided.add('app|${mate.name}|${mate.siteName}');
     gPendingTick.value++;
-    jSnack(context, '${a.name} — 거절 · 사유가 전달됐어요');
+    jSnack(context, mate != null ? '${a.name} · ${mate.name} — 짝 함께 거절 · 사유 전달' : '${a.name} — 거절 · 사유가 전달됐어요');
   }
 
   @override
@@ -2370,15 +2406,25 @@ class _ApprovalPageState extends State<ApprovalPage> {
             const SizedBox(height: 2),
             Text('${a.siteName} · ${a.slotTime}\n${a.note}',
                 style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.5)),
+            if (a.buddy != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Text('같이하기 · ${a.buddy}와 함께 신청 — 승인·거절이 둘 다 같이 처리돼요',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: JColors.blue)),
+              ),
             const SizedBox(height: 10),
             Row(children: [
               Expanded(child: jPill('승인', bg: JColors.blue, fg: Colors.white, onTap: () {
-                setState(() => apps.remove(a));
+                // 같이하기: 짝꿍도 함께 승인 (cascade)
+                final mate = a.buddy == null ? null : apps.where((x) => x.name == a.buddy).firstOrNull;
+                setState(() {
+                  apps.remove(a);
+                  if (mate != null) apps.remove(mate);
+                });
                 gDecided.add('app|${a.name}|${a.siteName}');
+                if (mate != null) gDecided.add('app|${mate.name}|${mate.siteName}');
                 gPendingTick.value++;
-    gDecided.add('app|${a.name}|${a.siteName}');
-    gPendingTick.value++;
-                jSnack(context, '${a.name} — 승인했어요');
+                jSnack(context, mate != null ? '${a.name} · ${mate.name} — 같이하기 짝 함께 승인' : '${a.name} — 승인했어요');
               })),
               const SizedBox(width: 7),
               Expanded(child: jPill('거절', bg: Colors.white, fg: JColors.red, border: JColors.red,
@@ -2805,6 +2851,9 @@ class _WorkerPageState extends State<WorkerPage> {
       for (final e in ended)
         if (jobPointEligible(e.$1, e.$2))
           (e.$1.end, '근무 보상 · ${e.$1.site.split(' ').first} ${e.$1.dateLabel}', e.$1.point),
+      for (final e in ended)
+        if (buddyBonusEligible(e.$1, e.$2))
+          (e.$1.end, '같이하기 보너스 · ${e.$1.site.split(' ').first} ${e.$1.dateLabel} (짝 ${buddyOf(e.$1, name)})', Policy.buddyBonus),
       for (final g in gGrants)
         if (g.name == name) (g.at, '지급 · ${g.memo}', g.amount),
       for (final r in gRecoveries)
