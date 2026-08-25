@@ -234,33 +234,38 @@ List<Worker> _genRoster(Job job) {
     return out;
   }
   if (ended) {
-    // 종료: 결근 = cap - ok, 나머지 출근/지각/퇴근 섞기
+    // 종료: 결근 = cap - ok, 나머지 출근/지각 + 퇴근 기록 (6h 지나면 전원 자동 퇴근 처리됨)
     final absent = (job.cap - job.ok).clamp(0, job.cap);
+    final autoDone = now.difference(job.end).inHours >= 6;
     for (var i = 0; i < job.cap; i++) {
       if (i < absent) {
         out.add(Worker(names[i], 'absent'));
       } else {
         final r = rnd.nextInt(10);
-        final st = r < 2 ? 'late' : (r < 6 ? 'out' : 'ok');
+        final st = r < 2 ? 'late' : 'ok';
         final t = st == 'late'
             ? job.start.add(Duration(minutes: 8 + rnd.nextInt(20)))
             : job.start.subtract(Duration(minutes: rnd.nextInt(12)));
-        out.add(Worker(names[i], st, _hmOf(t)));
+        // 퇴근 기록: 6h 지났으면 전원 / 최근 종료면 약 60%만 (나머지 = 퇴근 미처리 → 수동 처리 대상)
+        final checkedOut = autoDone || rnd.nextInt(10) < 6;
+        final outT = checkedOut ? _hmOf(job.end.add(Duration(minutes: rnd.nextInt(9) - 3))) : null;
+        out.add(Worker(names[i], st, _hmOf(t), null, null, outT));
       }
     }
     return out;
   }
-  // 진행 중: 미도착 = short, 나머지 출근/지각(+가끔 퇴근)
+  // 진행 중: 미도착 = short, 나머지 출근/지각 (가끔 이미 퇴근 기록 있음)
   for (var i = 0; i < job.cap; i++) {
     if (i < job.short) {
       out.add(Worker(names[i], 'none'));
     } else {
       final r = rnd.nextInt(10);
-      final st = r < 2 ? 'late' : (r == 9 ? 'out' : 'ok');
+      final st = r < 2 ? 'late' : 'ok';
       final t = st == 'late'
           ? job.start.add(Duration(minutes: 8 + rnd.nextInt(20)))
           : job.start.subtract(Duration(minutes: rnd.nextInt(12)));
-      out.add(Worker(names[i], st, _hmOf(t)));
+      final outT = r == 9 ? _hmOf(now.subtract(Duration(minutes: 5 + rnd.nextInt(40)))) : null;
+      out.add(Worker(names[i], st, _hmOf(t), null, null, outT));
     }
   }
   return out;
@@ -276,7 +281,7 @@ const _gpsSpecs = {
 List<GpsReq> gpsReqsOf(Job job) {
   final spec = _gpsSpecs[job.id];
   if (spec == null) return const [];
-  final r = rosterOf(job).where((w) => w.status == 'ok' || w.status == 'out').toList();
+  final r = rosterOf(job).where((w) => w.status == 'ok' && w.outTime == null).toList();
   if (r.isEmpty) return const [];
   return [GpsReq(r.last.name, spec.$1, spec.$2, spec.$3)];
 }

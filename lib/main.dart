@@ -151,11 +151,12 @@ class Job {
 // ─── 알바생 출결 Mock (→ Supabase attendance 교체 지점) ───
 class Worker {
   final String name;
-  final String status; // ok / late / none / out / absent / wait
-  final String? time;
+  final String status; // 출결 상태: ok(출근) / late(지각) / early(조퇴) / runaway(무단이탈) / absent(결근) / none(미도착) / wait(출근 전)
+  final String? time; // 출근 시각
   final String? org; // 외부인력 소속 (업체명 메모)
   final String? phone; // 외부인력 전화번호
-  const Worker(this.name, this.status, [this.time, this.org, this.phone]);
+  final String? outTime; // 퇴근 기록 (null = 없음) — 출결 상태와 별개로 관리
+  const Worker(this.name, this.status, [this.time, this.org, this.phone, this.outTime]);
 }
 
 // ─── 출결 정정 기록 (앱 전역 — 화면을 나갔다 와도 유지 → Supabase attendance 교체 지점) ───
@@ -164,13 +165,21 @@ final Map<String, Map<String, String>> gOverrides = {}; // jobKey → (이름 �
 final Set<String> gGpsDone = {}; // 'jobKey|이름' 처리 완료한 퇴근 승인
 String effStatus(Job j, Worker w) => gOverrides[jobKey(j)]?[w.name] ?? w.status;
 
-// 종료 후 수동 처리 필요 인원 (퇴근 기록 없는 출근자 + 퇴근 승인 대기) — 종료 6시간 지나면 자동 처리로 간주
+// 퇴근 기록 (출결 상태와 별개) — jobKey → (이름 → 시각/방식, '' = 기록 취소)
+final Map<String, Map<String, String>> gOut = {};
+String? outOf(Job j, Worker w) {
+  final v = gOut[jobKey(j)]?[w.name];
+  if (v != null) return v.isEmpty ? null : v;
+  return w.outTime;
+}
+
+// 종료 후 수동 처리 필요 인원 (출근/지각인데 퇴근 기록 없음 + 퇴근 승인 대기) — 종료 6시간 지나면 자동 처리로 간주
 int manualCount(Job j) {
   final now = DateTime.now();
   if (!now.isAfter(j.end) || now.difference(j.end).inHours >= 6) return 0;
   final pendingOut = rosterOf(j).where((w) {
     final s = effStatus(j, w);
-    return s == 'ok' || s == 'late';
+    return (s == 'ok' || s == 'late') && outOf(j, w) == null;
   }).length;
   final gps = gpsReqsOf(j).where((r) => !gGpsDone.contains('${jobKey(j)}|${r.name}')).length;
   return pendingOut + gps;
@@ -717,6 +726,13 @@ class AttendancePage extends StatefulWidget {
 class _AttendancePageState extends State<AttendancePage> {
   // 이름 → 수동 상태 (앱 전역 저장소 사용 → 화면 나갔다 와도 유지)
   Map<String, String> get overrides => gOverrides.putIfAbsent(jobKey(widget.job), () => {});
+  // 이름 → 퇴근 기록 ('' = 기록 취소). 출결 상태와 별개
+  Map<String, String> get outs => gOut.putIfAbsent(jobKey(widget.job), () => {});
+  String? outOf_(Worker w) {
+    final v = outs[w.name];
+    if (v != null) return v.isEmpty ? null : v;
+    return w.outTime;
+  }
   final List<Worker> extWorkers = []; // 외부인력 (기획안: 외부 구인)
   final List<Worker> invited = []; // 직접 추가한 가입 알바생 (기획안 §5-3, 즉시 승인)
   late final List<GpsReq> gpsReqs = List.of(gpsReqsOf(widget.job)
@@ -750,7 +766,13 @@ class _AttendancePageState extends State<AttendancePage> {
   }
 
   void mark(String name, String s) {
-    setState(() => overrides[name] = s);
+    setState(() {
+      overrides[name] = s;
+      // 퇴근 기록은 별개 — 조퇴·이탈은 이미 떠난 것이라 기록 자동, 결근·미도착이면 기록 제거
+      if (s == 'early') outs[name] = '조퇴';
+      if (s == 'runaway') outs[name] = '이탈';
+      if (s == 'absent' || s == 'none') outs[name] = '';
+    });
     snack('$name — ${_stMeta(s).$1} 처리');
   }
 
@@ -760,7 +782,6 @@ class _AttendancePageState extends State<AttendancePage> {
         'late' => ('지각', const Color(0xFF9A6B00)),
         'early' => ('조퇴', const Color(0xFF9A6B00)),
         'runaway' => ('무단이탈', JColors.red),
-        'out' => ('퇴근', JColors.muted),
         'absent' => ('결근', JColors.red),
         'wait' => ('출근 전', JColors.inactive),
         _ => ('미도착', JColors.inactive),
@@ -785,8 +806,22 @@ class _AttendancePageState extends State<AttendancePage> {
             if (statusEditable) ...[
               const SizedBox(height: 13),
               Wrap(spacing: 7, runSpacing: 7, children: [
-                for (final s in const ['ok', 'late', 'early', 'runaway', 'absent', 'out']) _stChip(ctx, w, s),
+                for (final s in const ['ok', 'late', 'early', 'runaway', 'absent']) _stChip(ctx, w, s),
               ]),
+              // 퇴근 기록 — 출결 상태와 별개로 켜고 끔 (출근·지각일 때만 의미 있음)
+              if (statusOf(w) == 'ok' || statusOf(w) == 'late') ...[
+                const SizedBox(height: 10),
+                _pill(
+                    outOf_(w) == null ? '퇴근 처리 (기록 없음)' : '퇴근 기록 취소 · 현재 ${outOf_(w)}',
+                    bg: outOf_(w) == null ? JColors.amber : Colors.white,
+                    fg: outOf_(w) == null ? Colors.white : JColors.muted,
+                    border: outOf_(w) == null ? null : JColors.muted, onTap: () {
+                  Navigator.pop(ctx);
+                  final had = outOf_(w) != null;
+                  setState(() => outs[w.name] = had ? '' : '수동');
+                  snack('${w.name} — ${had ? '퇴근 기록 취소' : '퇴근 처리'}');
+                }),
+              ],
             ],
             if (ext) ...[
               const SizedBox(height: 14),
@@ -1144,7 +1179,7 @@ class _AttendancePageState extends State<AttendancePage> {
     // 출근 수 = 정식 신청자 + 직접 추가 + 외부인력 (충원 숫자에는 포함)
     final okCount = [...members, ...extWorkers].where((w) {
       final s = statusOf(w);
-      return s == 'ok' || s == 'late';
+      return (s == 'ok' || s == 'late') && outOf_(w) == null; // 지금 현장에 있는 인원 (퇴근자 제외)
     }).length;
     final short = widget.job.cap - okCount;
 
@@ -1264,30 +1299,59 @@ class _AttendancePageState extends State<AttendancePage> {
     ];
   }
 
-  // ── 종료: 최종 집계 (읽기 전용) ──
+  // ── 종료: 최종 집계 + 퇴근 미처리 개별 처리 (출결 상태와 퇴근 기록은 별개) ──
   List<Widget> _endedContent(List<Worker> base) {
     final mapped = [...base, ...invited]
         .map((w) => statusOf(w) == 'none' ? Worker(w.name, 'absent') : w)
         .toList()
       ..sort((a, b) => a.name.compareTo(b.name));
-    int ok = 0, late = 0, early = 0, runaway = 0, absent = 0, out = 0;
+    int ok = 0, late = 0, early = 0, runaway = 0, absent = 0;
     for (final w in mapped) {
       switch (statusOf(w)) {
         case 'ok': ok++;
         case 'late': late++;
         case 'early': early++;
         case 'runaway': runaway++;
-        case 'out': out++;
         default: absent++;
       }
     }
-    final attended = ok + late + out + early;
-    // 종료됐는데 퇴근 기록 없음 → 수동 처리 필요 (종료 6시간 후엔 자동 처리로 간주)
+    final attended = ok + late + early;
     final autoDone = DateTime.now().difference(widget.job.end).inHours >= 6;
-    final pendingNames = autoDone
-        ? const <String>[]
-        : mapped.where((w) => statusOf(w) == 'ok' || statusOf(w) == 'late').map((w) => w.name).toList();
-    final pendingOut = pendingNames.length;
+    final locked = DateTime.now().difference(widget.job.end).inDays >= 7;
+    // 퇴근 미처리 = 출근/지각인데 퇴근 기록 없음 (종료 6시간 후엔 시스템이 자동 처리)
+    final pending = autoDone
+        ? <Worker>[]
+        : mapped.where((w) => (statusOf(w) == 'ok' || statusOf(w) == 'late') && outOf_(w) == null).toList();
+    final done = mapped.where((w) => !pending.contains(w)).toList();
+
+    Future<void> bulkOut() async {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (d) => AlertDialog(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: Text('${pending.length}명 정상 퇴근 처리',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: JColors.ink)),
+          content: Text(
+              '${pending.map((w) => w.name).join(', ')}\n\n위 인원을 근무 종료 시각(${Job._hm(widget.job.end)}) 기준 정상 퇴근으로 기록합니다.\n조퇴·무단이탈자가 있다면 먼저 개별로 표시하세요.',
+              style: const TextStyle(fontSize: 12.5, color: JColors.muted, height: 1.5)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d),
+                child: const Text('취소', style: TextStyle(color: JColors.muted, fontWeight: FontWeight.w600))),
+            TextButton(onPressed: () => Navigator.pop(d, true),
+                child: const Text('퇴근 처리', style: TextStyle(color: JColors.amber, fontWeight: FontWeight.w800))),
+          ],
+        ),
+      );
+      if (go != true || !mounted) return;
+      setState(() {
+        for (final w in pending) {
+          outs[w.name] = Job._hm(widget.job.end);
+        }
+      });
+      snack('${pending.length}명 — 종료 시각 기준 퇴근 처리했어요');
+    }
 
     return [
       _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1296,8 +1360,8 @@ class _AttendancePageState extends State<AttendancePage> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             _bigCount(attended, widget.job.cap, '출근'),
-            pendingOut > 0
-                ? Text('퇴근 미처리 $pendingOut명',
+            pending.isNotEmpty
+                ? Text('퇴근 미처리 ${pending.length}명',
                     style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.amber))
                 : Text(absent > 0 ? '결근 $absent명' : '결근 없음',
                     style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
@@ -1307,7 +1371,7 @@ class _AttendancePageState extends State<AttendancePage> {
         const SizedBox(height: 4),
         Text(
             [
-              '출근 ${ok + out}',
+              '출근 $ok',
               '지각 $late',
               if (early > 0) '조퇴 $early',
               if (runaway > 0) '무단이탈 $runaway',
@@ -1316,23 +1380,42 @@ class _AttendancePageState extends State<AttendancePage> {
             ].join(' · '),
             style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
       ])),
-      if (pendingOut > 0) ...[
-        const SizedBox(height: 8),
-        _pill('전원 퇴근 처리 · $pendingOut명', bg: JColors.amber, fg: Colors.white, onTap: () {
-          setState(() {
-            for (final n in pendingNames) {
-              overrides[n] = 'out';
-            }
-          });
-          snack('$pendingOut명 퇴근 처리 — 종료 6시간 후엔 자동으로 처리돼요');
-        }),
-      ],
       ..._gpsSection(),
+      if (pending.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        _sect('퇴근 미처리 · ${pending.length}명 — 한 명씩 확인'),
+        ...pending.map((w) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  Text(w.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: JColors.ink)),
+                  Text('${_stMeta(statusOf(w)).$1}${w.time != null ? ' ${w.time}' : ''} · 퇴근 기록 없음',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: JColors.amber)),
+                ]),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: _pill('퇴근 처리', bg: JColors.amber, fg: Colors.white, onTap: () {
+                    setState(() => outs[w.name] = Job._hm(widget.job.end));
+                    snack('${w.name} — 퇴근 처리 (${Job._hm(widget.job.end)})');
+                  })),
+                  const SizedBox(width: 7),
+                  Expanded(child: _pill('조퇴', bg: Colors.white, fg: JColors.amber, border: JColors.amber,
+                      onTap: () => mark(w.name, 'early'))),
+                  const SizedBox(width: 7),
+                  Expanded(child: _pill('무단이탈', bg: Colors.white, fg: JColors.red, border: JColors.red,
+                      onTap: () => mark(w.name, 'runaway'))),
+                ]),
+              ])),
+            )),
+        const SizedBox(height: 4),
+        _pill('나머지 ${pending.length}명 정상 퇴근 처리', bg: Colors.white, fg: JColors.amber, border: JColors.amber,
+            onTap: bulkOut),
+      ],
       const SizedBox(height: 12),
       // 정정 허용 7일 (사용자 결정 2026-08-24, N30)
-      if (DateTime.now().difference(widget.job.end).inDays >= 7) ...[
-        _sect('최종 명단 · ${mapped.length}명'),
-        _rosterCard(mapped),
+      if (locked) ...[
+        _sect('최종 명단 · ${done.length}명'),
+        _rosterCard(done),
         ..._extSection(statusEditable: false),
         const SizedBox(height: 10),
         const Padding(
@@ -1341,14 +1424,17 @@ class _AttendancePageState extends State<AttendancePage> {
               style: TextStyle(fontSize: 11, color: JColors.inactive)),
         ),
       ] else ...[
-        _sect('최종 명단 · ${mapped.length}명 — 눌러서 정정'),
-        _rosterCard(mapped, onTap: (w) => _statusSheet(w)),
+        _sect('${pending.isEmpty ? '최종' : '처리된'} 명단 · ${done.length}명 — 눌러서 정정'),
+        _rosterCard(done, onTap: (w) => _statusSheet(w)),
         ..._extSection(),
         const SizedBox(height: 10),
-        const Padding(
-          padding: EdgeInsets.only(left: 2),
-          child: Text('지난 출결은 종료 후 7일까지 정정할 수 있어요 · 변경은 모두 기록에 남아요',
-              style: TextStyle(fontSize: 11, color: JColors.inactive)),
+        Padding(
+          padding: const EdgeInsets.only(left: 2),
+          child: Text(
+              autoDone
+                  ? '종료 6시간이 지나 퇴근은 자동 처리됐어요 · 출결 정정은 7일까지 가능'
+                  : '퇴근 미처리자는 종료 6시간 후 자동 퇴근 처리돼요 · 출결 정정은 7일까지 가능',
+              style: const TextStyle(fontSize: 11, color: JColors.inactive)),
         ),
       ],
     ];
@@ -1381,7 +1467,7 @@ class _AttendancePageState extends State<AttendancePage> {
                     setState(() {
                       gpsReqs.remove(r);
                       gGpsDone.add('${jobKey(widget.job)}|${r.name}');
-                      overrides[r.name] = 'out';
+                      outs[r.name] = r.time; // 퇴근 시각 기록 (승인·반려 모두 퇴근은 남김)
                     });
                     snack('${r.name} — 퇴근 승인 · 포인트 지급');
                   })),
@@ -1391,7 +1477,7 @@ class _AttendancePageState extends State<AttendancePage> {
                     setState(() {
                       gpsReqs.remove(r);
                       gGpsDone.add('${jobKey(widget.job)}|${r.name}');
-                      overrides[r.name] = 'out';
+                      outs[r.name] = r.time; // 퇴근 시각 기록 (승인·반려 모두 퇴근은 남김)
                     });
                     snack('${r.name} — 반려 · 퇴근 기록만, 포인트 미지급');
                   })),
@@ -1438,14 +1524,9 @@ class _AttendancePageState extends State<AttendancePage> {
   Widget _row(Worker w) {
     final s = statusOf(w);
     final manual = overrides.containsKey(w.name);
-    final (label, color) = switch (s) {
-      'ok' => ('출근', JColors.green),
-      'late' => ('지각', const Color(0xFF9A6B00)),
-      'out' => ('퇴근', JColors.muted),
-      'absent' => ('결근', JColors.red),
-      'wait' => ('출근 전', JColors.inactive),
-      _ => ('미도착', JColors.inactive),
-    };
+    final (label, color) = _stMeta(s);
+    final o = outOf_(w);
+    final pendingOut = DateTime.now().isAfter(widget.job.end) && (s == 'ok' || s == 'late') && o == null;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -1463,6 +1544,12 @@ class _AttendancePageState extends State<AttendancePage> {
           TextSpan(text: label + (!manual && w.time != null ? ' ${w.time}' : ''),
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color,
                   fontFeatures: const [FontFeature.tabularFigures()])),
+          if (o != null)
+            TextSpan(text: ' · 퇴근 $o',
+                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: JColors.muted)),
+          if (pendingOut)
+            const TextSpan(text: ' · 퇴근 미처리',
+                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: JColors.amber)),
           TextSpan(
               text: '  ${isExt(w.name) ? '외부' : isInvited(w.name) ? '추가' : (s == 'wait' ? '' : (manual ? '수동' : '자동'))}',
               style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFFC7C7CC))),
