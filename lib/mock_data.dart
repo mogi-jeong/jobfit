@@ -352,8 +352,14 @@ List<WaitRow> waitlistOf(Job job) {
 }
 
 bool _scoped(Admin a, String siteName) => a.sites == null || a.sites!.contains(siteName);
-List<PendingApp> pendingAppsFor(Admin a) => _pendingAll.where((p) => _scoped(a, p.siteName)).toList();
-List<CancelReq> cancelReqsFor(Admin a) => _cancelAll.where((c) => _scoped(a, c.siteName)).toList();
+// 처리된 건 (앱 전역) — 하단 탭 배지와 목록이 같은 숫자를 보도록
+final Set<String> gDecided = {};
+List<PendingApp> pendingAppsFor(Admin a) => _pendingAll
+    .where((p) => _scoped(a, p.siteName) && !gDecided.contains('app|${p.name}|${p.siteName}'))
+    .toList();
+List<CancelReq> cancelReqsFor(Admin a) => _cancelAll
+    .where((c) => _scoped(a, c.siteName) && !gDecided.contains('cancel|${c.name}|${c.siteName}'))
+    .toList();
 // 승인 탭용 — 전 공고의 대기열 중 '자리 제안 중'인 건만 (공고 상세와 같은 데이터)
 List<WaitEntry> waitlistFor(Admin a) => [
       for (final j in gJobs)

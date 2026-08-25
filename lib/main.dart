@@ -207,6 +207,7 @@ bool jobPointEligible(Job j, Worker w) {
 
 // ─── 포인트 회수 (관리자 판단 · 메시지 필수 · 알바생 앱에 그대로 전달) → Supabase point_txs(type=deduct) 교체 지점 ───
 Admin? gAdmin; // 로그인한 관리자 (권한별 회수 한도 판정용)
+final ValueNotifier<int> gPendingTick = ValueNotifier(0); // 승인 처리 시 +1 → 하단 탭 배지 갱신
 
 class Recovery {
   final String name, memo, by, jobRef;
@@ -277,7 +278,12 @@ class _AdminShellState extends State<AdminShell> {
                 border: Border.all(color: JColors.hairline, width: .5),
                 boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .14), blurRadius: 24, offset: const Offset(0, 10))],
               ),
-              child: Row(
+              child: ValueListenableBuilder<int>(
+                valueListenable: gPendingTick,
+                builder: (_, __, ___) {
+                  // 승인 탭 배지 = 신청 대기 + 취소 검토 (담당 범위)
+                  final pendingN = pendingAppsFor(widget.admin).length + cancelReqsFor(widget.admin).length;
+                  return Row(
                 children: List.generate(tabs.length, (i) {
                   final on = tab == i;
                   return Expanded(
@@ -287,13 +293,20 @@ class _AdminShellState extends State<AdminShell> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(tabs[i],
-                              style: TextStyle(
-                                fontSize: 13,
-                                letterSpacing: -.3,
-                                fontWeight: on ? FontWeight.w800 : FontWeight.w600,
-                                color: on ? JColors.ink : JColors.inactive,
-                              )),
+                          Text.rich(TextSpan(children: [
+                            TextSpan(
+                                text: tabs[i],
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  letterSpacing: -.3,
+                                  fontWeight: on ? FontWeight.w800 : FontWeight.w600,
+                                  color: on ? JColors.ink : JColors.inactive,
+                                )),
+                            if (tabs[i] == '승인' && pendingN > 0)
+                              TextSpan(
+                                  text: ' +$pendingN',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: JColors.amber)),
+                          ])),
                           const SizedBox(height: 3),
                           Container(width: 4, height: 4,
                               decoration: BoxDecoration(
@@ -305,6 +318,8 @@ class _AdminShellState extends State<AdminShell> {
                     ),
                   );
                 }),
+              );
+                },
               ),
             ),
           ),
@@ -2086,6 +2101,8 @@ class _ApprovalPageState extends State<ApprovalPage> {
       return;
     }
     setState(() => apps.remove(a));
+    gDecided.add('app|${a.name}|${a.siteName}');
+    gPendingTick.value++;
     jSnack(context, '${a.name} — 거절 · 사유가 전달됐어요');
   }
 
@@ -2156,6 +2173,10 @@ class _ApprovalPageState extends State<ApprovalPage> {
             Row(children: [
               Expanded(child: jPill('승인', bg: JColors.blue, fg: Colors.white, onTap: () {
                 setState(() => apps.remove(a));
+                gDecided.add('app|${a.name}|${a.siteName}');
+                gPendingTick.value++;
+    gDecided.add('app|${a.name}|${a.siteName}');
+    gPendingTick.value++;
                 jSnack(context, '${a.name} — 승인했어요');
               })),
               const SizedBox(width: 7),
@@ -2183,16 +2204,22 @@ class _ApprovalPageState extends State<ApprovalPage> {
             Row(children: [
               Expanded(child: jPill('차감', bg: Colors.white, fg: JColors.red, border: JColors.red, onTap: () {
                 setState(() => cancels.remove(c));
+                gDecided.add('cancel|${c.name}|${c.siteName}');
+                gPendingTick.value++;
                 jSnack(context, '${c.name} — 취소 승인 · 1,000P 차감');
               })),
               const SizedBox(width: 7),
               Expanded(child: jPill('면제', bg: JColors.blue, fg: Colors.white, onTap: () {
                 setState(() => cancels.remove(c));
+                gDecided.add('cancel|${c.name}|${c.siteName}');
+                gPendingTick.value++;
                 jSnack(context, '${c.name} — 취소 승인 · 차감 면제');
               })),
               const SizedBox(width: 7),
               Expanded(child: jPill('반려', bg: Colors.white, fg: JColors.ink, border: JColors.muted, onTap: () {
                 setState(() => cancels.remove(c));
+                gDecided.add('cancel|${c.name}|${c.siteName}');
+                gPendingTick.value++;
                 jSnack(context, '${c.name} — 반려 · 신청 복원 (출근 의무)');
               })),
             ]),
