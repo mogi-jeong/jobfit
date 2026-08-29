@@ -299,6 +299,8 @@ String auditTypeLabel(String t) => switch (t) {
       'att_fix' => '출결 정정',
       'point_grant' => '포인트 지급',
       'point_recover' => '포인트 회수',
+      'warning' => '경고 부여',
+      'waitlist' => '대기열',
       _ => t,
     };
 
@@ -418,6 +420,17 @@ Future<void> openNoticeSheet(BuildContext context, Job job, int confirmed) async
           style: const TextStyle(fontSize: 14, color: JColors.ink),
           decoration: const InputDecoration(hintText: '예: 오늘 물량 많아요, 10분 일찍 와주세요'),
         ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: InkWell(
+            onTap: () => openTemplatePicker(ctx).then((t) { if (t != null) ctrl.text = t; }),
+            borderRadius: BorderRadius.circular(6),
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Text('자주 쓰는 문구', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: JColors.blue)),
+            ),
+          ),
+        ),
       ]),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx),
@@ -448,6 +461,334 @@ class Member {
 }
 
 
+// ─── 경고 부여 (관리자 재량 · 3회 누적 → 자동 협의대상) → Supabase warnings 교체 지점 ───
+// ⚠ 미결 N: 앱에서 경고 부여 허용 여부 — 내정보 › 설정 스위치(gWarnOnApp)로 끌 수 있음
+class WarningEntry {
+  final String name, reason, memo, by, jobRef;
+  final DateTime at;
+  bool reverted;
+  WarningEntry(this.name, this.reason, this.memo, this.by, this.at, this.jobRef, [this.reverted = false]);
+}
+
+final List<WarningEntry> gWarnings = [];
+bool gWarnOnApp = true; // 앱에서 경고 부여 가능 (사장님 결정 전까지 스위치)
+const warningReasons = ['12시간 이내 취소', '지각', '무단결근', '무응답', 'GPS 미검증', '기타'];
+
+int appWarningsOf(String name) => gWarnings.where((w) => w.name == name && !w.reverted).length;
+// 협의대상 = 등록된 협의대상 OR 경고 3회 이상 (전화번호 기반 · 해제는 마스터 웹 전용)
+bool isNegotiation(String name) => memberOf(name).neg || (warningsOf(memberOf(name)) + appWarningsOf(name)) >= 3;
+int totalWarningsOf(String name) => warningsOf(memberOf(name)) + appWarningsOf(name);
+
+Future<void> openWarnSheet(BuildContext context, String name, {String jobRef = ''}) async {
+  if (!gWarnOnApp) {
+    jSnack(context, '앱에서 경고 부여가 꺼져 있어요 (내정보 › 설정)');
+    return;
+  }
+  String reason = warningReasons.first;
+  final memo = TextEditingController();
+  final before = totalWarningsOf(name);
+  final ok = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setS) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 18, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('$name — 경고 부여', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JColors.ink)),
+          const SizedBox(height: 4),
+          Text(
+              '현재 경고 $before회 → 부여 시 ${before + 1}회${before + 1 >= 3 ? ' · 협의대상 자동 등록' : ''}\n관리자 재량 판단이에요. 알바생에게 사유가 전달돼요.',
+              style: TextStyle(fontSize: 11.5, height: 1.5, color: before + 1 >= 3 ? JColors.red : JColors.muted)),
+          const SizedBox(height: 12),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final r in warningReasons)
+              InkWell(
+                onTap: () => setS(() => reason = r),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: reason == r ? JColors.ink : Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: reason == r ? JColors.ink : JColors.hairline, width: .5),
+                  ),
+                  child: Text(r,
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                          color: reason == r ? Colors.white : JColors.ink)),
+                ),
+              ),
+          ]),
+          const SizedBox(height: 12),
+          TextField(
+            controller: memo,
+            maxLines: 2,
+            maxLength: 120,
+            style: const TextStyle(fontSize: 13, color: JColors.ink, height: 1.5),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: '메모 (선택) · 예: 8/24 곤지암 40분 지각, 사전 연락 없음',
+              contentPadding: const EdgeInsets.all(12),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: JColors.hairline)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: jPill('취소', bg: Colors.white, fg: JColors.muted, border: JColors.hairline, onTap: () => Navigator.pop(ctx))),
+            const SizedBox(width: 8),
+            Expanded(child: jPill('경고 부여', bg: JColors.red, fg: Colors.white, onTap: () => Navigator.pop(ctx, true))),
+          ]),
+        ]),
+      ),
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+  gWarnings.add(WarningEntry(name, reason, memo.text.trim(), gAdmin?.name ?? '관리자', DateTime.now(), jobRef));
+  audit('warning', name, '경고 $reason${memo.text.trim().isEmpty ? '' : ' · ${memo.text.trim()}'}', jobRef: jobRef);
+  final now = totalWarningsOf(name);
+  jSnack(context, now >= 3 ? '$name 경고 $now회 — 협의대상 자동 등록 (해제는 마스터 웹)' : '$name 경고 $now회 · 알바생에게 전달됨');
+}
+
+// ─── 메시지 템플릿 — 공지 · 회수 사유 · 문의 답변에서 골라 쓰기 (→ Supabase admin_templates 교체 지점) ───
+final List<String> gMsgTemplates = [
+  '오늘 물량이 많아요. 10분 일찍 와주세요.',
+  '작업복(긴바지·운동화) 착용 필수입니다. 슬리퍼 불가.',
+  '통근버스 1차 출발 시간이 10분 당겨졌어요. 확인 부탁드려요.',
+  '식사는 현장 식당에서 제공됩니다. 개인 물병 지참해주세요.',
+  '퇴근 시 GPS 영역 안에서 퇴근 버튼 눌러주세요. 안 되면 사유 제출해주세요.',
+  '사전 연락 없는 지각으로 포인트 1,000P 회수합니다. 다음부턴 늦어요 보고 부탁드려요.',
+];
+
+Future<String?> openTemplatePicker(BuildContext context) => showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+          children: [
+            const Text('자주 쓰는 문구', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JColors.ink)),
+            const SizedBox(height: 2),
+            const Text('내정보 › 자주 쓰는 문구에서 추가·삭제', style: TextStyle(fontSize: 11.5, color: JColors.muted)),
+            const SizedBox(height: 10),
+            if (gMsgTemplates.isEmpty)
+              const Padding(padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text('저장된 문구가 없어요', style: TextStyle(fontSize: 12, color: JColors.inactive))),
+            for (final t in gMsgTemplates)
+              InkWell(
+                onTap: () => Navigator.pop(ctx, t),
+                borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                  child: Text(t, style: const TextStyle(fontSize: 13, color: JColors.ink, height: 1.45)),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+
+// ─── 알림 수신함 — 지금 상태에서 파생 (FCM 붙이면 notifications 테이블 → 같은 카드로) ───
+class InboxItem {
+  final String key, title, body, kind; // kind: job(공고 상세) / approval(승인 탭) / comm(소통 탭)
+  final Color color;
+  final DateTime at;
+  final Job? job;
+  const InboxItem(this.key, this.title, this.body, this.kind, this.color, this.at, [this.job]);
+}
+
+final Set<String> gInboxRead = {}; // 읽음 처리한 알림 key
+
+List<InboxItem> buildInbox(Admin a) {
+  final now = DateTime.now();
+  bool inScope(String site) => a.sites == null || a.sites!.contains(site);
+  final out = <InboxItem>[];
+  for (final j in [...gJobs, ...gPastJobs]) {
+    if (!inScope(j.site)) continue;
+    final started = now.isAfter(j.start), ended = now.isAfter(j.end);
+    final ref = '${j.site} ${j.dateLabel} ${j.slot}';
+    if (started && !ended) {
+      final none = rosterOf(j).where((w) => effStatus(j, w) == 'none').length;
+      if (none > 0 && now.difference(j.start).inMinutes >= Policy.absentAfterMin) {
+        out.add(InboxItem('none|${jobKey(j)}', '미도착 $none명', '$ref · 수동 출근 또는 결근 처리', 'job', JColors.red,
+            j.start.add(const Duration(minutes: Policy.absentAfterMin)), j));
+      }
+    }
+    final gps = gpsReqsOf(j).where((r) => !gGpsDone.contains('${jobKey(j)}|${r.name}')).toList();
+    for (final r in gps) {
+      out.add(InboxItem('gps|${jobKey(j)}|${r.name}', '${r.name} 퇴근 사유 제출', '$ref · "${r.reason}" · ${r.dist}', 'job',
+          JColors.amber, ended ? j.end : now, j));
+    }
+    if (ended && now.difference(j.end).inHours < Policy.autoCheckoutHours && manualCount(j) > 0) {
+      out.add(InboxItem('manual|${jobKey(j)}', '퇴근 확인 필요 ${manualCount(j)}명', '$ref · 종료 후 6시간 안에 처리', 'job',
+          JColors.amber, j.end, j));
+    }
+    if (!started) {
+      for (final r in waitlistOf(j)) {
+        if (r.status == 'offered' && r.deadline != null && r.deadline!.isBefore(now)) {
+          out.add(InboxItem('wl|${jobKey(j)}|${r.name}', '대기열 제안 시간 초과 · ${r.name}', '$ref · 다음 대기자에게 제안', 'job',
+              JColors.amber, r.deadline!, j));
+        }
+      }
+      if (j.cap - rosterOf(j).length > 0 && j.start.difference(now).inHours < 12) {
+        out.add(InboxItem('short|${jobKey(j)}', '${j.cap - rosterOf(j).length}명 부족 · 시작 12시간 전', ref, 'job',
+            JColors.red, j.start.subtract(const Duration(hours: 12)), j));
+      }
+    }
+  }
+  for (final p in pendingAppsFor(a)) {
+    final urgent = p.danger || p.flag.contains('12');
+    out.add(InboxItem('app|${p.name}|${p.siteName}', '${p.name} 신청 승인 필요', '${p.siteName} ${p.slotTime} · ${p.flag}', 'approval',
+        urgent ? JColors.red : JColors.amber, now.subtract(const Duration(minutes: 5))));
+  }
+  for (final c in cancelReqsFor(a)) {
+    out.add(InboxItem('cancel|${c.name}|${c.siteName}', '${c.name} 취소 검토', '${c.siteName} ${c.slotTime} · 시작 ${beforeLabel(c.beforeMin)} 전 취소', 'approval',
+        JColors.amber, now.subtract(const Duration(minutes: 30))));
+  }
+  for (final l in lateReportsFor(a)) {
+    out.add(InboxItem('late|${l.name}|${l.siteName}', '${l.name} ${l.delayMin}분 늦어요', '${l.siteName} ${l.slot} · ${l.reason}', 'comm',
+        JColors.amber, now.subtract(const Duration(minutes: 20))));
+  }
+  out.sort((x, y) => y.at.compareTo(x.at));
+  return out;
+}
+
+int unreadInbox(Admin a) => buildInbox(a).where((i) => !gInboxRead.contains(i.key)).length;
+
+class InboxPage extends StatefulWidget {
+  final Admin admin;
+  final void Function(int tab) onGoTab;
+  const InboxPage({super.key, required this.admin, required this.onGoTab});
+  @override
+  State<InboxPage> createState() => _InboxPageState();
+}
+
+class _InboxPageState extends State<InboxPage> {
+  @override
+  Widget build(BuildContext context) {
+    final items = buildInbox(widget.admin);
+    final unread = items.where((i) => !gInboxRead.contains(i.key)).length;
+    return Scaffold(
+      body: SafeArea(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 16, 6),
+            child: Row(children: [
+              InkWell(
+                onTap: () => Navigator.of(context).pop(),
+                borderRadius: BorderRadius.circular(10),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  child: Text('‹', style: TextStyle(fontSize: 26, color: JColors.blue, height: 1)),
+                ),
+              ),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('알림', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -.4, color: JColors.ink)),
+                  Text('처리 필요 ${items.length}건 · 안 읽음 $unread', style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+                ]),
+              ),
+              if (unread > 0)
+                InkWell(
+                  onTap: () => setState(() => gInboxRead.addAll(items.map((i) => i.key))),
+                  borderRadius: BorderRadius.circular(10),
+                  child: const Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Text('모두 읽음', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JColors.blue)),
+                  ),
+                ),
+            ]),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+              children: [
+                if (items.isEmpty)
+                  jCard(const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 14),
+                      child: Text('처리할 알림이 없어요', style: TextStyle(fontSize: 12.5, color: JColors.inactive))))),
+                for (final i in items)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Material(
+                      color: JColors.card,
+                      borderRadius: BorderRadius.circular(16),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () {
+                          setState(() => gInboxRead.add(i.key));
+                          if (i.kind == 'job' && i.job != null) {
+                            Navigator.of(context).push(MaterialPageRoute(builder: (_) => AttendancePage(job: i.job!)));
+                          } else {
+                            Navigator.of(context).pop();
+                            widget.onGoTab(i.kind == 'approval' ? 2 : 3);
+                          }
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: JColors.hairline, width: .5),
+                          ),
+                          padding: const EdgeInsets.all(14),
+                          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 5),
+                              child: Container(width: 7, height: 7,
+                                  decoration: BoxDecoration(shape: BoxShape.circle,
+                                      color: gInboxRead.contains(i.key) ? Colors.transparent : i.color)),
+                            ),
+                            const SizedBox(width: 9),
+                            Expanded(
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(i.title,
+                                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700,
+                                        color: gInboxRead.contains(i.key) ? JColors.muted : JColors.ink)),
+                                const SizedBox(height: 2),
+                                Text(i.body, style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.4)),
+                              ]),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(hmOf(i.at), style: const TextStyle(fontSize: 10.5, color: JColors.inactive,
+                                fontFeatures: [FontFeature.tabularFigures()])),
+                          ]),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+// ─── 승인 카드 → 공고 상세 이동 — id 우선, 없으면 근무지명 + 시작 시각으로 매칭 (→ Supabase applications.job_id) ───
+Job? jobByRef(String? id, String site, String slot) {
+  final all = [...gJobs, ...gPastJobs];
+  if (id != null) {
+    final j = all.where((x) => x.id == id).firstOrNull;
+    if (j != null) return j;
+  }
+  return all.where((x) => x.site == site && slot.contains(Job._hm(x.start))).firstOrNull;
+}
+
+Widget jobLink(BuildContext context, String? id, String site, String slot, String text) {
+  final j = jobByRef(id, site, slot);
+  return InkWell(
+    onTap: j == null ? null : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AttendancePage(job: j))),
+    borderRadius: BorderRadius.circular(6),
+    child: Text.rich(TextSpan(children: [
+      TextSpan(text: text,
+          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: j == null ? JColors.muted : JColors.blue)),
+      if (j != null) const TextSpan(text: '  공고 보기 ›', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: JColors.blue)),
+    ])),
+  );
+}
+
 // ─── 앱 셸 (하단 독 + 탭) ───
 class AdminShell extends StatefulWidget {
   final Admin admin;
@@ -468,7 +809,7 @@ class _AdminShellState extends State<AdminShell> {
         children: [
           Positioned.fill(
             child: switch (tab) {
-              0 => JobListPage(admin: widget.admin),
+              0 => JobListPage(admin: widget.admin, onGoTab: (i) => setState(() => tab = i)),
               1 => SchedulePage(admin: widget.admin),
               2 => ApprovalPage(admin: widget.admin),
               3 => CommPage(admin: widget.admin),
@@ -540,13 +881,14 @@ class _AdminShellState extends State<AdminShell> {
 // ─── 공고 리스트 (메인 화면) — 타이머 자동 갱신 ───
 class JobListPage extends StatefulWidget {
   final Admin admin;
-  const JobListPage({super.key, required this.admin});
+  final void Function(int tab)? onGoTab;
+  const JobListPage({super.key, required this.admin, this.onGoTab});
   @override
   State<JobListPage> createState() => _JobListPageState();
 }
 
 class _JobListPageState extends State<JobListPage> {
-  String view = 'today'; // today | past
+  String view = 'today'; // today(공고: 24시간 내 시작 전) | active(진행중) | upcoming(예정) | past(종료)
   Timer? _tick;
 
   bool _inScope(Job j) => widget.admin.sites == null || widget.admin.sites!.contains(j.site);
@@ -559,6 +901,12 @@ class _JobListPageState extends State<JobListPage> {
         .toList()
       ..sort((a, b) => a.start.compareTo(b.start));
   }
+
+  // 공고 = 아직 시작 전 + 24시간 안에 시작 (모집·확정 단계)
+  List<Job> get openJobs => jobs.where((j) => !DateTime.now().isAfter(j.start)).toList();
+  // 진행중 = 시작했고 아직 안 끝남
+  List<Job> get activeJobs => jobs.where((j) => DateTime.now().isAfter(j.start)).toList();
+  int get activeIssues => activeJobs.where((j) => rosterOf(j).any((w) => effStatus(j, w) == 'none')).length; // 미도착 있는 공고 수
 
   // 예정 = 24시간 이후 시작
   List<Job> get upcomingJobs {
@@ -611,7 +959,9 @@ class _JobListPageState extends State<JobListPage> {
                       Text(
                           switch (view) {
                             'today' =>
-                              '${widget.admin.sites == null ? '전 근무지' : '담당 ${widget.admin.sites!.length} 근무지'} · 진행 ${jobs.where((j) => DateTime.now().isAfter(j.start)).length} · 24시간 내 시작 ${jobs.where((j) => !DateTime.now().isAfter(j.start)).length}',
+                              '${widget.admin.sites == null ? '전 근무지' : '담당 ${widget.admin.sites!.length} 근무지'} · 24시간 안에 시작 ${openJobs.length}건',
+                            'active' =>
+                              '${widget.admin.sites == null ? '전 근무지' : '담당 ${widget.admin.sites!.length} 근무지'} · 진행 중 ${activeJobs.length}건${activeIssues > 0 ? ' · 미도착 발생 $activeIssues건' : ''}',
                             'upcoming' =>
                               '${widget.admin.sites == null ? '전 근무지' : '담당 ${widget.admin.sites!.length} 근무지'} · 24시간 이후 예정 ${upcomingJobs.length}건',
                             _ => manualPending > 0
@@ -620,6 +970,22 @@ class _JobListPageState extends State<JobListPage> {
                           },
                           style: const TextStyle(fontSize: 12.5, color: JColors.muted)),
                     ],
+                  ),
+                ),
+                // 알림 수신함 — 처리 필요 건 시간순
+                InkWell(
+                  onTap: () => Navigator.of(context)
+                      .push(MaterialPageRoute(builder: (_) => InboxPage(admin: widget.admin, onGoTab: (i) => widget.onGoTab?.call(i))))
+                      .then((_) { if (mounted) setState(() {}); }),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Text.rich(TextSpan(children: [
+                      const TextSpan(text: '알림', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JColors.ink)),
+                      if (unreadInbox(widget.admin) > 0)
+                        TextSpan(text: ' +${unreadInbox(widget.admin)}',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: JColors.red)),
+                    ])),
                   ),
                 ),
                 // 공고 등록 — 마스터·1등급 전용 (2026-08-24 확정)
@@ -636,12 +1002,14 @@ class _JobListPageState extends State<JobListPage> {
               ],
             ),
           ),
-          // [오늘] [지난] 전환
+          // 오늘 브리핑 — 검정 카드 1장: 전체 합계 (무슨 일이 생겼나 → 탭·알림으로 이동)
+          if (view == 'today' || view == 'active') _brief(),
+          // [공고] [진행중] [예정] [종료] 전환
           Container(
             padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(color: const Color(0xFFE8E8ED), borderRadius: BorderRadius.circular(10)),
             child: Row(children: [
-              for (final v in const [('today', '24시간'), ('upcoming', '예정'), ('past', '종료')])
+              for (final v in const [('today', '공고'), ('active', '진행중'), ('upcoming', '예정'), ('past', '종료')])
                 Expanded(
                   child: InkWell(
                     onTap: () => setState(() => view = v.$1),
@@ -663,6 +1031,11 @@ class _JobListPageState extends State<JobListPage> {
                                 fontSize: 12,
                                 fontWeight: view == v.$1 ? FontWeight.w700 : FontWeight.w600,
                                 color: view == v.$1 ? JColors.ink : JColors.muted)),
+                        // 진행중 탭 배지 — 미도착 발생 공고 수 (빨강)
+                        if (v.$1 == 'active' && activeIssues > 0)
+                          TextSpan(
+                              text: ' +$activeIssues',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: JColors.red)),
                         // 종료 탭 배지 — 수동 처리 필요 공고 수 (앰버)
                         if (v.$1 == 'past' && manualPending > 0)
                           TextSpan(
@@ -676,7 +1049,9 @@ class _JobListPageState extends State<JobListPage> {
           ),
           const SizedBox(height: 12),
           if (view == 'today')
-            ..._todayList()
+            ..._grouped(openJobs, '24시간 안에 시작하는 공고가 없어요')
+          else if (view == 'active')
+            ..._grouped(activeJobs, '진행 중인 공고가 없어요')
           else if (view == 'upcoming')
             ..._grouped(upcomingJobs, '24시간 이후 예정 공고가 없어요')
           else
@@ -799,22 +1174,6 @@ class _JobListPageState extends State<JobListPage> {
       );
 
   // 24시간 보기 — 진행 중 / 앞으로 24시간 두 묶음
-  List<Widget> _todayList() {
-    final now = DateTime.now();
-    final active = jobs.where((j) => now.isAfter(j.start)).toList();
-    final soon = jobs.where((j) => !now.isAfter(j.start)).toList();
-    if (active.isEmpty && soon.isEmpty) return [_emptyCard('24시간 안에 진행·시작하는 공고가 없어요')];
-    Widget head(String t) => Padding(
-        padding: const EdgeInsets.only(bottom: 7, left: 2, top: 4),
-        child: Text(t, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: JColors.muted)));
-    return [
-      if (active.isNotEmpty) head('진행 중 · ${active.length}'),
-      ...active.map((j) => Padding(padding: const EdgeInsets.only(bottom: 10), child: _JobCard(job: j))),
-      if (soon.isNotEmpty) head('앞으로 24시간 · ${soon.length}'),
-      ...soon.map((j) => Padding(padding: const EdgeInsets.only(bottom: 10), child: _JobCard(job: j))),
-    ];
-  }
-
   List<Widget> _pastList() => _grouped(pastJobs, '종료된 공고가 없어요');
 
   static Widget _emptyCard(String msg) => jCard(Center(
@@ -823,6 +1182,45 @@ class _JobListPageState extends State<JobListPage> {
           child: Text(msg, style: const TextStyle(fontSize: 12, color: JColors.inactive)))));
 
   // 날짜별 그룹 리스트 (예정·지난 공통)
+  // 오늘 브리핑 — 검정 카드 (전 범위 합계)
+  Widget _brief() {
+    final none = activeJobs.fold<int>(0, (a, j) => a + rosterOf(j).where((w) => effStatus(j, w) == 'none').length);
+    final approvals = pendingAppsFor(widget.admin).length + cancelReqsFor(widget.admin).length;
+    final unread = unreadInbox(widget.admin);
+    final short = openJobs.fold<int>(0, (a, j) => a + (j.short > 0 ? j.short : 0));
+    final lines = <(String, bool)>[
+      ('미도착 $none명', none > 0),
+      ('퇴근 확인 $manualPending건', manualPending > 0),
+      ('승인 대기 $approvals건', approvals > 0),
+      ('모집 부족 $short명', short > 0),
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        decoration: BoxDecoration(color: JColors.ink, borderRadius: BorderRadius.circular(16)),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Text('오늘 브리핑', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white.withValues(alpha: .6))),
+            Text(unread > 0 ? '알림 $unread건' : '알림 없음',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white.withValues(alpha: unread > 0 ? 1 : .6))),
+          ]),
+          const SizedBox(height: 6),
+          Text('진행 ${activeJobs.length} · 시작 예정 ${openJobs.length} · 종료 ${pastJobs.where((j) => DateTime.now().difference(j.end).inHours < 24).length}',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: -.3, color: Colors.white,
+                  fontFeatures: [FontFeature.tabularFigures()])),
+          const SizedBox(height: 6),
+          Wrap(spacing: 10, runSpacing: 2, children: [
+            for (final l in lines)
+              Text(l.$1,
+                  style: TextStyle(fontSize: 12, fontWeight: l.$2 ? FontWeight.w800 : FontWeight.w600,
+                      color: Colors.white.withValues(alpha: l.$2 ? 1 : .45))),
+          ]),
+        ]),
+      ),
+    );
+  }
+
   List<Widget> _grouped(List<Job> list, String emptyMsg) {
     if (list.isEmpty) return [_emptyCard(emptyMsg)];
     final out = <Widget>[];
@@ -1116,6 +1514,15 @@ class _AttendancePageState extends State<AttendancePage> {
               _pill('포인트 회수 · 알바생에게 메시지', bg: Colors.white, fg: JColors.red, border: JColors.red, onTap: () {
                 Navigator.pop(ctx);
                 openRecoverSheet(context, name: w.name, jobRef: '${widget.job.site} ${widget.job.dateLabel} ${widget.job.slot}')
+                    .then((_) { if (mounted) setState(() {}); });
+              }),
+            ],
+            // 경고 부여 — 지각·무단이탈·미도착 등 관리자 재량 (3회 → 협의대상 자동)
+            if (!ext && DateTime.now().isAfter(widget.job.start) && gWarnOnApp) ...[
+              const SizedBox(height: 8),
+              _pill('경고 부여 · 누적 ${totalWarningsOf(w.name)}회', bg: Colors.white, fg: JColors.amber, border: JColors.amber, onTap: () {
+                Navigator.pop(ctx);
+                openWarnSheet(context, w.name, jobRef: '${widget.job.site} ${widget.job.dateLabel} ${widget.job.slot}')
                     .then((_) { if (mounted) setState(() {}); });
               }),
             ],
@@ -3016,8 +3423,8 @@ class _ApprovalPageState extends State<ApprovalPage> {
               }),
             ]),
             const SizedBox(height: 2),
-            Text('${a.siteName} · ${a.slotTime}\n${a.note}',
-                style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.5)),
+            jobLink(context, a.jobId, a.siteName, a.slotTime, '${a.siteName} · ${a.slotTime}'),
+            Text(a.note, style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.5)),
             if (a.buddy != null)
               Padding(
                 padding: const EdgeInsets.only(top: 3),
@@ -3069,7 +3476,9 @@ class _ApprovalPageState extends State<ApprovalPage> {
                       color: c.beforeMin < 60 ? JColors.red : JColors.amber)),
             ]),
             const SizedBox(height: 2),
-            Text('${c.siteName} · ${c.slotTime}\n신청 ${c.appliedAt}  →  취소 ${c.cancelledAt}\n사유: ${c.reason}',
+            jobLink(context, null, c.siteName, c.slotTime, '${c.siteName} · ${c.slotTime}'),
+            Text('신청 ${c.appliedAt}  →  취소 ${c.cancelledAt}
+사유: ${c.reason}',
                 style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.5)),
             const SizedBox(height: 10),
             Row(children: [
@@ -3564,6 +3973,21 @@ class _WorkerPageState extends State<WorkerPage> {
     ]..sort((a, b) => b.$1.compareTo(a.$1));
 
     final inq = _inquiriesAll.where((q) => q.name == name).firstOrNull;
+    // 이번 주(월~일) 근무지별 횟수 — 동일 근무지 4일(CJ·롯데) / 2일(컨벤션) 기준
+    final mon = DateTime(now.year, now.month, now.day).subtract(Duration(days: now.weekday - 1));
+    final sun = mon.add(const Duration(days: 7));
+    final perSite = <String, int>{};
+    for (final e in work) {
+      if (!e.$1.start.isBefore(mon) && e.$1.start.isBefore(sun) && effStatus(e.$1, e.$2) != 'absent') {
+        perSite[e.$1.site] = (perSite[e.$1.site] ?? 0) + 1;
+      }
+    }
+    final weekLine = perSite.isEmpty
+        ? ''
+        : '이번 주 · ${perSite.entries.map((e) {
+            final limit = (siteOf(e.key)?.partner ?? '').contains('컨벤션') ? 2 : 4;
+            return '${e.key.split(' ').first} ${e.value}/$limit일${e.value >= limit ? ' 만근' : ''}';
+          }).join(' · ')}';
 
     String stLabel(String s) => switch (s) {
           'ok' => '출근',
@@ -3608,14 +4032,19 @@ class _WorkerPageState extends State<WorkerPage> {
                   Text.rich(TextSpan(children: [
                     TextSpan(text: m.label,
                         style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: JColors.ink)),
-                    if (warns > 0)
-                      TextSpan(text: '  ·  경고 $warns회',
+                    if (warns + appWarningsOf(name) > 0)
+                      TextSpan(text: '  ·  경고 ${warns + appWarningsOf(name)}회',
                           style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700,
-                              color: warns >= 2 ? JColors.red : JColors.amber)),
-                    if (m.neg)
-                      const TextSpan(text: '  ·  협의대상',
-                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: JColors.red)),
+                              color: warns + appWarningsOf(name) >= 2 ? JColors.red : JColors.amber)),
+                    if (isNegotiation(name))
+                      TextSpan(text: m.neg ? '  ·  협의대상' : '  ·  협의대상 (경고 3회 자동)',
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: JColors.red)),
                   ])),
+                  // 이번 주 동일 근무지 출근 횟수 — 택배 주 4일 제한(정책 v1.1) · 주휴수당 참고
+                  if (weekLine.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(weekLine, style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+                  ],
                   const SizedBox(height: 8),
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, crossAxisAlignment: CrossAxisAlignment.end, children: [
                     Text.rich(TextSpan(children: [
@@ -3639,6 +4068,45 @@ class _WorkerPageState extends State<WorkerPage> {
                   Expanded(child: jPill('포인트 회수', bg: Colors.white, fg: JColors.red, border: JColors.red,
                       onTap: () => openRecoverSheet(context, name: name).then((_) { if (mounted) setState(() {}); }))),
                 ]),
+                const SizedBox(height: 7),
+                // 경고 부여 — 관리자 재량 · 3회 누적 시 협의대상 자동 (⚠ 미결: 앱 포함 여부 → 설정 스위치)
+                jPill(gWarnOnApp ? '경고 부여 · ${totalWarningsOf(name)}회 누적' : '경고 부여 (앱에서 꺼짐)',
+                    bg: Colors.white, fg: gWarnOnApp ? JColors.amber : JColors.inactive,
+                    border: gWarnOnApp ? JColors.amber : JColors.hairline,
+                    onTap: () => openWarnSheet(context, name).then((_) { if (mounted) setState(() {}); })),
+                if (gWarnings.any((w) => w.name == name)) ...[
+                  jSect('경고 이력 (앱) · ${appWarningsOf(name)}회'),
+                  jCard(Column(children: [
+                    for (final (i, w) in gWarnings.where((w) => w.name == name).toList().reversed.indexed) ...[
+                      if (i > 0) const Divider(height: 14, thickness: .5, color: JColors.hairline),
+                      Row(children: [
+                        Expanded(
+                          child: Text.rich(TextSpan(children: [
+                            TextSpan(text: '${w.reason}  ',
+                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700,
+                                    color: w.reverted ? JColors.inactive : JColors.ink,
+                                    decoration: w.reverted ? TextDecoration.lineThrough : null)),
+                            TextSpan(text: '${w.memo.isEmpty ? '' : '${w.memo} · '}${w.by} · ${hmOf(w.at)}',
+                                style: const TextStyle(fontSize: 11, color: JColors.muted)),
+                          ])),
+                        ),
+                        if (!w.reverted)
+                          InkWell(
+                            onTap: () {
+                              setState(() => w.reverted = true);
+                              audit('warning', name, '경고 취소 · ${w.reason}');
+                              jSnack(context, '경고 취소 · 현재 ${totalWarningsOf(name)}회');
+                            },
+                            borderRadius: BorderRadius.circular(6),
+                            child: const Padding(
+                              padding: EdgeInsets.all(4),
+                              child: Text('취소', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.blue)),
+                            ),
+                          ),
+                      ]),
+                    ],
+                  ])),
+                ],
                 if (m.neg)
                   const Padding(
                     padding: EdgeInsets.only(top: 8, left: 2),
@@ -3800,11 +4268,82 @@ class _MePageState extends State<MePage> {
               },
             ),
           ])),
+          const SizedBox(height: 8),
+          // ⚠ 미결: 앱에서 경고 부여 허용 여부 — 사장님 결정 전까지 스위치
+          jCard(Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            const Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('앱에서 경고 부여', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JColors.ink)),
+                SizedBox(height: 1),
+                Text('끄면 경고는 PC 관리자 웹에서만 · 3회 누적 시 협의대상 자동', style: TextStyle(fontSize: 11, color: JColors.muted)),
+              ]),
+            ),
+            Switch(
+              value: gWarnOnApp,
+              activeTrackColor: JColors.blue,
+              onChanged: (v) {
+                setState(() => gWarnOnApp = v);
+                jSnack(context, v ? '앱에서 경고 부여 켜짐' : '앱에서 경고 부여 꺼짐');
+              },
+            ),
+          ])),
+          jSect('자주 쓰는 문구 · ${gMsgTemplates.length}개 — 공지·회수 사유에서 골라 쓰기'),
+          jCard(Column(children: [
+            for (final (i, t) in gMsgTemplates.indexed) ...[
+              if (i > 0) const Divider(height: 14, thickness: .5, color: JColors.hairline),
+              Row(children: [
+                Expanded(child: Text(t, style: const TextStyle(fontSize: 12.5, color: JColors.ink, height: 1.45))),
+                InkWell(
+                  onTap: () => setState(() => gMsgTemplates.removeAt(i)),
+                  borderRadius: BorderRadius.circular(6),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Text('삭제', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.red)),
+                  ),
+                ),
+              ]),
+            ],
+            if (gMsgTemplates.isNotEmpty) const Divider(height: 14, thickness: .5, color: JColors.hairline),
+            InkWell(
+              onTap: _addTemplate,
+              borderRadius: BorderRadius.circular(6),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 4),
+                child: Align(alignment: Alignment.centerLeft,
+                    child: Text('＋ 문구 추가', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: JColors.blue))),
+              ),
+            ),
+          ])),
           const SizedBox(height: 14),
           jPill('로그아웃', bg: Colors.white, fg: JColors.red, border: JColors.red, onTap: widget.onLogout),
         ],
       ),
     );
+  }
+
+  Future<void> _addTemplate() async {
+    final c = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('문구 추가', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JColors.ink)),
+        content: TextField(
+          controller: c, autofocus: true, maxLines: 3, maxLength: 200,
+          style: const TextStyle(fontSize: 14, color: JColors.ink),
+          decoration: const InputDecoration(hintText: '예: 내일 새벽 4시 통근버스 탑승 확인 부탁드려요'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx),
+              child: const Text('취소', style: TextStyle(color: JColors.muted, fontWeight: FontWeight.w600))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('추가', style: TextStyle(color: JColors.blue, fontWeight: FontWeight.w800))),
+        ],
+      ),
+    );
+    if (ok == true && c.text.trim().isNotEmpty && mounted) setState(() => gMsgTemplates.add(c.text.trim()));
   }
 
   Widget _kvRow(String k, String v) => Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -4104,6 +4643,17 @@ Future<void> openRecoverSheet(BuildContext context, {String? name, String? jobRe
               contentPadding: const EdgeInsets.all(12),
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: JColors.hairline)),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: InkWell(
+              onTap: () => openTemplatePicker(ctx).then((t) { if (t != null) setS(() => memo.text = t); }),
+              borderRadius: BorderRadius.circular(6),
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Text('자주 쓰는 문구', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: JColors.blue)),
+              ),
             ),
           ),
           const SizedBox(height: 4),
