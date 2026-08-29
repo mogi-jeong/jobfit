@@ -10,23 +10,23 @@ part of 'main.dart';
 
 // ─── 근무지 (실제 11곳 — CJ 6 · 롯데 3 · 컨벤션 2) ───
 class Site {
-  final String name, partner, region;
+  final String name, partner, region, contact; // contact = 근무지 담당자 전화 (기획: 공고마다 필수·알바생에게 공개)
   final bool bus;
-  const Site(this.name, this.partner, this.region, this.bus);
+  const Site(this.name, this.partner, this.region, this.bus, [this.contact = '010-1234-5678']);
 }
 
 const sites = [
-  Site('곤지암 MegaHub', 'CJ대한통운', '경기 광주시 도척면', true),
-  Site('용인 Hub', 'CJ대한통운', '경기 용인시 양지면', true),
-  Site('군포 Hub_A', 'CJ대한통운', '경기 군포시 부곡동', false),
-  Site('군포 Hub_B', 'CJ대한통운', '경기 군포시 금정동', false),
-  Site('이천 MpHub', 'CJ대한통운', '경기 이천시 부발읍', true),
-  Site('안성 MpHub', 'CJ대한통운', '경기 안성시 공도읍', true),
-  Site('진천 MegaHub', '롯데택배', '충북 진천군 이월면', true),
-  Site('남양주 Hub', '롯데택배', '경기 남양주시 화도읍', false),
-  Site('군포 Hub', '롯데택배', '경기 군포시 당정동', true),
-  Site('L타워 웨딩홀', '컨벤션', '서울 강남구 테헤란로', false),
-  Site('W힐스 웨딩홀', '컨벤션', '서울 서초구 서초대로', false),
+  Site('곤지암 MegaHub', 'CJ대한통운', '경기 광주시 도척면', true, '010-3101-1001'),
+  Site('용인 Hub', 'CJ대한통운', '경기 용인시 양지면', true, '010-3102-1002'),
+  Site('군포 Hub_A', 'CJ대한통운', '경기 군포시 부곡동', false, '010-3103-1003'),
+  Site('군포 Hub_B', 'CJ대한통운', '경기 군포시 금정동', false, '010-3104-1004'),
+  Site('이천 MpHub', 'CJ대한통운', '경기 이천시 부발읍', true, '010-3105-1005'),
+  Site('안성 MpHub', 'CJ대한통운', '경기 안성시 공도읍', true, '010-3106-1006'),
+  Site('진천 MegaHub', '롯데택배', '충북 진천군 이월면', true, '010-3201-2001'),
+  Site('남양주 Hub', '롯데택배', '경기 남양주시 화도읍', false, '010-3202-2002'),
+  Site('군포 Hub', '롯데택배', '경기 군포시 당정동', true, '010-3203-2003'),
+  Site('L타워 웨딩홀', '컨벤션', '서울 강남구 테헤란로', false, '010-3301-3001'),
+  Site('W힐스 웨딩홀', '컨벤션', '서울 서초구 서초대로', false, '010-3302-3002'),
 ];
 final List<String> allSites = sites.map((s) => s.name).toList();
 Site? siteOf(String name) => sites.where((s) => s.name == name).firstOrNull;
@@ -362,10 +362,11 @@ const _cancelAll = [
 
 // ─── 대기열 (공고별) — FULL 시 줄서기, 모집×2까지. 취소 나면 1번에게 자동 제안 ───
 class WaitRow {
-  final String name, status; // waiting(대기 중) / offered(자리 제안 중) / auto_rejected
+  final String name;
   final int order;
-  final DateTime? deadline; // offered일 때 수락 마감
-  const WaitRow(this.name, this.order, this.status, [this.deadline]);
+  String status; // waiting(대기 중) / offered(자리 제안 중) / auto_rejected(시간 초과) — 관리자 수동 제안으로 바뀔 수 있음
+  DateTime? deadline; // offered일 때 수락 마감
+  WaitRow(this.name, this.order, this.status, [this.deadline]);
 }
 
 // 공고 id → (이름, 상태, 제안 마감까지 초)
@@ -451,3 +452,7 @@ const _lateAll = [
 
 List<Inquiry> inquiriesFor(Admin a) => _inquiriesAll.where((i) => _scoped(a, i.siteName)).toList();
 List<LateReport> lateReportsFor(Admin a) => _lateAll.where((l) => _scoped(a, l.siteName)).toList();
+
+// 이 공고·이 사람의 "늦어요" 보고 (오늘 공고 기준) → 출결 화면 미도착 카드에 '지각 예정' 표시
+LateReport? lateReportFor(Job j, String name) =>
+    _lateAll.where((l) => l.name == name && l.siteName == j.site && l.slot == j.slot).firstOrNull;

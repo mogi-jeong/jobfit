@@ -5,6 +5,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'policy.dart';
 
 part 'mock_data.dart';
@@ -147,8 +148,15 @@ class Job {
   final int cap, ok, short;
   final String desc; // 공고 내용 (템플릿 불러오기 + 수정)
   final int point; // 잡핏 포인트 (기본 1,000P · 공고별 조정) — 종료 후 정상 출근+퇴근자에게만 자동 지급
+  final bool closed; // 수동 마감 (알바생 앱 노출 중단, 1급) — HANDOFF setRecruitClosed
   const Job(this.site, this.slot, this.status, this.start, this.end, this.cap, this.ok, this.short,
-      {this.id = '', this.desc = '', this.point = 1000});
+      {this.id = '', this.desc = '', this.point = 1000, this.closed = false});
+
+  // 1급 공고 수정용 — id 유지 (명단·정정 기록 보존)
+  Job copyWith({int? cap, int? short, DateTime? start, DateTime? end, int? point, String? desc, bool? closed}) =>
+      Job(site, slot, status, start ?? this.start, end ?? this.end, cap ?? this.cap, ok, short ?? this.short,
+          id: id, desc: desc ?? this.desc, point: point ?? this.point, closed: closed ?? this.closed);
+  String get contact => siteOf(site)?.contact ?? '010-1234-5678'; // 근무지 담당자 전화
 
   String get timeLabel =>
       '${_hm(start)} – ${_hm(end)}';
@@ -256,6 +264,16 @@ final List<CancelDecision> gCancelDecisions = [];
 int cancelDeductOf(String name) => gCancelDecisions
     .where((d) => d.req.name == name && d.decision == 'deduct' && !d.reverted)
     .fold(0, (a, _) => a + Policy.cancelDeduct);
+
+// ─── 전화 걸기 — 폰에서는 바로 다이얼, 크롬 데모에선 번호 안내 ───
+Future<void> callPhone(BuildContext context, String number) async {
+  final uri = Uri.parse('tel:${number.replaceAll('-', '')}');
+  var ok = false;
+  try {
+    ok = await launchUrl(uri);
+  } catch (_) {}
+  if (!ok && context.mounted) jSnack(context, '전화 $number — 폰에서는 바로 연결돼요');
+}
 
 // ─── 처리 로그 (감사 기록) — 누가·언제·무엇을 → Supabase audit_log 교체 지점 ───
 class AuditEntry {
@@ -944,10 +962,11 @@ class _JobCard extends StatelessWidget {
                           style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
                               color: short ? JColors.red : JColors.green))
                       : Text(
-                          (short ? '${job.short}명 부족' : '충원 완료') +
+                          (job.closed ? '수동 마감 · ' : '') +
+                              (short ? '${job.short}명 부족' : '충원 완료') +
                               (waitlistOf(job).isNotEmpty ? ' · 대기 ${waitlistOf(job).length}' : ''),
                           style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
-                              color: short ? JColors.red : JColors.green)),
+                              color: job.closed ? JColors.amber : (short ? JColors.red : JColors.green))),
             ],
           ),
         ],
@@ -1059,6 +1078,15 @@ class _AttendancePageState extends State<AttendancePage> {
               _pill('프로필 보기 · 근무·포인트 내역', bg: Colors.white, fg: JColors.blue, border: JColors.blue, onTap: () {
                 Navigator.pop(ctx);
                 openWorker(context, w.name);
+              }),
+            ],
+            // 전화 — 회원은 회원 번호, 외부인력은 입력한 번호
+            if ((ext ? w.phone : memberOf(w.name).phone) != null) ...[
+              const SizedBox(height: 8),
+              _pill('전화 ${ext ? w.phone : memberOf(w.name).phone}',
+                  bg: Colors.white, fg: JColors.ink, border: JColors.muted, onTap: () {
+                Navigator.pop(ctx);
+                callPhone(context, (ext ? w.phone : memberOf(w.name).phone)!);
               }),
             ],
             if (statusEditable) ...[
@@ -1388,6 +1416,9 @@ class _AttendancePageState extends State<AttendancePage> {
         : started
             ? _activeContent(base)
             : _upcomingContent(base, now);
+    // 상단 요약 카드 — 시작 전/진행 중은 기존 인원 카드를 대체, 종료 후는 정산 카드 위에
+    if (!ended && content.isNotEmpty) content.removeAt(0);
+    content.insert(0, _summaryCard(now, base));
     // 공고 내용 카드 (요약 카드 바로 아래)
     if (job.desc.isNotEmpty) {
       final descCard = Padding(
@@ -1427,12 +1458,24 @@ class _AttendancePageState extends State<AttendancePage> {
                     child: Text('‹', style: TextStyle(fontSize: 26, color: JColors.blue, height: 1)),
                   ),
                 ),
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('${job.site} · ${job.slot}',
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -.4, color: JColors.ink)),
-                  Text('${job.dateLabel} · ${job.timeLabel}',
-                      style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
-                ]),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${job.site} · ${job.slot}',
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -.4, color: JColors.ink)),
+                    Text('${job.dateLabel} · ${job.timeLabel}',
+                        style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+                  ]),
+                ),
+                // 공고 관리 (수정·마감·삭제) — 마스터·1등급, 종료 전
+                if ((gAdmin?.isA1 ?? false) && !ended)
+                  InkWell(
+                    onTap: _manageSheet,
+                    borderRadius: BorderRadius.circular(10),
+                    child: const Padding(
+                      padding: EdgeInsets.all(6),
+                      child: Text('관리', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JColors.blue)),
+                    ),
+                  ),
               ]),
             ),
             Expanded(
@@ -1481,7 +1524,7 @@ class _AttendancePageState extends State<AttendancePage> {
         ]),
       ],
       ..._gpsSection(),
-      ..._waitSection(),
+      ..._waitSection(seats: short),
       const SizedBox(height: 12),
       _sect(none.isEmpty ? '보정 필요 없음' : '보정 필요 · ${none.length}명'),
       if (none.isEmpty)
@@ -1497,8 +1540,16 @@ class _AttendancePageState extends State<AttendancePage> {
               children: [
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                   jName(context, w.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: JColors.ink)),
-                  const Text('미도착', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: JColors.inactive)),
+                  Text(lateReportFor(widget.job, w.name) != null ? '지각 예정' : '미도착',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                          color: lateReportFor(widget.job, w.name) != null ? JColors.amber : JColors.inactive)),
                 ]),
+                // 늦어요 보고 — 알바생이 미리 보낸 지연 예고를 출결 화면에서 바로
+                if (lateReportFor(widget.job, w.name) != null) ...[
+                  const SizedBox(height: 4),
+                  Text('늦어요 보고 · ${lateReportFor(widget.job, w.name)!.delayMin}분 지연 예정 · ${lateReportFor(widget.job, w.name)!.reason} (${lateReportFor(widget.job, w.name)!.ago})',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: JColors.amber)),
+                ],
                 // 같이하기 짝 힌트 — 안 온 사람 확인할 때만 필요한 맥락 정보
                 if (buddyOf(widget.job, w.name) != null) ...[
                   const SizedBox(height: 4),
@@ -1558,6 +1609,12 @@ class _AttendancePageState extends State<AttendancePage> {
                   fontFeatures: const [FontFeature.tabularFigures()])),
         ]),
       ])),
+      if (widget.job.closed)
+        const Padding(
+          padding: EdgeInsets.only(top: 8, left: 2),
+          child: Text('수동 마감됨 — 알바생 앱에 노출되지 않아요 (관리 › 모집 재개)',
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.amber)),
+        ),
       if (short > 0) ...[
         const SizedBox(height: 12),
         _sect('모집 · $short명 더 필요해요'),
@@ -1570,7 +1627,7 @@ class _AttendancePageState extends State<AttendancePage> {
               onTap: () => snack('긴급 구인 알림 발송 (동의자 대상)'))),
         ]),
       ],
-      ..._waitSection(),
+      ..._waitSection(seats: short),
       const SizedBox(height: 12),
       _sect('확정 명단 · ${roster.length}명'),
       if (roster.isEmpty)
@@ -1790,6 +1847,171 @@ class _AttendancePageState extends State<AttendancePage> {
     ];
   }
 
+  // ── 1급 공고 관리: 수정 · 수동 마감/재개 · 삭제 ──
+  void _replaceJob(Job nj) {
+    final i = gJobs.indexOf(widget.job);
+    if (i >= 0) {
+      gJobs[i] = nj;
+    } else {
+      final k = gPastJobs.indexOf(widget.job);
+      if (k >= 0) gPastJobs[k] = nj;
+    }
+    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => AttendancePage(job: nj)));
+  }
+
+  void _manageSheet() {
+    final j = widget.job;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('공고 관리 — 마스터·1등급',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JColors.ink)),
+            const SizedBox(height: 2),
+            Text('${j.site} ${j.dateLabel} ${j.slot} · 확정 ${rosterOf(j).length + invited.length}명',
+                style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+            const SizedBox(height: 12),
+            _pill('공고 수정 — 인원 · 시간 · 포인트 · 내용', bg: JColors.blue, fg: Colors.white, onTap: () {
+              Navigator.pop(ctx);
+              _editJobSheet();
+            }),
+            const SizedBox(height: 8),
+            _pill(j.closed ? '모집 재개 — 알바생 앱에 다시 노출' : '수동 마감 — 알바생 앱 노출 중단',
+                bg: Colors.white, fg: JColors.amber, border: JColors.amber, onTap: () {
+              Navigator.pop(ctx);
+              audit('job_edit', j.site, j.closed ? '모집 재개' : '수동 마감', jobRef: '${j.dateLabel} ${j.slot}');
+              _replaceJob(j.copyWith(closed: !j.closed));
+              jSnack(context, j.closed ? '모집 재개 — 알바생 앱에 노출돼요' : '수동 마감 — 확정자는 그대로, 신규 신청만 막혀요');
+            }),
+            const SizedBox(height: 8),
+            _pill('공고 삭제', bg: Colors.white, fg: JColors.red, border: JColors.red, onTap: () async {
+              Navigator.pop(ctx);
+              final n = rosterOf(j).length + invited.length;
+              final go = await showDialog<bool>(
+                context: context,
+                builder: (d) => AlertDialog(
+                  backgroundColor: Colors.white,
+                  surfaceTintColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                  title: const Text('공고 삭제', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: JColors.ink)),
+                  content: Text(
+                      '${j.site} ${j.dateLabel} ${j.slot}\n${n > 0 ? '확정자 $n명에게 취소 알림이 발송되고 신청이 모두 취소됩니다.' : '확정자가 없어 바로 삭제됩니다.'}\n되돌릴 수 없어요.',
+                      style: const TextStyle(fontSize: 12.5, color: JColors.muted, height: 1.5)),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(d), child: const Text('취소', style: TextStyle(color: JColors.muted))),
+                    TextButton(onPressed: () => Navigator.pop(d, true),
+                        child: const Text('삭제', style: TextStyle(color: JColors.red, fontWeight: FontWeight.w800))),
+                  ],
+                ),
+              );
+              if (go != true || !mounted) return;
+              gJobs.remove(j);
+              gPastJobs.remove(j);
+              audit('job_edit', j.site, '공고 삭제 (확정 $n명 취소 알림)', jobRef: '${j.dateLabel} ${j.slot}');
+              Navigator.of(context).pop();
+              jSnack(context, '공고 삭제 · ${n > 0 ? '확정자 $n명에게 취소 알림' : '완료'}');
+            }),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  void _editJobSheet() {
+    final j = widget.job;
+    int cap = j.cap;
+    var start = TimeOfDay(hour: j.start.hour, minute: j.start.minute);
+    var end = TimeOfDay(hour: j.end.hour, minute: j.end.minute);
+    final pointCtrl = TextEditingController(text: '${j.point}');
+    final descCtrl = TextEditingController(text: j.desc);
+    String tod(TimeOfDay t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    final confirmed = rosterOf(j).length + invited.length;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+        Widget label(String t) => Padding(
+            padding: const EdgeInsets.only(top: 13, bottom: 6),
+            child: Text(t, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.muted)));
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                const Text('공고 수정', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JColors.ink)),
+                const SizedBox(height: 2),
+                Text('${j.site} ${j.dateLabel} · 확정 $confirmed명 (인원은 확정자보다 줄일 수 없어요)',
+                    style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+                label('모집 인원'),
+                Row(children: [
+                  _JobListPageState._stepBtn('−', () => setS(() => cap = (cap - 1).clamp(confirmed < 1 ? 1 : confirmed, 50))),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Text('$cap명',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: JColors.ink,
+                            fontFeatures: [FontFeature.tabularFigures()])),
+                  ),
+                  _JobListPageState._stepBtn('＋', () => setS(() => cap = (cap + 1).clamp(1, 50))),
+                ]),
+                label('시간'),
+                Row(children: [
+                  Expanded(child: _JobListPageState._timeBox(ctx, '시작', tod(start), () async {
+                    final t = await showTimePicker(context: ctx, initialTime: start);
+                    if (t != null) setS(() => start = t);
+                  })),
+                  const SizedBox(width: 8),
+                  Expanded(child: _JobListPageState._timeBox(ctx, '종료', tod(end), () async {
+                    final t = await showTimePicker(context: ctx, initialTime: end);
+                    if (t != null) setS(() => end = t);
+                  })),
+                ]),
+                label('포인트 (P)'),
+                TextField(controller: pointCtrl, keyboardType: TextInputType.number,
+                    style: const TextStyle(fontSize: 14, color: JColors.ink),
+                    decoration: const InputDecoration(isDense: true)),
+                label('공고 내용'),
+                TextField(controller: descCtrl, maxLines: 4, maxLength: 500,
+                    style: const TextStyle(fontSize: 13, color: JColors.ink, height: 1.5),
+                    decoration: InputDecoration(
+                      isDense: true, contentPadding: const EdgeInsets.all(12),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: JColors.hairline)),
+                    )),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 42, width: double.infinity,
+                  child: jPill('저장 · 확정자에게 변경 알림', bg: JColors.blue, fg: Colors.white, onTap: () {
+                    final d = DateTime(j.start.year, j.start.month, j.start.day);
+                    final s = DateTime(d.year, d.month, d.day, start.hour, start.minute);
+                    var e = DateTime(d.year, d.month, d.day, end.hour, end.minute);
+                    if (!e.isAfter(s)) e = e.add(const Duration(days: 1));
+                    final now = DateTime.now();
+                    final newShort = now.isAfter(j.start) ? j.short : (cap - confirmed).clamp(0, cap);
+                    Navigator.pop(ctx);
+                    audit('job_edit', j.site, '공고 수정 · 인원 ${j.cap}→$cap · ${tod(start)}–${tod(end)}',
+                        jobRef: '${j.dateLabel} ${j.slot}');
+                    _replaceJob(j.copyWith(
+                        cap: cap, short: newShort, start: s, end: e,
+                        point: int.tryParse(pointCtrl.text.trim()) ?? j.point, desc: descCtrl.text.trim()));
+                    jSnack(context, '공고 수정 완료 · 확정 $confirmed명에게 변경 알림');
+                  }),
+                ),
+              ]),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
   // 미도착자의 짝꿍 상태 → "짝한테 물어보세요" 힌트
   String _buddyHint(Worker w) {
     final p = buddyOf(widget.job, w.name)!;
@@ -1836,7 +2058,8 @@ class _AttendancePageState extends State<AttendancePage> {
   }
 
   // ── 대기열 (FULL 시 줄서기, 모집×2까지) — 자리 나면 1번에게 자동 제안 ──
-  List<Widget> _waitSection() {
+  // seats = 지금 비어 있는 자리 수 (부족/미출근). 자리가 있고 대기자가 있으면 관리자가 "지금 제안" 가능
+  List<Widget> _waitSection({int seats = 0}) {
     final rows = waitlistOf(widget.job);
     if (rows.isEmpty) return const [];
     final now = DateTime.now();
@@ -1844,6 +2067,26 @@ class _AttendancePageState extends State<AttendancePage> {
       final h = d.inHours, m = d.inMinutes % 60, s = d.inSeconds % 60;
       final ss = s.toString().padLeft(2, '0');
       return h > 0 ? '$h:${m.toString().padLeft(2, '0')}:$ss' : '$m:$ss';
+    }
+
+    // 정책: 근무 24시간 전이면 2시간, 이내면 30분
+    Duration acceptWindow() => widget.job.start.difference(now).inHours >= 24
+        ? const Duration(minutes: Policy.waitAcceptFarMin)
+        : const Duration(minutes: Policy.waitAcceptNearMin);
+
+    final offered = rows.where((r) => r.status == 'offered').toList();
+    final liveOffer = offered.where((r) => !r.deadline!.difference(now).isNegative).toList();
+    final expired = offered.where((r) => r.deadline!.difference(now).isNegative).toList();
+    final waiting = rows.where((r) => r.status == 'waiting').toList();
+
+    void offerTo(WaitRow r) {
+      setState(() {
+        r.status = 'offered';
+        r.deadline = now.add(acceptWindow());
+      });
+      audit('waitlist', r.name, '자리 제안 (수동) · 수락 제한 ${acceptWindow().inMinutes}분',
+          jobRef: '${widget.job.site} ${widget.job.dateLabel}');
+      snack('${r.order}번 ${r.name} — 자리 제안 발송 · ${acceptWindow().inMinutes}분 내 수락');
     }
 
     return [
@@ -1859,12 +2102,15 @@ class _AttendancePageState extends State<AttendancePage> {
             if (r.status == 'offered') {
               final left = r.deadline!.difference(now);
               if (left.isNegative) {
-                right = '시간 초과 · 다음 대기자로';
-                color = JColors.inactive;
+                right = '시간 초과 · 응답 없음';
+                color = JColors.red;
               } else {
                 right = '자리 제안 중 · ${fmt(left)}';
                 color = left.inMinutes < 5 ? JColors.red : JColors.amber;
               }
+            } else if (r.status == 'auto_rejected') {
+              right = '자동 거절';
+              color = JColors.inactive;
             } else {
               right = '대기 중';
               color = JColors.inactive;
@@ -1874,7 +2120,9 @@ class _AttendancePageState extends State<AttendancePage> {
                 onTap: () => openWorker(context, r.name),
                 borderRadius: BorderRadius.circular(6),
                 child: Text('${r.order}번  ${r.name}',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: JColors.ink)),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                        color: r.status == 'auto_rejected' ? JColors.inactive : JColors.ink,
+                        decoration: r.status == 'auto_rejected' ? TextDecoration.lineThrough : null)),
               ),
               Text(right,
                   style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color,
@@ -1883,6 +2131,33 @@ class _AttendancePageState extends State<AttendancePage> {
           }(),
         ],
       ])),
+      // 수동 제안 — 자리가 비었는데 제안이 안 나가 있을 때 (취소 직후 등) 관리자가 바로 발송
+      if (seats > 0 && liveOffer.isEmpty && waiting.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        _pill('지금 자리 제안 → ${waiting.first.order}번 ${waiting.first.name}',
+            bg: JColors.blue, fg: Colors.white, onTap: () => offerTo(waiting.first)),
+      ],
+      // 시간 초과 건 정리 → 다음 대기자에게 넘기기 (자동 처리와 같은 동작을 수동으로)
+      if (expired.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        _pill(waiting.isNotEmpty
+                ? '시간 초과 ${expired.length}건 자동 거절 → 다음 ${waiting.first.name}에게 제안'
+                : '시간 초과 ${expired.length}건 자동 거절 · 대기자 없음 → 일반 모집 재개',
+            bg: Colors.white, fg: JColors.amber, border: JColors.amber, onTap: () {
+          setState(() {
+            for (final r in expired) {
+              r.status = 'auto_rejected';
+            }
+          });
+          if (waiting.isNotEmpty) {
+            offerTo(waiting.first);
+          } else {
+            audit('waitlist', widget.job.site, '대기자 전원 실패 → 일반 모집 재개(reopened)',
+                jobRef: '${widget.job.site} ${widget.job.dateLabel}');
+            snack('대기자 없음 — 일반 모집 재개 · 알바생 앱에 다시 노출');
+          }
+        }),
+      ],
       const Padding(
         padding: EdgeInsets.only(top: 6, left: 2),
         child: Text('자리가 나면 1번에게 자동 제안 · 수락 제한 24시간 전 2시간 / 이내 30분 · 전원 실패 시 일반 모집 재개',
@@ -1950,6 +2225,151 @@ class _AttendancePageState extends State<AttendancePage> {
       _sect('외부인력 · ${list.length}명 — 눌러서 수정'),
       _rosterCard(list, onTap: (w) => _statusSheet(w, statusEditable: statusEditable)),
     ];
+  }
+
+  // ── 상단 요약 카드 — 열자마자 "몇 시 · 몇 명 · 뭘 해야 하나" 한 장 ──
+  Widget _summaryCard(DateTime now, List<Worker> base) {
+    final job = widget.job;
+    final started = now.isAfter(job.start);
+    final ended = now.isAfter(job.end);
+    final members = [...base, ...invited];
+
+    // 1) 타이머 신호등 (공고 카드와 같은 규칙)
+    String timerText;
+    Color timerColor;
+    double? progress;
+    if (ended) {
+      timerText = '근무 종료 · ${Job._hm(job.end)}';
+      timerColor = JColors.inactive;
+    } else if (started) {
+      final elapsed = now.difference(job.start);
+      timerText = '${_dur(elapsed)} 경과 · 종료 ${Job._hm(job.end)}';
+      progress = elapsed.inSeconds / job.end.difference(job.start).inSeconds;
+      timerColor = JColors.blue;
+    } else {
+      final left = job.start.difference(now);
+      timerText = '시작까지 ${_dur(left)}';
+      timerColor = left.inMinutes < 30 ? JColors.red : JColors.green;
+    }
+
+    // 2) 인원 한 줄 + 3) 지금 할 일
+    final todos = <(String, Color)>[];
+    Widget countLine;
+    final wl = waitlistOf(job);
+    final expiredOffers = wl
+        .where((r) => r.status == 'offered' && r.deadline != null && r.deadline!.isBefore(now))
+        .length;
+    final apps = gAdmin == null ? 0 : pendingAppsFor(gAdmin!).where((p) => p.jobId == job.id).length;
+    if (!started) {
+      final filled = members.length + extWorkers.length;
+      final short = job.cap - filled;
+      countLine = Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          _bigCount(filled, job.cap, '확정'),
+          Text(short > 0 ? '$short명 부족' : '충원 완료',
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
+                  color: short > 0 ? JColors.red : JColors.green)),
+        ],
+      );
+      if (short > 0) todos.add(('$short명 더 모집 — 알바생 추가 · 외부인력 · 긴급 알림', JColors.red));
+      if (apps > 0) todos.add(('신청 승인 대기 $apps건 — 승인 탭에서 처리', JColors.amber));
+      if (expiredOffers > 0) todos.add(('대기열 자리 제안 시간 초과 $expiredOffers건 — 다음 대기자에게', JColors.amber));
+      if (wl.isNotEmpty && short <= 0) todos.add(('대기 ${wl.length}명 — 취소 나오면 자동 제안', JColors.muted));
+      if (job.closed) todos.add(('수동 마감 상태 — 앱에 노출 안 됨', JColors.amber));
+    } else if (!ended) {
+      final none = members.where((w) => statusOf(w) == 'none').length;
+      final here = [...members, ...extWorkers].where((w) {
+        final s = statusOf(w);
+        return (s == 'ok' || s == 'late') && outOf_(w) == null;
+      }).length;
+      final short = job.cap - here;
+      countLine = Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          _bigCount(here, job.cap, '출근'),
+          Text(none == 0 ? '전원 처리' : '$none명 미도착',
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
+                  color: none == 0 ? JColors.green : JColors.red)),
+        ],
+      );
+      if (none > 0) todos.add(('미도착 $none명 — 수동 출근 또는 결근 처리', JColors.red));
+      if (gpsReqs.isNotEmpty) todos.add(('퇴근 승인 대기 ${gpsReqs.length}명 — 사유 확인 후 승인·반려', JColors.amber));
+      if (short > 0) todos.add(('현장 $short명 부족 — 알바생·외부인력 추가 가능', JColors.amber));
+      if (expiredOffers > 0) todos.add(('대기열 자리 제안 시간 초과 $expiredOffers건', JColors.amber));
+    } else {
+      final autoDone = now.difference(job.end).inHours >= Policy.autoCheckoutHours;
+      final pending = autoDone
+          ? 0
+          : members.where((w) => (statusOf(w) == 'ok' || statusOf(w) == 'late') && outOf_(w) == null).length;
+      final attended = members.where((w) {
+        final s = statusOf(w);
+        return s == 'ok' || s == 'late' || s == 'early';
+      }).length;
+      countLine = Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          _bigCount(attended, job.cap, '출근'),
+          Text(pending > 0 ? '퇴근 미처리 $pending명' : '정리 완료',
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
+                  color: pending > 0 ? JColors.amber : JColors.green)),
+        ],
+      );
+      if (pending > 0) todos.add(('퇴근 확인 필요 $pending명 — 처리 후 포인트 확정', JColors.amber));
+      if (autoDone && gpsReqs.isNotEmpty) todos.add(('퇴근 사유 미처리 ${gpsReqs.length}건', JColors.amber));
+      if (todos.isEmpty) todos.add(('할 일 없음 — 종료 후 7일까지 정정 가능', JColors.muted));
+    }
+
+    return _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      countLine,
+      const SizedBox(height: 8),
+      Row(children: [
+        Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: timerColor)),
+        const SizedBox(width: 6),
+        Text(timerText,
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: timerColor,
+                fontFeatures: const [FontFeature.tabularFigures()])),
+      ]),
+      if (progress != null) ...[
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(
+              value: progress.clamp(0, 1),
+              minHeight: 4,
+              backgroundColor: JColors.track,
+              valueColor: const AlwaysStoppedAnimation(JColors.blue)),
+        ),
+      ],
+      if (todos.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        const Divider(height: 1, thickness: .5, color: JColors.hairline),
+        const SizedBox(height: 8),
+        const Text('지금 할 일', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: JColors.muted)),
+        const SizedBox(height: 4),
+        ...todos.map((t) => Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(t.$1,
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: t.$2, height: 1.4)),
+            )),
+      ],
+      const SizedBox(height: 10),
+      const Divider(height: 1, thickness: .5, color: JColors.hairline),
+      const SizedBox(height: 8),
+      // 담당자 전화 — 현장에서 제일 많이 누르는 버튼
+      InkWell(
+        onTap: () => callPhone(context, job.contact),
+        borderRadius: BorderRadius.circular(6),
+        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text('담당자 ${job.contact}',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: JColors.ink)),
+          const Text('전화 걸기', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: JColors.blue)),
+        ]),
+      ),
+    ]));
   }
 
   Widget _bigCount(int a, int b, String label) => Text.rich(TextSpan(children: [
@@ -3171,7 +3591,12 @@ class _WorkerPageState extends State<WorkerPage> {
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(name,
                     style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -.4, color: JColors.ink)),
-                Text(m.phone, style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+                InkWell(
+                  onTap: () => callPhone(context, m.phone),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Text('${m.phone} · 전화',
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.blue)),
+                ),
               ]),
             ]),
           ),
@@ -3404,6 +3829,16 @@ Future<bool> openRegisterSheet(BuildContext context, {Set<DateTime>? preselected
     final descCtrl = TextEditingController(text: templateBody('A'));
     String tod(TimeOfDay t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
     String slotLabel(TimeOfDay s) => (s.hour >= 20 || s.hour < 5) ? '야간' : (s.hour >= 11 ? '오후' : '주간');
+    // 근무지·시간대에 맞는 템플릿 자동 선택 (CJ→A, 롯데→B, 웨딩→C, 야간→D, 컨벤션 그 외→E)
+    // — 관리자가 내용을 직접 고친 상태면 덮어쓰지 않음
+    void autoTpl() {
+      final body = _defaultDesc(site, slotLabel(start));
+      final cur = descCtrl.text.trim();
+      final untouched = cur.isEmpty || jobTemplates.any((t) => t.body == cur);
+      if (!untouched) return;
+      descCtrl.text = body;
+      tpl = jobTemplates.where((t) => t.body == body).firstOrNull?.key ?? tpl;
+    }
     final wageCtrl = TextEditingController(text: '110000');
     final pointCtrl = TextEditingController(text: '1000');
 
@@ -3450,7 +3885,10 @@ Future<bool> openRegisterSheet(BuildContext context, {Set<DateTime>? preselected
                 const Text('등록하면 알바생 앱에 바로 게시돼요 · 마스터·1등급 전용',
                     style: TextStyle(fontSize: 11.5, color: JColors.muted)),
                 label('근무지'),
-                chips(allSites.map((s) => (s, s.split(' ').first)).toList(), site, (v) => site = v),
+                chips(allSites.map((s) => (s, s.split(' ').first)).toList(), site, (v) {
+                  site = v;
+                  autoTpl();
+                }),
                 label('날짜 — 여러 날 선택 가능 (${picked.length}일 선택)'),
                 _JobListPageState._calendar(ctx, month, picked, setSheet, (m) => month = m),
                 label('시간 — 직접 설정'),
@@ -3476,6 +3914,7 @@ Future<bool> openRegisterSheet(BuildContext context, {Set<DateTime>? preselected
                     (v) {
                       start = TimeOfDay(hour: v.$1, minute: 0);
                       end = TimeOfDay(hour: v.$2, minute: 0);
+                      autoTpl(); // 야간이면 D 템플릿으로
                     }),
                 label('모집 인원'),
                 Row(children: [
