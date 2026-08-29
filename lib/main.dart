@@ -3477,8 +3477,7 @@ class _ApprovalPageState extends State<ApprovalPage> {
             ]),
             const SizedBox(height: 2),
             jobLink(context, null, c.siteName, c.slotTime, '${c.siteName} · ${c.slotTime}'),
-            Text('신청 ${c.appliedAt}  →  취소 ${c.cancelledAt}
-사유: ${c.reason}',
+            Text('신청 ${c.appliedAt}  →  취소 ${c.cancelledAt}\n사유: ${c.reason}',
                 style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.5)),
             const SizedBox(height: 10),
             Row(children: [
