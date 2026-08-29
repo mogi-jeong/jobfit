@@ -6,48 +6,52 @@ part of 'main.dart';
 //    rosterOf / gpsReqsOf / pendingAppsFor / cancelReqsFor / waitlistFor /
 //    inquiriesFor / lateReportsFor / buildTodayJobs / buildPastJobs
 //    → 같은 시그니처로 Supabase 조회 함수를 만들면 화면 코드는 그대로 동작.
+//  ★ 모든 날짜·시각은 DateTime.now() 기준 상대값 (고정 날짜 없음) — 언제 열어도 "오늘" 데이터
+//  ★ 명단은 앱 시작 시 날짜순으로 한 번에 생성 (화면 여는 순서와 무관하게 항상 같은 결과)
 // ══════════════════════════════════════════════════════════════
 
 // ─── 근무지 (실제 11곳 — CJ 6 · 롯데 3 · 컨벤션 2) ───
 class Site {
   final String name, partner, region, contact; // contact = 근무지 담당자 전화 (기획: 공고마다 필수·알바생에게 공개)
   final bool bus;
-  const Site(this.name, this.partner, this.region, this.bus, [this.contact = '010-1234-5678']);
+  final int consent; // 긴급 구인 알림 동의자 수 (Mock 고정값 → Supabase workers.marketing_consent 집계)
+  const Site(this.name, this.partner, this.region, this.bus, [this.contact = '010-1234-5678', this.consent = 20]);
 }
 
 const sites = [
-  Site('곤지암 MegaHub', 'CJ대한통운', '경기 광주시 도척면', true, '010-3101-1001'),
-  Site('용인 Hub', 'CJ대한통운', '경기 용인시 양지면', true, '010-3102-1002'),
-  Site('군포 Hub_A', 'CJ대한통운', '경기 군포시 부곡동', false, '010-3103-1003'),
-  Site('군포 Hub_B', 'CJ대한통운', '경기 군포시 금정동', false, '010-3104-1004'),
-  Site('이천 MpHub', 'CJ대한통운', '경기 이천시 부발읍', true, '010-3105-1005'),
-  Site('안성 MpHub', 'CJ대한통운', '경기 안성시 공도읍', true, '010-3106-1006'),
-  Site('진천 MegaHub', '롯데택배', '충북 진천군 이월면', true, '010-3201-2001'),
-  Site('남양주 Hub', '롯데택배', '경기 남양주시 화도읍', false, '010-3202-2002'),
-  Site('군포 Hub', '롯데택배', '경기 군포시 당정동', true, '010-3203-2003'),
-  Site('L타워 웨딩홀', '컨벤션', '서울 강남구 테헤란로', false, '010-3301-3001'),
-  Site('W힐스 웨딩홀', '컨벤션', '서울 서초구 서초대로', false, '010-3302-3002'),
+  Site('곤지암 MegaHub', 'CJ대한통운', '경기 광주시 도척면', true, '010-3101-1001', 42),
+  Site('용인 Hub', 'CJ대한통운', '경기 용인시 양지면', true, '010-3102-1002', 31),
+  Site('군포 Hub_A', 'CJ대한통운', '경기 군포시 부곡동', false, '010-3103-1003', 18),
+  Site('군포 Hub_B', 'CJ대한통운', '경기 군포시 금정동', false, '010-3104-1004', 12),
+  Site('이천 MpHub', 'CJ대한통운', '경기 이천시 부발읍', true, '010-3105-1005', 27),
+  Site('안성 MpHub', 'CJ대한통운', '경기 안성시 공도읍', true, '010-3106-1006', 15),
+  Site('진천 MegaHub', '롯데택배', '충북 진천군 이월면', true, '010-3201-2001', 23),
+  Site('남양주 Hub', '롯데택배', '경기 남양주시 화도읍', false, '010-3202-2002', 9),
+  Site('군포 Hub', '롯데택배', '경기 군포시 당정동', true, '010-3203-2003', 21),
+  Site('L타워 웨딩홀', '컨벤션', '서울 강남구 테헤란로', false, '010-3301-3001', 36),
+  Site('W힐스 웨딩홀', '컨벤션', '서울 서초구 서초대로', false, '010-3302-3002', 29),
 ];
 final List<String> allSites = sites.map((s) => s.name).toList();
 Site? siteOf(String name) => sites.where((s) => s.name == name).firstOrNull;
+int consentCountOf(String site) => siteOf(site)?.consent ?? 0;
 
 // ─── 가입 알바생 풀 40명 (직접 추가 검색·명단 생성용) ───
 const mockMembers = [
-  Member('권나라', '010-2201-1101', '단골 · 출근 14회'),
+  Member('권나라', '010-2201-1101', '단골 · 출근 14회', false, 20000),
   Member('김철수', '010-2202-1102', '성실 B'),
   Member('안재현', '010-2203-1103', '보통 C'),
   Member('백소라', '010-2204-1104', '경고 2회'),
   Member('유지태', '010-2205-1105', '협의대상', true),
   Member('박서준', '010-2206-1106', '성실 A'),
   Member('이지은', '010-2207-1107', '성실 A'),
-  Member('최민호', '010-2208-1108', '단골 · 출근 21회'),
+  Member('최민호', '010-2208-1108', '단골 · 출근 21회', false, 30000),
   Member('윤아름', '010-2209-1109', '성실 B'),
   Member('오세훈', '010-2210-1110', '협의대상', true),
   Member('정하늘', '010-2211-1111', '성실 A'),
   Member('한지민', '010-2212-1112', '경고 1회'),
   Member('강도윤', '010-2213-1113', '보통 C'),
   Member('김도현', '010-2214-1114', '성실 B'),
-  Member('이수민', '010-2215-1115', '단골 · 출근 18회'),
+  Member('이수민', '010-2215-1115', '단골 · 출근 18회', false, 10000),
   Member('박준영', '010-2216-1116', '성실 B'),
   Member('최유나', '010-2217-1117', '경고 1회'),
   Member('장민석', '010-2218-1118', '성실 A'),
@@ -63,7 +67,7 @@ const mockMembers = [
   Member('고은채', '010-2228-1128', '성실 B'),
   Member('박도윤', '010-2229-1129', '경고 1회'),
   Member('신유나', '010-2230-1130', '성실 A'),
-  Member('이준호', '010-2231-1131', '단골 · 출근 25회'),
+  Member('이준호', '010-2231-1131', '단골 · 출근 25회', false, 10000),
   Member('전소민', '010-2232-1132', '협의대상', true),
   Member('차민규', '010-2233-1133', '성실 B'),
   Member('감우주', '010-2234-1134', '보통 C'),
@@ -72,7 +76,7 @@ const mockMembers = [
   Member('오하람', '010-2237-1137', '성실 B'),
   Member('한별이', '010-2238-1138', '보통 D'),
   Member('홍길동', '010-2239-1139', '성실 B'),
-  Member('배수지', '010-2240-1140', '단골 · 출근 16회'),
+  Member('배수지', '010-2240-1140', '단골 · 출근 16회', false, 15000),
 ];
 
 // 명단 생성용 이름 풀 (회원 40 + 추가 60)
@@ -85,6 +89,13 @@ const _extraNames = [
   '한소희', '한지현', '홍수현', '황민현', '황인엽', '김유정', '남지현', '박보영', '신혜선', '이유비',
 ];
 final List<String> _names = [...mockMembers.map((m) => m.name), ..._extraNames];
+
+// 승인·취소·대기열 더미에 쓰는 이름 — 명단 생성에서 제외 (같은 날 중복 배정 검사와 충돌하지 않도록)
+const _reservedNames = {
+  '한지민', '류지안', '오세훈', '백소라', '전소민', '김민준', '도경수', '박준영', '최유나', // 신청 대기
+  '홍길동', '나예린', '감우주', '차민규', '신유나', '한별이', // 취소 검토
+  '서지우', '임하늘', '조은비', '배수지', '고은채', '김철수', // 대기열
+};
 
 // ─── 공고 내용 템플릿 5종 (마스터/1급이 미리 작성 → 등록 시 불러오기, 수정 가능) ───
 class JobTemplate {
@@ -130,7 +141,7 @@ DateTime _today0() {
 
 // 공고 생성 — dayOffset(일 단위) 기준, startAt 주면 시작 시각을 현재 기준 상대값으로 덮어씀
 Job _mk(String id, String site, String slot, int dayOffset, int cap, int ok, int short,
-    {String? status, DateTime? startAt}) {
+    {DateTime? startAt, bool closed = false}) {
   final base = _today0().add(Duration(days: dayOffset));
   final (sh, eh) = _slotHours(slot);
   var start = base.add(Duration(hours: sh));
@@ -141,79 +152,97 @@ Job _mk(String id, String site, String slot, int dayOffset, int cap, int ok, int
     end = startAt.add(len);
   }
   final now = DateTime.now();
-  final st = status ??
-      (now.isAfter(end)
-          ? '완료'
-          : now.isAfter(start)
-              ? '진행중'
-              : (short > 0 ? '모집중' : '마감'));
-  return Job(site, slot, st, start, end, cap, ok, short, id: id, desc: _defaultDesc(site, slot));
+  final st = now.isAfter(end)
+      ? '완료'
+      : now.isAfter(start)
+          ? '진행중'
+          : closed
+              ? '수동 마감'
+              : (short > 0 ? '모집중' : '마감');
+  return Job(site, slot, st, start, end, cap, ok, short, id: id, desc: _defaultDesc(site, slot), closed: closed);
 }
 
-// 오늘 + 예정 공고 — 오늘 건은 "항상 그럴듯하게" 현재 시각 기준으로 배치
+// 오늘 + 예정 공고 — 오늘 건은 "항상 그럴듯하게" 현재 시각 기준으로 배치 (진행 중 3 · 시작 전 5 · 종료 3)
 List<Job> buildTodayJobs() {
   final now = DateTime.now();
   DateTime ago(int h, [int m = 0]) => now.subtract(Duration(hours: h, minutes: m));
   DateTime later(int h, [int m = 0]) => now.add(Duration(hours: h, minutes: m));
+  // 오늘 22:00 야간 — 21시가 넘었으면 내일 22:00 (항상 24시간 안에 시작)
+  var night = DateTime(now.year, now.month, now.day, 22);
+  if (now.isAfter(night.subtract(const Duration(hours: 1)))) night = night.add(const Duration(days: 1));
   return [
     // ── 오늘 · 2급 담당(곤지암·이천) ──
-    _mk('j-t-1', '곤지암 MegaHub', '주간', 0, 8, 6, 2, startAt: ago(1, 41)),
-    _mk('j-t-2', '이천 MpHub', '야간', 0, 6, 5, 1, startAt: later(2, 15)),
-    _mk('j-t-3', '곤지암 MegaHub', '야간', 0, 10, 7, 3, startAt: later(5, 30)),
-    _mk('j-t-4', '이천 MpHub', '주간', 0, 6, 6, 0, startAt: ago(9)),
+    _mk('j-t-1', '곤지암 MegaHub', '주간', 0, 8, 6, 2, startAt: ago(1, 41)), // 진행 중 · 미도착 2
+    _mk('j-t-2', '이천 MpHub', '야간', 0, 6, 5, 1, startAt: night), // 오늘 야간 22:00
+    _mk('j-t-3', '곤지암 MegaHub', '야간', 0, 10, 7, 3, startAt: later(5, 30)), // 시작 전 · 신청 대기
+    _mk('j-t-4', '이천 MpHub', '주간', 0, 6, 6, 0, startAt: ago(9, 30)), // 종료 30분 · 퇴근 미처리
     // ── 오늘 · 1급만 보임 ──
-    _mk('j-t-5', '용인 Hub', '주간', 0, 8, 8, 0, startAt: later(0, 25)),
-    _mk('j-t-6', '군포 Hub', '주간', 0, 6, 5, 0, startAt: ago(10)),
-    _mk('j-t-7', '진천 MegaHub', '주간', 0, 12, 12, 0, startAt: ago(3, 10)),
-    _mk('j-t-8', 'W힐스 웨딩홀', '오후', 0, 14, 11, 3, startAt: later(4)),
-    // ── 예정 (내일~) ──
+    _mk('j-t-5', '용인 Hub', '주간', 0, 8, 8, 0, startAt: later(0, 25)), // FULL + 대기열
+    _mk('j-t-6', '군포 Hub', '주간', 0, 6, 5, 0, startAt: ago(10)), // 종료 1시간 · 퇴근 미처리
+    _mk('j-t-7', '진천 MegaHub', '주간', 0, 12, 11, 1, startAt: ago(3, 10)), // 진행 중
+    _mk('j-t-8', 'W힐스 웨딩홀', '오후', 0, 14, 11, 3, startAt: later(4)), // 시작 전 · 같이하기 신청
+    _mk('j-t-9', '군포 Hub_A', '주간', 0, 6, 5, 0, startAt: ago(16)), // 종료 7시간 → 자동 퇴근 처리됨
+    _mk('j-t-10', '안성 MpHub', '주간', 0, 10, 6, 4, startAt: later(20)), // 24시간 안
+    _mk('j-t-11', 'L타워 웨딩홀', '오후', 0, 12, 11, 1, startAt: ago(0, 50)), // 진행 중
+    // ── 예정 (내일 ~ 2주) ──
     _mk('j-u-1', '곤지암 MegaHub', '주간', 1, 8, 5, 3),
-    _mk('j-u-2', '이천 MpHub', '야간', 1, 6, 6, 0),
+    _mk('j-u-2', '이천 MpHub', '야간', 1, 6, 6, 0), // FULL + 대기열
     _mk('j-u-3', '남양주 Hub', '주간', 1, 6, 2, 4),
     _mk('j-u-4', 'L타워 웨딩홀', '오후', 2, 12, 9, 3),
-    _mk('j-u-5', '곤지암 MegaHub', '주간', 2, 8, 8, 0),
+    _mk('j-u-5', '곤지암 MegaHub', '주간', 2, 8, 8, 0), // FULL + 대기열
     _mk('j-u-6', '안성 MpHub', '주간', 3, 10, 4, 6),
+    _mk('j-u-7', '진천 MegaHub', '야간', 4, 12, 7, 5),
+    _mk('j-u-8', '용인 Hub', '주간', 5, 8, 6, 2, closed: true), // 수동 마감
+    _mk('j-u-9', 'W힐스 웨딩홀', '오후', 6, 14, 8, 6),
+    _mk('j-u-10', '군포 Hub_A', '주간', 8, 6, 5, 1),
+    _mk('j-u-11', '이천 MpHub', '주간', 10, 6, 4, 2),
+    _mk('j-u-12', '군포 Hub', '야간', 12, 6, 3, 3),
+    _mk('j-u-13', '곤지암 MegaHub', '주간', 14, 8, 0, 8),
   ];
 }
 
-// 지난 공고 2주치 — 사후 정정(7일) 데모 포함
+// 지난 공고 2주치 30건 — 11개 근무지 순환 · 사후 정정(7일) 데모 포함
 List<Job> buildPastJobs() {
-  const specs = <(int, String, String, int, int)>[
-    (1, '곤지암 MegaHub', '주간', 8, 7),
-    (1, '이천 MpHub', '야간', 6, 6),
-    (1, '진천 MegaHub', '주간', 12, 11),
-    (2, '곤지암 MegaHub', '주간', 8, 8),
-    (2, 'L타워 웨딩홀', '오후', 12, 11),
-    (2, '용인 Hub', '주간', 8, 6),
-    (3, '이천 MpHub', '주간', 6, 5),
-    (3, '군포 Hub', '주간', 6, 6),
-    (4, '곤지암 MegaHub', '야간', 10, 9),
-    (4, 'W힐스 웨딩홀', '오후', 14, 14),
-    (5, '이천 MpHub', '야간', 6, 4),
-    (6, '곤지암 MegaHub', '주간', 8, 8),
-    (6, '안성 MpHub', '주간', 10, 9),
-    (7, '이천 MpHub', '주간', 6, 6),
-    (8, '곤지암 MegaHub', '주간', 8, 7), // 7일 경과 → 정정 잠김
-    (9, '군포 Hub', '주간', 6, 6),
-    (10, '이천 MpHub', '야간', 6, 5),
-    (11, '진천 MegaHub', '주간', 12, 12),
-    (12, '곤지암 MegaHub', '주간', 8, 8),
-    (14, 'L타워 웨딩홀', '오후', 12, 10),
+  const cycle = [
+    '곤지암 MegaHub', '이천 MpHub', '진천 MegaHub', '용인 Hub', 'L타워 웨딩홀', '군포 Hub',
+    '안성 MpHub', 'W힐스 웨딩홀', '남양주 Hub', '군포 Hub_A', '군포 Hub_B',
   ];
   return [
-    for (var i = 0; i < specs.length; i++)
-      _mk('j-p-$i', specs[i].$2, specs[i].$3, -specs[i].$1, specs[i].$4, specs[i].$5, 0, status: '완료'),
+    for (var i = 0; i < 30; i++)
+      () {
+        final day = 1 + (i * 14) ~/ 30; // 1 ~ 14일 전 (8일 이상 = 정정 잠김)
+        final site = cycle[(i * 3) % cycle.length];
+        final p = siteOf(site)!.partner;
+        // 어제 야간은 오늘 06:00 종료라 새벽엔 아직 진행 중 → 어제는 주간만
+        final slot = p == '컨벤션' ? '오후' : (day > 1 && i % 4 == 3 ? '야간' : '주간');
+        final cap = 6 + (i % 4) * 2;
+        final ok = cap - (i % 3 == 0 ? 1 : 0) - (i % 7 == 6 ? 1 : 0);
+        return _mk('j-p-$i', site, slot, -day, cap, ok, 0);
+      }(),
   ];
 }
 
 final List<Job> gJobs = buildTodayJobs();
 final List<Job> gPastJobs = buildPastJobs();
 
-// ─── 명단 생성 (공고 id 기준, 세션 내 고정) ───
+Job _job(String id) => [...gJobs, ...gPastJobs].firstWhere((j) => j.id == id);
+
+// ─── 명단 생성 (공고 id 기준, 세션 내 고정 · 앱 시작 시 날짜순 일괄 생성) ───
 final Map<String, List<Worker>> _rosterCache = {};
+bool _rostersWarmed = false;
+
+void _warmRosters() {
+  if (_rostersWarmed) return;
+  _rostersWarmed = true;
+  final all = [...gJobs, ...gPastJobs]..sort((a, b) => a.start.compareTo(b.start));
+  for (final j in all) {
+    if (j.id.isNotEmpty) _rosterCache.putIfAbsent(j.id, () => _genRoster(j));
+  }
+}
 
 List<Worker> rosterOf(Job job) {
   if (job.id.isEmpty) return const []; // 방금 등록한 공고 — 아직 신청자 없음
+  _warmRosters();
   return _rosterCache.putIfAbsent(job.id, () => _genRoster(job));
 }
 
@@ -227,26 +256,26 @@ List<Worker> _genRoster(Job job) {
   final now = DateTime.now();
   final dayKey = '${job.start.year}-${job.start.month}-${job.start.day}';
   final used = _usedByDate.putIfAbsent(dayKey, () => {});
-  final names = (List.of(_names)..shuffle(rnd)).where((n) => !used.contains(n)).toList();
-  // 이 공고에 들어가는 이름은 같은 날 다른 공고에서 제외
-  for (var i = 0; i < job.cap && i < names.length; i++) {
-    used.add(names[i]);
-  }
+  final names = (List.of(_names)..shuffle(rnd))
+      .where((n) => !used.contains(n) && !_reservedNames.contains(n))
+      .take(job.cap)
+      .toList();
+  used.addAll(names); // 이 공고에 들어가는 이름은 같은 날 다른 공고에서 제외
   final started = now.isAfter(job.start), ended = now.isAfter(job.end);
   final out = <Worker>[];
 
   if (!started) {
     // 시작 전: 확정 인원 = cap - 부족, 전원 출근 전
-    for (var i = 0; i < job.cap - job.short; i++) {
-      out.add(Worker(names[i], 'none'));
+    for (var i = 0; i < job.cap - job.short && i < names.length; i++) {
+      out.add(Worker(names[i], 'wait'));
     }
     return out;
   }
   if (ended) {
-    // 종료: 결근 = cap - ok, 나머지 출근/지각 + 퇴근 기록 (6h 지나면 전원 자동 퇴근 처리됨)
+    // 종료: 결근 = cap - ok, 나머지 출근/지각 + 퇴근 기록 (6h 지나면 시스템 자동 퇴근 = 기록 없어도 '자동')
     final absent = (job.cap - job.ok).clamp(0, job.cap);
     final autoDone = now.difference(job.end).inHours >= Policy.autoCheckoutHours;
-    for (var i = 0; i < job.cap; i++) {
+    for (var i = 0; i < names.length; i++) {
       if (i < absent) {
         out.add(Worker(names[i], 'absent'));
       } else {
@@ -255,8 +284,8 @@ List<Worker> _genRoster(Job job) {
         final t = st == 'late'
             ? job.start.add(Duration(minutes: 8 + rnd.nextInt(20)))
             : job.start.subtract(Duration(minutes: rnd.nextInt(12)));
-        // 퇴근 기록: 6h 지났으면 전원 / 최근 종료면 약 60%만 (나머지 = 퇴근 미처리 → 수동 처리 대상)
-        final checkedOut = autoDone || rnd.nextInt(10) < 6;
+        // 퇴근 기록: 6h 지났으면 대부분 GPS 기록 / 최근 종료면 약 60%만 (나머지 = 퇴근 미처리 → 수동 처리 대상)
+        final checkedOut = autoDone ? rnd.nextInt(10) < 8 : rnd.nextInt(10) < 6;
         final outT = checkedOut ? _hmOf(job.end.add(Duration(minutes: rnd.nextInt(9) - 3))) : null;
         out.add(Worker(names[i], st, _hmOf(t), null, null, outT));
       }
@@ -264,7 +293,7 @@ List<Worker> _genRoster(Job job) {
     return out;
   }
   // 진행 중: 미도착 = short, 나머지 출근/지각 (가끔 이미 퇴근 기록 있음)
-  for (var i = 0; i < job.cap; i++) {
+  for (var i = 0; i < names.length; i++) {
     if (i < job.short) {
       out.add(Worker(names[i], 'none'));
     } else {
@@ -280,19 +309,32 @@ List<Worker> _genRoster(Job job) {
   return out;
 }
 
-// ─── GPS 영역 밖 퇴근 승인 대기 (공고별) ───
+// ─── GPS 영역 밖 퇴근 승인 대기 (공고별) — (사유, 거리, 종료 후 몇 분에 제출) ───
 const _gpsSpecs = {
-  'j-t-4': ('셔틀 정류장까지 이동 후 퇴근 처리했어요', '영역 밖 180m', '17:04'),
-  'j-t-6': ('상차장 뒤편 출구로 나왔어요', '영역 밖 95m', '16:58'),
-  'j-p-0': ('배터리 방전으로 늦게 켰어요', '영역 밖 420m', '17:31'),
+  'j-t-1': ('몸이 안 좋아 먼저 나왔어요. 정문 밖에서 눌렀어요', '영역 밖 210m', -25), // 진행 중
+  'j-t-4': ('셔틀 정류장까지 이동 후 퇴근 처리했어요', '영역 밖 180m', 4),
+  'j-t-6': ('상차장 뒤편 출구로 나왔어요', '영역 밖 95m', -2),
+  'j-p-0': ('배터리 방전으로 늦게 켰어요', '영역 밖 420m', 31), // 6h 지나 자동 퇴근됐지만 사유는 남음
 };
+final Map<String, GpsReq> _gpsCache = {};
 
 List<GpsReq> gpsReqsOf(Job job) {
   final spec = _gpsSpecs[job.id];
   if (spec == null) return const [];
-  final r = rosterOf(job).where((w) => w.status == 'ok' && w.outTime == null).toList();
-  if (r.isEmpty) return const [];
-  return [GpsReq(r.last.name, spec.$1, spec.$2, spec.$3)];
+  final req = _gpsCache[job.id] ??= () {
+    // 명단 뒤쪽의 정상 출근 + 퇴근 기록 없는 사람 한 명 (세션 내 고정)
+    final w = rosterOf(job).where((w) => w.status == 'ok' && w.outTime == null).lastOrNull;
+    final now = DateTime.now();
+    final at = now.isAfter(job.end) ? job.end.add(Duration(minutes: spec.$3)) : now.add(Duration(minutes: spec.$3));
+    return GpsReq(w?.name ?? '', spec.$1, spec.$2, _hmOf(at));
+  }();
+  if (req.name.isEmpty) return const [];
+  // 이미 퇴근 기록이 생겼거나(승인·반려·수동) 출근 상태가 아니면 제출 건은 의미 없음
+  final w = workerOf(job, req.name);
+  if (w == null) return const [];
+  final s = effStatus(job, w);
+  if ((s != 'ok' && s != 'late') || outRecordOf(job, w) != null) return const [];
+  return [req];
 }
 
 // ─── 승인 탭 ───
@@ -301,13 +343,15 @@ class PendingApp {
   final bool danger;
   final String? buddy; // 같이하기 짝꿍 이름 — 승인·거절이 둘 다 같이 처리됨 (기획 §4-9)
   final String? jobId; // 신청한 공고 — 승인 시 그 공고의 공지를 자동 전달
+  final DateTime appliedAt; // 신청 시각 — 승인 대기 시간 (정책: 최대 6시간)
+  final String? buddyState; // 같이하기 짝 응답: accepted / pending (pending이면 승인 불가)
   const PendingApp(this.name, this.siteName, this.slotTime, this.note, this.flag,
-      [this.danger = false, this.buddy, this.jobId]);
+      {this.danger = false, this.buddy, this.jobId, required this.appliedAt, this.buddyState});
 }
 
 // ─── 같이하기(Buddy) 페어 — 공고별 (→ applications.buddy_app_id 교체 지점) ───
 // 1:1 페어만 · 보너스 +3,000P 각자 = 둘 다 정시 출근(ok) + 정상 퇴근일 때만 자동
-const _buddyJobs = {'j-t-1', 'j-t-4', 'j-t-5', 'j-u-1', 'j-u-2', 'j-p-0', 'j-p-3', 'j-p-8'};
+const _buddyJobs = {'j-t-1', 'j-t-4', 'j-t-5', 'j-u-1', 'j-u-2', 'j-p-0', 'j-p-3', 'j-p-8', 'j-p-14', 'j-p-21'};
 final Map<String, Map<String, String>> _buddyCache = {};
 
 Map<String, String> buddyMapOf(Job job) {
@@ -325,9 +369,12 @@ String? buddyOf(Job job, String name) => buddyMapOf(job)[name];
 class CancelReq {
   final String name, siteName, slotTime, reason, appliedAt, cancelledAt;
   final int beforeMin; // 근무 시작 몇 분 전에 취소했나 (12시간 이내만 검토 대상)
+  final String category; // 단순변심 / 질병 / 가족 / 교통 / 천재지변 / 기타 — 권고 처리 기준
   const CancelReq(this.name, this.siteName, this.slotTime, this.reason, this.beforeMin,
-      this.appliedAt, this.cancelledAt);
+      this.appliedAt, this.cancelledAt, [this.category = '기타']);
 }
+
+const cancelCategories = ['단순변심', '질병', '가족', '교통', '천재지변', '기타'];
 
 // 40 → '40분', 200 → '3시간 20분', 660 → '11시간'
 String beforeLabel(int m) {
@@ -344,20 +391,58 @@ class WaitEntry {
   const WaitEntry(this.name, this.siteName, this.slotTime, this.order, this.deadline);
 }
 
-const _pendingAll = [
-  PendingApp('한지민', '곤지암 MegaHub', '오늘 야간 22:00 – 06:00', '단골 · 출근 12회', '12시간 이내', false, '류지안', 'j-t-3'),
-  PendingApp('류지안', '곤지암 MegaHub', '오늘 야간 22:00 – 06:00', '성실 A', '12시간 이내', false, '한지민', 'j-t-3'),
-  PendingApp('오세훈', '이천 MpHub', '오늘 야간 22:00 – 06:00', '경고 3회', '협의대상', true, null, 'j-t-2'),
-  PendingApp('백소라', '곤지암 MegaHub', '내일 주간 08:00 – 17:00', '경고 2회', '12시간 이내', false, null, 'j-u-1'),
-  PendingApp('전소민', '이천 MpHub', '내일 야간 22:00 – 06:00', '협의대상 등록 8/1', '협의대상', true, null, 'j-u-2'),
-  PendingApp('김민준', '용인 Hub', '오늘 주간 09:00 – 18:00', '보통 C', '12시간 이내', false, null, 'j-t-5'),
-  PendingApp('도경수', '남양주 Hub', '내일 주간 09:00 – 18:00', '경고 2회', '12시간 이내', false, null, 'j-u-3'),
-];
+// 오늘/내일/날짜 + 시간대 + 시각 — 승인·취소 카드에 쓰는 공고 한 줄
+String _dayWord(Job j) {
+  final s0 = DateTime(j.start.year, j.start.month, j.start.day);
+  final diff = s0.difference(_today0()).inDays;
+  return diff == 0 ? '오늘' : (diff == 1 ? '내일' : j.dateLabel);
+}
 
-const _cancelAll = [
-  CancelReq('홍길동', '곤지암 MegaHub', '오늘 야간 22:00 – 06:00', '개인사정 (단순 변심)', 40, '3일 전 09:14', '오늘 21:20'),
-  CancelReq('나예린', '이천 MpHub', '내일 야간 22:00 – 06:00', '본인 질병 (병원 진단서 있음)', 200, '5일 전 18:02', '내일 18:40'),
-  CancelReq('감우주', 'L타워 웨딩홀', '내일 오후 11:00 – 19:00', '가족 응급', 660, '어제 11:30', '오늘 23:58'),
+String _slotTime(Job j) => '${_dayWord(j)} ${j.slot} ${j.timeLabel}';
+
+PendingApp _app(String name, String jobId, String note,
+    {bool danger = false, String? buddy, String? buddyState, required int agoMin}) {
+  final j = _job(jobId);
+  final now = DateTime.now();
+  final flag = danger ? '협의대상' : (j.start.difference(now).inHours < 12 ? '12시간 이내' : '경고 누적');
+  return PendingApp(name, j.site, _slotTime(j), note, flag,
+      danger: danger, buddy: buddy, jobId: jobId,
+      appliedAt: now.subtract(Duration(minutes: agoMin)), buddyState: buddyState);
+}
+
+// 신청 대기 9건 — 12시간 이내 / 협의대상 / 같이하기 2쌍(1쌍은 짝 응답 대기) · 신청 30분~7시간 전
+final List<PendingApp> _pendingAll = () {
+  final negAt = DateTime.now().subtract(const Duration(days: 28));
+  return [
+    _app('한지민', 'j-t-3', '단골 · 출근 12회', buddy: '류지안', buddyState: 'accepted', agoMin: 95),
+    _app('류지안', 'j-t-3', '성실 A', buddy: '한지민', buddyState: 'accepted', agoMin: 95),
+    _app('오세훈', 'j-t-2', '경고 3회', danger: true, agoMin: 6 * 60 + 40), // 6시간 초과
+    _app('백소라', 'j-u-1', '경고 2회', agoMin: 30),
+    _app('전소민', 'j-u-2', '협의대상 등록 ${negAt.month}/${negAt.day}', danger: true, agoMin: 4 * 60 + 10),
+    _app('김민준', 'j-t-5', '보통 C', agoMin: 55), // FULL 공고 → 승인 시 정원 검사에 걸림
+    _app('도경수', 'j-u-3', '경고 2회', agoMin: 3 * 60),
+    _app('박준영', 'j-t-8', '성실 B', buddy: '최유나', buddyState: 'accepted', agoMin: 120),
+    _app('최유나', 'j-t-8', '경고 1회', buddy: '박준영', buddyState: 'pending', agoMin: 120), // 짝 응답 대기
+  ];
+}();
+
+CancelReq _cancel(String name, String jobId, String reason, String category, int agoMin, int appliedDaysAgo) {
+  final j = _job(jobId);
+  final now = DateTime.now();
+  final cancelledAt = now.subtract(Duration(minutes: agoMin));
+  final beforeMin = j.start.difference(cancelledAt).inMinutes.clamp(1, 99999);
+  return CancelReq(name, j.site, _slotTime(j), reason, beforeMin,
+      hmOf(now.subtract(Duration(days: appliedDaysAgo, minutes: 37))), hmOf(cancelledAt), category);
+}
+
+// 취소 검토 6건 — 6개 사유 분류 전부
+final List<CancelReq> _cancelAll = [
+  _cancel('홍길동', 'j-t-3', '개인사정 (단순 변심)', '단순변심', 5, 3),
+  _cancel('나예린', 'j-t-2', '본인 질병 (병원 진단서 있음)', '질병', 40, 5),
+  _cancel('감우주', 'j-t-8', '가족 응급 — 부친 입원', '가족', 15, 1),
+  _cancel('차민규', 'j-t-10', '통근버스 놓침, 대체 교통 없음', '교통', 120, 2),
+  _cancel('신유나', 'j-t-2', '폭우로 도로 통제 (진입 불가)', '천재지변', 200, 4),
+  _cancel('한별이', 'j-u-1', '면접 일정이 겹쳐서요', '기타', 30, 6),
 ];
 
 // ─── 대기열 (공고별) — FULL 시 줄서기, 모집×2까지. 취소 나면 1번에게 자동 제안 ───
@@ -392,11 +477,10 @@ List<WaitRow> waitlistOf(Job job) {
 }
 
 bool _scoped(Admin a, String siteName) => a.sites == null || a.sites!.contains(siteName);
-// 처리된 건 (앱 전역) — 하단 탭 배지와 목록이 같은 숫자를 보도록
+// 처리된 건 (앱 전역) — 하단 탭 배지와 목록이 같은 숫자를 보도록. 키: appKey() / 'cancel|이름|근무지'
 final Set<String> gDecided = {};
-List<PendingApp> pendingAppsFor(Admin a) => _pendingAll
-    .where((p) => _scoped(a, p.siteName) && !gDecided.contains('app|${p.name}|${p.siteName}'))
-    .toList();
+List<PendingApp> pendingAppsFor(Admin a) =>
+    _pendingAll.where((p) => _scoped(a, p.siteName) && !gDecided.contains(appKey(p))).toList();
 List<CancelReq> cancelReqsFor(Admin a) => _cancelAll
     .where((c) => _scoped(a, c.siteName) && !gDecided.contains('cancel|${c.name}|${c.siteName}'))
     .toList();
@@ -444,11 +528,21 @@ const _inquiriesAll = [
       [('me', '웨딩홀 서빙 복장 규정이 있나요? 검정 구두 필수인가요', '09:40')]),
 ];
 
-const _lateAll = [
-  LateReport('이지은', '곤지암 MegaHub', '주간', 10, '버스 지연', '방금'),
-  LateReport('윤아름', '곤지암 MegaHub', '주간', 20, '교통 정체', '12분 전'),
-  LateReport('송가온', 'L타워 웨딩홀', '오후', 30, '지하철 연착', '25분 전'),
-];
+// 늦어요 보고 3건 — 지금 진행 중인 공고의 미도착자 중에서 뽑음 (출결 화면 '지각 예정'과 항상 일치)
+final List<LateReport> _lateAll = () {
+  final now = DateTime.now();
+  const reasons = ['버스 지연', '교통 정체', '지하철 연착'];
+  const agos = ['방금', '12분 전', '25분 전'];
+  final out = <LateReport>[];
+  for (final j in gJobs) {
+    if (!(now.isAfter(j.start) && !now.isAfter(j.end))) continue;
+    final w = rosterOf(j).where((w) => w.status == 'none').firstOrNull;
+    if (w == null) continue;
+    out.add(LateReport(w.name, j.site, j.slot, 10 * (out.length + 1), reasons[out.length], agos[out.length]));
+    if (out.length == 3) break;
+  }
+  return out;
+}();
 
 List<Inquiry> inquiriesFor(Admin a) => _inquiriesAll.where((i) => _scoped(a, i.siteName)).toList();
 List<LateReport> lateReportsFor(Admin a) => _lateAll.where((l) => _scoped(a, l.siteName)).toList();

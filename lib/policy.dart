@@ -31,6 +31,7 @@ class Policy {
   // ── 신청 ──
   static const autoApproveBeforeHours = 12; // 근무 12시간 전 신청 = 자동 승인 / 이내 = 관리자 승인
   static const freeCancelBeforeHours = 12; // 12시간 전까지 자유 취소
+  static const approvalWaitMaxHours = 6; // 관리자 승인 대기 제한 (초과 시 관리자 앱에 빨강 표시 · N19 방침 대기)
 }
 
 /// 출결 상태 — 알바생 앱(GPS 기록)과 관리자 앱(판정·보정)이 같은 문자열 사용
