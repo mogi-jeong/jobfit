@@ -86,45 +86,35 @@ class _RootGateState extends State<RootGate> {
   }
 }
 
-// ⚠ 현재: 업체별 공유 계정(아이디/비번) — 추후 인증 시스템 도입 시 교체 지점 (Supabase Auth)
-class LoginPage extends StatefulWidget {
+class LoginPage extends StatelessWidget {
   final void Function(Admin) onPick;
   const LoginPage({super.key, required this.onPick});
-  @override
-  State<LoginPage> createState() => _LoginPageState();
-}
-
-class _LoginPageState extends State<LoginPage> {
-  final _id = TextEditingController();
-  final _pw = TextEditingController();
-
-  // 데모 계정 — admin1(1급 김운영) · field1(2급 김현장) · 비밀번호 1234
-  static const _accounts = {'admin1': ('1234', demoAdmin1), 'field1': ('1234', demoAdmin2)};
-
-  @override
-  void dispose() {
-    _id.dispose();
-    _pw.dispose();
-    super.dispose();
-  }
-
-  void _login() {
-    final acc = _accounts[_id.text.trim()];
-    if (acc == null || acc.$1 != _pw.text) {
-      jSnack(context, '아이디 또는 비밀번호가 달라요');
-      return;
-    }
-    widget.onPick(acc.$2);
-  }
 
   @override
   Widget build(BuildContext context) {
-    InputDecoration deco(String label) => InputDecoration(
-          labelText: label,
-          labelStyle: const TextStyle(fontSize: 13, color: JColors.muted),
-          enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: JColors.hairline, width: .5)),
-          focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: JColors.ink, width: 1)),
+    Widget card(Admin a, String desc) => Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            onTap: () => onPick(a),
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: JColors.hairline, width: .5),
+              ),
+              padding: const EdgeInsets.all(16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${a.name} · ${a.roleLabel}',
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: JColors.ink)),
+                const SizedBox(height: 3),
+                Text(desc, style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.5)),
+              ]),
+            ),
+          ),
         );
+
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -136,29 +126,12 @@ class _LoginPageState extends State<LoginPage> {
               const Text('잡핏 관리자',
                   style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -.8, color: JColors.ink)),
               const SizedBox(height: 4),
-              const Text('업체 계정으로 로그인하세요', style: TextStyle(fontSize: 12.5, color: JColors.muted, height: 1.5)),
+              const Text('데모 로그인 — 등급을 선택하세요\n(실서비스 인증 방식은 미정 · N1)',
+                  style: TextStyle(fontSize: 12.5, color: JColors.muted, height: 1.5)),
               const SizedBox(height: 22),
-              TextField(
-                controller: _id,
-                decoration: deco('아이디'),
-                style: const TextStyle(fontSize: 15, color: JColors.ink),
-                textInputAction: TextInputAction.next,
-              ),
+              card(demoAdmin1, '전 근무지 열람·운영 · 공고 등록 가능\n포인트 지급 5,000P · 회수 무제한'),
               const SizedBox(height: 10),
-              TextField(
-                controller: _pw,
-                obscureText: true,
-                decoration: deco('비밀번호'),
-                style: const TextStyle(fontSize: 15, color: JColors.ink),
-                onSubmitted: (_) => _login(),
-              ),
-              const SizedBox(height: 22),
-              SizedBox(
-                width: double.infinity,
-                child: jPill('로그인', bg: JColors.ink, fg: Colors.white, onTap: _login),
-              ),
-              const SizedBox(height: 12),
-              const Text('데모: admin1 / field1 · 비밀번호 1234', style: TextStyle(fontSize: 11, color: JColors.inactive)),
+              card(demoAdmin2, '담당: 곤지암 · 이천 (2곳)\n포인트 지급 3,000P · 회수 3,000P'),
             ],
           ),
         ),
