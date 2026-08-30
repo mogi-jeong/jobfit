@@ -187,6 +187,9 @@ final Map<String, List<Worker>> gInvitedByJob = {}; // jobKey → 직접 추가�
 final Map<String, List<Worker>> gExtByJob = {}; // jobKey → 외부인력
 final Set<String> gForceCancelled = {}; // 'jobKey|이름' 관리자가 강제 취소한 정식 신청자 (명단에서 제외)
 final Set<String> gReminderOff = {}; // 시작 1시간 전 자동 알림을 끈 공고 (jobKey)
+// 관리자 확인(더블체크) — 기록만, 포인트 무관. jobKey → (이름 → '관리자명 HH:MM')
+final Map<String, Map<String, String>> gVerifiedIn = {}; // 출근 확인
+final Map<String, Map<String, String>> gVerifiedOut = {}; // 퇴근 확인
 
 // 유효 출결 상태 — 정정값 우선. 시작 후엔 '출근 전(wait)'이 곧 '미도착(none)'
 String effStatus(Job j, Worker w) {
@@ -574,6 +577,8 @@ String auditTypeLabel(String t) => switch (t) {
       'cancel_decide' => '취소 검토',
       'gps_approve' => '퇴근 인정',
       'gps_reject' => '퇴근 반려',
+      'gps_early' => '조퇴 인정',
+      'verify' => '관리자 확인',
       'att_fix' => '출결 정정',
       'point_grant' => '포인트 지급',
       'point_recover' => '포인트 회수',
@@ -829,7 +834,8 @@ Future<void> openUrgentRecruitSheet(BuildContext context, Job job, int short) as
 // GPS 영역 밖 퇴근 — 사유 검토 대기 (알바생 앱에서 제출 → 여기서 승인/반려)
 class GpsReq {
   final String name, reason, dist, time;
-  const GpsReq(this.name, this.reason, this.dist, this.time);
+  final DateTime at; // 제출 시각 (종료 전 제출이면 조퇴 처리 대상)
+  const GpsReq(this.name, this.reason, this.dist, this.time, this.at);
 }
 
 
@@ -1886,27 +1892,50 @@ class _AttendancePageState extends State<AttendancePage> {
             ],
             if (statusEditable) ...[
               const SizedBox(height: 13),
-              Wrap(spacing: 7, runSpacing: 7, children: [
-                for (final s in const ['ok', 'late', 'early', 'runaway', 'absent']) _stChip(ctx, w, s),
-              ]),
-              // 퇴근 기록 — 출결 상태와 별개로 켜고 끔 (출근·지각일 때만 의미 있음)
-              if (statusOf(w) == 'ok' || statusOf(w) == 'late') ...[
-                const SizedBox(height: 10),
-                _pill(
-                    outOf_(w) == null ? '퇴근 처리 (기록 없음)' : '퇴근 기록 취소 · 현재 ${outOf_(w)}',
-                    bg: outOf_(w) == null ? JColors.amber : Colors.white,
-                    fg: outOf_(w) == null ? Colors.white : JColors.muted,
-                    border: outOf_(w) == null ? null : JColors.muted, onTap: () {
-                  Navigator.pop(ctx);
-                  final had = outOf_(w) != null;
-                  setState(() {
-                    outs[w.name] = had ? '' : '수동';
-                    // 수동 퇴근 처리하면 그 사람의 GPS 사유 제출은 처리된 것으로
-                    if (!had) gGpsDone.add('${jobKey(widget.job)}|${w.name}');
-                  });
-                  snack('${w.name} — ${had ? '퇴근 기록 취소' : '퇴근 처리'}');
-                }),
-              ],
+              // 출근 행 (출근·지각) ↔ 근무 행 (조퇴·무단이탈·결근) — 같은 status 필드라 한쪽을 고르면 다른 행 강조는 자동 해제
+              _chipRow('출근', [for (final s in const ['ok', 'late']) _stChip(ctx, w, s)]),
+              const SizedBox(height: 8),
+              _chipRow('근무', [for (final s in const ['early', 'runaway', 'absent']) _stChip(ctx, w, s)]),
+              const SizedBox(height: 8),
+              // 퇴근 기록 — 출결 상태와 별개. 출근·지각일 때만, 그리고 근무 종료 후에만 (규칙 §3 · Policy.checkoutOpenAfterEnd)
+              Builder(builder: (_) {
+                final st = statusOf(w);
+                final now = DateTime.now();
+                final attending = st == 'ok' || st == 'late';
+                final ended = now.isAfter(widget.job.end);
+                final o = outOf_(w);
+                final hm = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+                final enabled = attending && ended;
+                final label = o == null ? '퇴근 처리 · 현재 $hm' : '퇴근 기록 취소 · $o';
+                final hint = !attending
+                    ? '조퇴·이탈·결근은 퇴근 처리 대상이 아니에요'
+                    : (!ended ? '근무 종료(${Job._hm(widget.job.end)}) 후 퇴근 처리 가능' : null);
+                return _chipRow('퇴근', [
+                  enabled
+                      ? _pill(label,
+                          bg: o == null ? JColors.amber : Colors.white,
+                          fg: o == null ? Colors.white : JColors.muted,
+                          border: o == null ? null : JColors.muted, onTap: () {
+                          Navigator.pop(ctx);
+                          final had = o != null;
+                          setState(() {
+                            outs[w.name] = had ? '' : '수동';
+                            // 수동 퇴근 처리하면 그 사람의 GPS 사유 제출은 처리된 것으로
+                            if (!had) gGpsDone.add('${jobKey(widget.job)}|${w.name}');
+                          });
+                          snack('${w.name} — ${had ? '퇴근 기록 취소' : '퇴근 처리'}');
+                        })
+                      : Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(19),
+                            border: Border.all(color: JColors.hairline),
+                          ),
+                          child: Text(label,
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: JColors.inactive)),
+                        ),
+                ], hint: hint);
+              }),
             ],
             // 포인트 회수 — 종료 후 출근·지각자에게 (관리자 판단, 메시지 필수)
             if (!ext && DateTime.now().isAfter(widget.job.end) &&
@@ -2036,6 +2065,29 @@ class _AttendancePageState extends State<AttendancePage> {
         ? '대기 ${r.order}번 ${r.name}에게 자리 제안 · ${win.inMinutes}분 내 수락'
         : '${r.order}번 ${r.name} — 자리 제안 발송 · ${win.inMinutes}분 내 수락');
   }
+
+  // 상태 시트 — 라벨 붙은 칩 행 (출근 / 근무 / 퇴근)
+  Widget _chipRow(String label, List<Widget> chips, {String? hint}) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 34,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 9),
+              child: Text(label, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.muted)),
+            ),
+          ),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Wrap(spacing: 7, runSpacing: 7, children: chips),
+              if (hint != null) ...[
+                const SizedBox(height: 4),
+                Text(hint, style: const TextStyle(fontSize: 11, color: JColors.inactive)),
+              ],
+            ]),
+          ),
+        ],
+      );
 
   Widget _stChip(BuildContext ctx, Worker w, String s) {
     final (label, color) = _stMeta(s);
@@ -2386,7 +2438,7 @@ class _AttendancePageState extends State<AttendancePage> {
     // 출근 수 = 정식 신청자 + 직접 추가 + 외부인력 (충원 숫자에는 포함)
     final okCount = [...members, ...extWorkers].where((w) {
       final s = statusOf(w);
-      return (s == 'ok' || s == 'late') && outOf_(w) == null; // 지금 현장에 있는 인원 (퇴근자 제외)
+      return s == 'ok' || s == 'late'; // 지금 현장에 있는 인원 (종료 전엔 퇴근 기록 없음 · 조퇴는 상태 early)
     }).length;
     // 빈자리 = 결근·미도착·이탈만 (퇴근자는 자리를 채운 사람) — 추가·외부인력·대기열 제안 기준
     final short = seatsOf(widget.job);
@@ -2402,6 +2454,12 @@ class _AttendancePageState extends State<AttendancePage> {
                   color: none.isEmpty ? JColors.green : JColors.red)),
         ],
       )),
+      if (okCount > 0)
+        Padding(
+          padding: const EdgeInsets.only(left: 2, top: 6),
+          child: Text('출근 확인 ${_verifyCount(members, out: false).$1}/${_verifyCount(members, out: false).$2}',
+              style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+        ),
       if (short > 0) ...[
         const SizedBox(height: 8),
         Row(children: [
@@ -2455,7 +2513,7 @@ class _AttendancePageState extends State<AttendancePage> {
           )),
       const SizedBox(height: 10),
       if (done.isNotEmpty) ...[
-        _sect('처리됨 · ${done.length}명 — 눌러서 정정'),
+        _sectVerify('처리됨 · ${done.length}명 — 눌러서 정정', done, out: false),
         _rosterCard(done, onTap: (w) => _statusSheet(w)),
       ],
       ..._extSection(),
@@ -2612,6 +2670,8 @@ class _AttendancePageState extends State<AttendancePage> {
               if (early > 0) '조퇴 $early',
               if (runaway > 0) '무단이탈 $runaway',
               '결근 $absent',
+              if (_verifyCount(mapped, out: true).$2 > 0)
+                '확인 ${_verifyCount(mapped, out: true).$1}/${_verifyCount(mapped, out: true).$2}',
               '${Job._hm(widget.job.end)} 종료',
             ].join(' · '),
             style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
@@ -2719,7 +2779,7 @@ class _AttendancePageState extends State<AttendancePage> {
               style: TextStyle(fontSize: 11, color: JColors.inactive)),
         ),
       ] else ...[
-        _sect('${pending.isEmpty ? '최종' : '처리된'} 명단 · ${done.length}명 — 눌러서 정정'),
+        _sectVerify('${pending.isEmpty ? '최종' : '처리된'} 명단 · ${done.length}명 — 눌러서 정정', done, out: true),
         _rosterCard(done, onTap: (w) => _statusSheet(w)),
         ..._extSection(),
         const SizedBox(height: 10),
@@ -3116,18 +3176,33 @@ class _AttendancePageState extends State<AttendancePage> {
                 const SizedBox(height: 3),
                 Text('"${r.reason}" · ${r.time} 제출',
                     style: const TextStyle(fontSize: 11.5, color: JColors.muted)),
+                // 종료 전 제출 = 조퇴 후보 (알바생 앱 [퇴근]은 종료 후에만 열리므로 사유 제출로만 가능)
+                if (r.at.isBefore(widget.job.end)) ...[
+                  const SizedBox(height: 3),
+                  Text('종료 ${_beforeEndLabel(r.at)} 전 제출',
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.red)),
+                ],
                 const SizedBox(height: 10),
                 Row(children: [
-                  Expanded(
-                      child: _pill('승인 · 퇴근 인정', bg: JColors.blue, fg: Colors.white, onTap: () {
-                    setState(() {
-                      gpsReqs.remove(r);
-                      gGpsDone.add('${jobKey(widget.job)}|${r.name}');
-                      outs[r.name] = r.time; // 정상 퇴근으로 기록 → 종료 후 정산 때 포인트 대상
-                    });
-                    audit('gps_approve', r.name, '영역 밖 퇴근 사유 승인 · ${r.dist}', jobRef: '${widget.job.site} ${widget.job.dateLabel}');
-                    snack('${r.name} — 퇴근 인정 · 종료 후 정산 때 포인트 지급 대상');
-                  })),
+                  if (r.at.isBefore(widget.job.end)) ...[
+                    Expanded(
+                        child: _pill('조퇴로 인정', bg: JColors.amber, fg: Colors.white, onTap: () {
+                      setState(() {
+                        gpsReqs.remove(r);
+                        gGpsDone.add('${jobKey(widget.job)}|${r.name}');
+                        overrides[r.name] = 'early';
+                        outs[r.name] = '조퇴';
+                      });
+                      audit('gps_early', r.name, '종료 전 퇴근 사유 → 조퇴 인정 · ${r.time} 제출 · ${r.dist}',
+                          jobRef: '${widget.job.site} ${widget.job.dateLabel}');
+                      snack('${r.name} — 조퇴 인정 · 포인트 자동 지급 없음');
+                    })),
+                    const SizedBox(width: 7),
+                    Expanded(
+                        child: _pill('정상 퇴근 인정', bg: Colors.white, fg: JColors.blue, border: JColors.blue,
+                            onTap: () => _gpsApprove(r))),
+                  ] else
+                    Expanded(child: _pill('승인 · 퇴근 인정', bg: JColors.blue, fg: Colors.white, onTap: () => _gpsApprove(r))),
                   const SizedBox(width: 7),
                   Expanded(
                       child: _pill('반려', bg: Colors.white, fg: JColors.red, border: JColors.red, onTap: () {
@@ -3144,6 +3219,24 @@ class _AttendancePageState extends State<AttendancePage> {
             )),
           )),
     ];
+  }
+
+  // 종료 전 제출 — 'N시간 N분' 라벨
+  String _beforeEndLabel(DateTime at) {
+    final d = widget.job.end.difference(at);
+    final h = d.inHours, m = d.inMinutes % 60;
+    return h > 0 ? '$h시간 $m분' : '$m분';
+  }
+
+  // 사유 승인 → 정상 퇴근 기록 (종료 후 정산 때 포인트 대상)
+  void _gpsApprove(GpsReq r) {
+    setState(() {
+      gpsReqs.remove(r);
+      gGpsDone.add('${jobKey(widget.job)}|${r.name}');
+      outs[r.name] = r.time;
+    });
+    audit('gps_approve', r.name, '영역 밖 퇴근 사유 승인 · ${r.dist}', jobRef: '${widget.job.site} ${widget.job.dateLabel}');
+    snack('${r.name} — 퇴근 인정 · 종료 후 정산 때 포인트 지급 대상');
   }
 
   // ── 외부인력 — 정식 명단과 분리된 별도 섹션 (눌러서 정정·수정·삭제) ──
@@ -3368,7 +3461,7 @@ class _AttendancePageState extends State<AttendancePage> {
           TextSpan(text: label + (!manual && w.time != null ? ' ${w.time}' : ''),
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color,
                   fontFeatures: const [FontFeature.tabularFigures()])),
-          if (o != null)
+          if (o != null && DateTime.now().isAfter(widget.job.end))
             TextSpan(text: ' · 퇴근 $o',
                 style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: JColors.muted)),
           if (pendingOut)
@@ -3396,7 +3489,87 @@ class _AttendancePageState extends State<AttendancePage> {
               text: '  ${isExt(w.name) ? '외부' : isInvited(w.name) ? '추가' : (s == 'wait' ? '' : (manual ? '수동' : '자동'))}',
               style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFFC7C7CC))),
         ])),
+        if (_verifyTarget(w) != null) ...[
+          const SizedBox(width: 8),
+          _verifyText(w, _verifyTarget(w)!),
+        ],
       ],
+    );
+  }
+
+  // ── 관리자 확인(더블체크) — 진행 중: 출근 확인 / 종료 후: 퇴근 확인. 기록만 남기고 포인트엔 영향 없음 ──
+  // null = 대상 아님 · false = 출근 확인 · true = 퇴근 확인
+  bool? _verifyTarget(Worker w) {
+    if (isExt(w.name)) return null;
+    final s = statusOf(w);
+    if (s != 'ok' && s != 'late') return null;
+    final now = DateTime.now();
+    if (now.isAfter(widget.job.end)) return outOf_(w) != null ? true : null;
+    if (now.isAfter(widget.job.start)) return false;
+    return null;
+  }
+
+  Map<String, String> _verifyMap(bool out) =>
+      (out ? gVerifiedOut : gVerifiedIn).putIfAbsent(jobKey(widget.job), () => {});
+
+  (int, int) _verifyCount(List<Worker> list, {required bool out}) {
+    final targets = list.where((w) => _verifyTarget(w) == out).toList();
+    final m = _verifyMap(out);
+    return (targets.where((w) => m.containsKey(w.name)).length, targets.length);
+  }
+
+  void _verify(Worker w, bool out, {bool quiet = false}) {
+    final m = _verifyMap(out);
+    final label = out ? '퇴근 확인' : '출근 확인';
+    final ref = '${widget.job.site} ${widget.job.dateLabel} ${widget.job.slot}';
+    setState(() {
+      if (m.containsKey(w.name)) {
+        m.remove(w.name);
+        audit('verify', w.name, '$label 취소', jobRef: ref);
+      } else {
+        final t = DateTime.now();
+        m[w.name] = '${gAdmin?.name ?? '관리자'} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+        audit('verify', w.name, label, jobRef: ref);
+      }
+    });
+    if (!quiet) snack('${w.name} — ${m.containsKey(w.name) ? label : '$label 취소'}');
+  }
+
+  Widget _verifyText(Worker w, bool out) {
+    final v = _verifyMap(out)[w.name];
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _verify(w, out),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Text(v == null ? (out ? '퇴근 확인' : '확인') : '확인됨 · $v',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                color: v == null ? JColors.blue : JColors.inactive,
+                fontFeatures: const [FontFeature.tabularFigures()])),
+      ),
+    );
+  }
+
+  // 섹션 제목 + 미확인 인원 있으면 [전원 확인]
+  Widget _sectVerify(String t, List<Worker> list, {required bool out}) {
+    final left = list.where((w) => _verifyTarget(w) == out && !_verifyMap(out).containsKey(w.name)).toList();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7, left: 2),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Expanded(child: Text(t, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: JColors.muted))),
+        if (left.isNotEmpty)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              for (final w in left) {
+                _verify(w, out, quiet: true);
+              }
+              snack('${left.length}명 — ${out ? '퇴근' : '출근'} 확인');
+            },
+            child: const Text('전원 확인',
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.blue)),
+          ),
+      ]),
     );
   }
 

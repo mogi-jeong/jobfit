@@ -292,7 +292,7 @@ List<Worker> _genRoster(Job job) {
     }
     return out;
   }
-  // 진행 중: 미도착 = short, 나머지 출근/지각 (가끔 이미 퇴근 기록 있음)
+  // 진행 중: 미도착 = short, 나머지 출근/지각 — 퇴근 기록 없음 (알바생 앱 [퇴근]은 종료 후에만 활성화, 조퇴는 관리자 표시)
   for (var i = 0; i < names.length; i++) {
     if (i < job.short) {
       out.add(Worker(names[i], 'none'));
@@ -302,8 +302,7 @@ List<Worker> _genRoster(Job job) {
       final t = st == 'late'
           ? job.start.add(Duration(minutes: 8 + rnd.nextInt(20)))
           : job.start.subtract(Duration(minutes: rnd.nextInt(12)));
-      final outT = r == 9 ? _hmOf(now.subtract(Duration(minutes: 5 + rnd.nextInt(40)))) : null;
-      out.add(Worker(names[i], st, _hmOf(t), null, null, outT));
+      out.add(Worker(names[i], st, _hmOf(t)));
     }
   }
   return out;
@@ -326,7 +325,7 @@ List<GpsReq> gpsReqsOf(Job job) {
     final w = rosterOf(job).where((w) => w.status == 'ok' && w.outTime == null).lastOrNull;
     final now = DateTime.now();
     final at = now.isAfter(job.end) ? job.end.add(Duration(minutes: spec.$3)) : now.add(Duration(minutes: spec.$3));
-    return GpsReq(w?.name ?? '', spec.$1, spec.$2, _hmOf(at));
+    return GpsReq(w?.name ?? '', spec.$1, spec.$2, _hmOf(at), at);
   }();
   if (req.name.isEmpty) return const [];
   // 이미 퇴근 기록이 생겼거나(승인·반려·수동) 출근 상태가 아니면 제출 건은 의미 없음

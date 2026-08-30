@@ -13,7 +13,8 @@ class Policy {
 
   // ── 퇴근 ──
   static const autoCheckoutHours = 6; // 종료 + 6시간 후 시스템 자동 퇴근 처리 (그 전엔 관리자 수동 처리 대상)
-  static const checkoutAlarmRepeatMin = 5; // 종료 시각부터 퇴근 미처리 시 5분 간격 알림 (최대 6시간)
+  static const checkoutAlarmRepeatMin = 5;
+  static const checkoutOpenAfterEnd = true; // 알바생 앱 [퇴근] 버튼은 근무 종료 시각 이후에만 활성화 (조퇴는 관리자 표시로만) // 종료 시각부터 퇴근 미처리 시 5분 간격 알림 (최대 6시간)
 
   // ── 정정 ──
   static const correctionDays = 7; // 종료 후 7일까지 앱에서 정정 가능 (이후 PC 관리자 웹)
