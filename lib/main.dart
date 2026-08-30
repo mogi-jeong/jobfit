@@ -3423,8 +3423,19 @@ class _AttendancePageState extends State<AttendancePage> {
         TextSpan(text: label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: JColors.muted)),
       ]));
 
+  static const _colHead = TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: JColors.inactive);
   Widget _rosterCard(List<Worker> list, {void Function(Worker)? onTap}) => _card(Column(
         children: [
+          if (DateTime.now().isAfter(widget.job.end)) ...[
+            Row(children: [
+              const Expanded(child: Text('이름', style: _colHead)),
+              const SizedBox(width: 84, child: Text('출근', style: _colHead)),
+              const SizedBox(width: 48, child: Text('퇴근', style: _colHead)),
+              const SizedBox(width: 92, child: Text('포인트', style: _colHead, textAlign: TextAlign.right)),
+              const SizedBox(width: 118, child: Text('확인', style: _colHead, textAlign: TextAlign.right)),
+            ]),
+            const Divider(height: 12, thickness: .5, color: JColors.hairline),
+          ],
           for (var i = 0; i < list.length; i++) ...[
             if (i > 0) const Divider(height: 14, thickness: .5, color: JColors.hairline),
             onTap == null
@@ -3438,63 +3449,71 @@ class _AttendancePageState extends State<AttendancePage> {
         ],
       ));
 
+  // 명단 행 — 열 고정: 이름 | 출근 | 퇴근 | 포인트 | 확인 (종료 후) · 진행 중엔 이름 | 출근 | 확인
   Widget _row(Worker w) {
     final s = statusOf(w);
     final manual = overrides.containsKey(w.name);
     final (label, color) = _stMeta(s);
     final o = outOf_(w);
-    final pendingOut = DateTime.now().isAfter(widget.job.end) && (s == 'ok' || s == 'late') && o == null;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text.rich(TextSpan(children: [
-          TextSpan(text: w.name,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: JColors.ink)),
-          if (w.org != null)
-            TextSpan(text: '  ${w.org}',
-                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w500, color: JColors.inactive)),
-          if (w.phone != null)
-            TextSpan(text: '  ${w.phone}',
-                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w500, color: JColors.inactive)),
-        ])),
-        Text.rich(TextSpan(children: [
-          TextSpan(text: label + (!manual && w.time != null ? ' ${w.time}' : ''),
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color,
-                  fontFeatures: const [FontFeature.tabularFigures()])),
-          if (o != null && DateTime.now().isAfter(widget.job.end))
-            TextSpan(text: ' · 퇴근 $o',
-                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: JColors.muted)),
-          if (pendingOut)
-            const TextSpan(text: ' · 퇴근 미처리',
-                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: JColors.amber)),
-          // 종료 후에만 포인트 대상 표시 (정상 출근+퇴근 = 자동 / 조퇴·이탈·반려 = 없음)
-          if (DateTime.now().isAfter(widget.job.end) && !pendingOut &&
-              (s == 'ok' || s == 'late' || s == 'early' || s == 'runaway'))
-            TextSpan(
-                text: _eligible(w) ? ' · +${widget.job.point}P' : ' · 포인트 없음',
-                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700,
-                    color: _eligible(w) ? JColors.green : JColors.inactive)),
-          // 같이하기 짝꿍 + 보너스 (종료 후, 둘 다 정시 출근·정상 퇴근일 때만)
-          if (buddyOf(widget.job, w.name) != null) ...[
-            TextSpan(
-                text: ' · 짝 ${buddyOf(widget.job, w.name)}',
-                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: JColors.muted)),
-            if (DateTime.now().isAfter(widget.job.end) && !pendingOut)
-              TextSpan(
-                  text: buddyBonusEligible(widget.job, w) ? ' +${Policy.buddyBonus ~/ 1000},000P' : ' 보너스 없음',
-                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700,
-                      color: buddyBonusEligible(widget.job, w) ? JColors.green : JColors.inactive)),
-          ],
-          TextSpan(
-              text: '  ${isExt(w.name) ? '외부' : isInvited(w.name) ? '추가' : (s == 'wait' ? '' : (manual ? '수동' : '자동'))}',
-              style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFFC7C7CC))),
-        ])),
-        if (_verifyTarget(w) != null) ...[
-          const SizedBox(width: 8),
-          _verifyText(w, _verifyTarget(w)!),
-        ],
+    final now = DateTime.now();
+    final ended = now.isAfter(widget.job.end);
+    final pendingOut = ended && (s == 'ok' || s == 'late') && o == null;
+    final src = isExt(w.name) ? '외부' : isInvited(w.name) ? '추가' : (s == 'wait' ? '' : (manual ? '수동' : '자동'));
+    const tab = [FontFeature.tabularFigures()];
+    const sub = TextStyle(fontSize: 10.5, fontWeight: FontWeight.w500, color: JColors.inactive);
+
+    // 1) 이름 (+ 외부인력 소속·전화, 짝 표시)
+    final name = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text.rich(TextSpan(children: [
+        TextSpan(text: w.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: JColors.ink)),
+        if (src.isNotEmpty)
+          TextSpan(text: '  $src', style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFFC7C7CC))),
+      ])),
+      if (w.org != null || w.phone != null)
+        Text([?w.org, ?w.phone].join(' '), style: sub),
+      if (buddyOf(widget.job, w.name) != null)
+        Text('짝 ${buddyOf(widget.job, w.name)}', style: sub),
+    ]);
+
+    // 2) 출근 (상태 + 시각)
+    final inCell = Text(label + (!manual && w.time != null ? ' ${w.time}' : ''),
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color, fontFeatures: tab));
+
+    // 3) 퇴근 (종료 후)
+    final outCell = pendingOut
+        ? const Text('미처리', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: JColors.amber))
+        : Text(o ?? '—',
+            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600,
+                color: o == null ? JColors.inactive : JColors.muted, fontFeatures: tab));
+
+    // 4) 포인트 (종료 후) — 근무 보상 + 같이하기 보너스 두 줄
+    final showPoint = ended && !pendingOut && (s == 'ok' || s == 'late' || s == 'early' || s == 'runaway');
+    final hasBuddy = buddyOf(widget.job, w.name) != null;
+    final pointCell = !showPoint
+        ? const SizedBox()
+        : Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text(_eligible(w) ? '+${widget.job.point}P' : '없음',
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
+                    color: _eligible(w) ? JColors.green : JColors.inactive, fontFeatures: tab)),
+            if (hasBuddy)
+              Text(buddyBonusEligible(widget.job, w) ? '짝 +${Policy.buddyBonus ~/ 1000},000P' : '짝 보너스 없음',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                      color: buddyBonusEligible(widget.job, w) ? JColors.green : JColors.inactive, fontFeatures: tab)),
+          ]);
+
+    // 5) 확인 (더블체크)
+    final vt = _verifyTarget(w);
+    final verifyCell = vt == null ? const SizedBox() : _verifyText(w, vt);
+
+    return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+      Expanded(child: name),
+      SizedBox(width: ended ? 84 : 96, child: inCell),
+      if (ended) ...[
+        SizedBox(width: 48, child: outCell),
+        SizedBox(width: 92, child: Align(alignment: Alignment.centerRight, child: pointCell)),
       ],
-    );
+      SizedBox(width: ended ? 118 : 110, child: Align(alignment: Alignment.centerRight, child: verifyCell)),
+    ]);
   }
 
   // ── 관리자 확인(더블체크) — 진행 중: 출근 확인 / 종료 후: 퇴근 확인. 기록만 남기고 포인트엔 영향 없음 ──
