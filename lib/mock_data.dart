@@ -462,9 +462,9 @@ const _waitSpecs = {
 
 final Map<String, List<WaitRow>> _waitCache = {};
 
+// 반환 리스트는 캐시된 가변 리스트 — [대기열로 이동] 등으로 추가한 행이 유지됨
 List<WaitRow> waitlistOf(Job job) {
-  final spec = _waitSpecs[job.id];
-  if (spec == null) return const [];
+  final spec = _waitSpecs[job.id] ?? const [];
   return _waitCache.putIfAbsent(job.id, () {
     final now = DateTime.now();
     return [

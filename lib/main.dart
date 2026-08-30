@@ -86,35 +86,45 @@ class _RootGateState extends State<RootGate> {
   }
 }
 
-class LoginPage extends StatelessWidget {
+// ⚠ 현재: 업체별 공유 계정(아이디/비번) — 추후 인증 시스템 도입 시 교체 지점 (Supabase Auth)
+class LoginPage extends StatefulWidget {
   final void Function(Admin) onPick;
   const LoginPage({super.key, required this.onPick});
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final _id = TextEditingController();
+  final _pw = TextEditingController();
+
+  // 데모 계정 — admin1(1급 김운영) · field1(2급 김현장) · 비밀번호 1234
+  static const _accounts = {'admin1': ('1234', demoAdmin1), 'field1': ('1234', demoAdmin2)};
+
+  @override
+  void dispose() {
+    _id.dispose();
+    _pw.dispose();
+    super.dispose();
+  }
+
+  void _login() {
+    final acc = _accounts[_id.text.trim()];
+    if (acc == null || acc.$1 != _pw.text) {
+      jSnack(context, '아이디 또는 비밀번호가 달라요');
+      return;
+    }
+    widget.onPick(acc.$2);
+  }
 
   @override
   Widget build(BuildContext context) {
-    Widget card(Admin a, String desc) => Material(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          child: InkWell(
-            onTap: () => onPick(a),
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: JColors.hairline, width: .5),
-              ),
-              padding: const EdgeInsets.all(16),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${a.name} · ${a.roleLabel}',
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: JColors.ink)),
-                const SizedBox(height: 3),
-                Text(desc, style: const TextStyle(fontSize: 11.5, color: JColors.muted, height: 1.5)),
-              ]),
-            ),
-          ),
+    InputDecoration deco(String label) => InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(fontSize: 13, color: JColors.muted),
+          enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: JColors.hairline, width: .5)),
+          focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: JColors.ink, width: 1)),
         );
-
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -126,12 +136,29 @@ class LoginPage extends StatelessWidget {
               const Text('잡핏 관리자',
                   style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -.8, color: JColors.ink)),
               const SizedBox(height: 4),
-              const Text('데모 로그인 — 등급을 선택하세요\n(실서비스 인증 방식은 미정 · N1)',
-                  style: TextStyle(fontSize: 12.5, color: JColors.muted, height: 1.5)),
+              const Text('업체 계정으로 로그인하세요', style: TextStyle(fontSize: 12.5, color: JColors.muted, height: 1.5)),
               const SizedBox(height: 22),
-              card(demoAdmin1, '전 근무지 열람·운영 · 공고 등록 가능\n포인트 지급 5,000P · 회수 무제한'),
+              TextField(
+                controller: _id,
+                decoration: deco('아이디'),
+                style: const TextStyle(fontSize: 15, color: JColors.ink),
+                textInputAction: TextInputAction.next,
+              ),
               const SizedBox(height: 10),
-              card(demoAdmin2, '담당: 곤지암 · 이천 (2곳)\n포인트 지급 3,000P · 회수 3,000P'),
+              TextField(
+                controller: _pw,
+                obscureText: true,
+                decoration: deco('비밀번호'),
+                style: const TextStyle(fontSize: 15, color: JColors.ink),
+                onSubmitted: (_) => _login(),
+              ),
+              const SizedBox(height: 22),
+              SizedBox(
+                width: double.infinity,
+                child: jPill('로그인', bg: JColors.ink, fg: Colors.white, onTap: _login),
+              ),
+              const SizedBox(height: 12),
+              const Text('데모: admin1 / field1 · 비밀번호 1234', style: TextStyle(fontSize: 11, color: JColors.inactive)),
             ],
           ),
         ),
@@ -256,8 +283,16 @@ void unassign(Job j, String name) {
   gOut[k]?.remove(name);
 }
 
-// 실시간 인원 — 확정(전체) · 출근(출근+지각) · 미도착
-({int filled, int ok, int none}) liveCounts(Job j) {
+// 신청 홀드 (B안 · 전원) — 승인 대기 신청 1건 = 1자리 홀드 (협의대상 포함, 같이하기 짝 = 2). 관리자 범위와 무관하게 전체 신청 기준
+// 서버가 승인 대기 6h(Policy.approvalWaitMaxHours) 초과 시 홀드 해제 — 앱엔 타이머 없음
+int heldOf(Job j) => _pendingAll
+    .where((p) => !gDecided.contains(appKey(p)) && _appMatchesJob(p, j))
+    .length;
+bool _appMatchesJob(PendingApp p, Job j) =>
+    p.jobId != null ? p.jobId == j.id : (p.siteName == j.site && p.slotTime.contains(Job._hm(j.start)));
+
+// 실시간 인원 — 확정(전체) · 홀드(승인 대기) · 출근(출근+지각) · 미도착. filled = 확정 + 홀드 (정원 계산용)
+({int filled, int confirmed, int held, int ok, int none}) liveCounts(Job j) {
   int ok = 0, none = 0;
   final all = allOf(j);
   for (final w in all) {
@@ -265,13 +300,14 @@ void unassign(Job j, String name) {
     if (s == 'ok' || s == 'late') ok++;
     if (s == 'none') none++;
   }
-  return (filled: all.length, ok: ok, none: none);
+  final held = DateTime.now().isAfter(j.start) ? 0 : heldOf(j);
+  return (filled: all.length + held, confirmed: all.length, held: held, ok: ok, none: none);
 }
 
-// 빈자리 — 시작 전: 정원 − 확정 / 시작 후: 정원 − 현장에 왔던 사람(출근·지각·조퇴, 퇴근자 포함). 결근·미도착·이탈만 자리가 남
+// 빈자리 — 시작 전: 정원 − 확정 − 홀드 / 시작 후: 정원 − 현장에 왔던 사람(출근·지각·조퇴, 퇴근자 포함). 결근·미도착·이탈만 자리가 남
 int seatsOf(Job j) {
   final all = allOf(j);
-  if (!DateTime.now().isAfter(j.start)) return j.cap - all.length;
+  if (!DateTime.now().isAfter(j.start)) return j.cap - all.length - heldOf(j);
   final present = all.where((w) {
     final s = effStatus(j, w);
     return s == 'ok' || s == 'late' || s == 'early';
@@ -330,8 +366,9 @@ bool jobPointEligible(Job j, Worker w) {
 bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
 
 // 하드 블록 사유 (정원 · 같은 날 중복) — null이면 통과
-String? eligibilityIssue(Job j, String name, {int seatsNeeded = 1}) {
-  final seats = seatsOf(j);
+// ownHold = 신청자 본인이 이미 잡고 있는 홀드 수 (승인 = 홀드 → 확정 전환이라 본인 홀드는 빈자리로 취급)
+String? eligibilityIssue(Job j, String name, {int seatsNeeded = 1, int ownHold = 0}) {
+  final seats = seatsOf(j) + ownHold;
   if (seats < seatsNeeded) {
     return seatsNeeded > 1 ? '정원 초과 — 남은 자리 $seats명 (같이하기는 2자리 필요)' : '정원이 다 찼어요 (${j.cap}명)';
   }
@@ -368,9 +405,9 @@ String? weekLimitIssue(Job j, String name) {
 }
 
 // 하드 블록이면 스낵 + false · 주 N일 초과면 확인 다이얼로그
-Future<bool> checkEligibility(BuildContext context, Job j, List<String> names) async {
+Future<bool> checkEligibility(BuildContext context, Job j, List<String> names, {int ownHold = 0}) async {
   for (final n in names) {
-    final issue = eligibilityIssue(j, n, seatsNeeded: names.length);
+    final issue = eligibilityIssue(j, n, seatsNeeded: names.length, ownHold: ownHold);
     if (issue != null) {
       jSnack(context, '$n — $issue');
       return false;
@@ -418,7 +455,7 @@ Future<bool> approveApp(BuildContext context, PendingApp a, PendingApp? mate, {S
   }
   final job = jobByRef(a.jobId, a.siteName, a.slotTime);
   final names = [a.name, ?mate?.name];
-  if (job != null && !await checkEligibility(context, job, names)) return false;
+  if (job != null && !await checkEligibility(context, job, names, ownHold: names.length)) return false;
   if (!context.mounted) return false;
   final key = job == null ? a.jobId : jobKey(job);
   var delivered = 0;
@@ -484,6 +521,55 @@ Future<bool> rejectApp(BuildContext context, PendingApp a, PendingApp? mate, {St
   gPendingTick.value++;
   jSnack(context, mate != null ? '${a.name} · ${mate.name} — 짝 함께 거절 · 사유 전달' : '${a.name} — 거절 · 사유가 전달됐어요');
   return true;
+}
+
+// 정원 초과 (직접 추가로 자리가 찼을 때) — 승인 대기 신청 카드에 안내 + [대기열로 이동]
+bool overbookedFor(PendingApp a) {
+  final job = jobByRef(a.jobId, a.siteName, a.slotTime);
+  if (job == null || DateTime.now().isAfter(job.start)) return false;
+  final c = liveCounts(job);
+  return c.confirmed + c.held > job.cap;
+}
+
+// 신청 홀드 해제 → 대기열 맨 뒤로 (WaitRow 'waiting') — 자리 나면 순번대로 자동 제안
+void moveAppToWaitlist(BuildContext context, PendingApp a) {
+  final job = jobByRef(a.jobId, a.siteName, a.slotTime);
+  gDecided.add(appKey(a));
+  var order = 0;
+  if (job != null) {
+    final rows = waitlistOf(job);
+    order = rows.length + 1;
+    rows.add(WaitRow(a.name, order, 'waiting'));
+  }
+  audit('app_to_waitlist', a.name, '정원 초과(직접 추가) → 대기열 $order번으로 이동', jobRef: '${a.siteName} ${a.slotTime}', app: a);
+  gPendingTick.value++;
+  jSnack(context, '${a.name} — 대기열로 이동 · 자리 나면 순번대로 제안돼요');
+}
+
+// 수락 제한 — 근무 24시간 전이면 1시간, 이내면 30분 (Policy 상수)
+Duration acceptWindowOf(Job j) => j.start.difference(DateTime.now()).inHours >= 24
+    ? const Duration(minutes: Policy.waitAcceptFarMin)
+    : const Duration(minutes: Policy.waitAcceptNearMin);
+
+// 대기자에게 자리 제안 — 상태·마감 기록 + 감사. 스낵 문구 반환 (호출 쪽이 setState·표시)
+String offerSeatTo(Job j, WaitRow r, {bool auto = false}) {
+  final win = acceptWindowOf(j);
+  r.status = 'offered';
+  r.deadline = DateTime.now().add(win);
+  audit('waitlist', r.name, '자리 제안 (${auto ? '자동' : '수동'}) · 수락 제한 ${win.inMinutes}분', jobRef: '${j.site} ${j.dateLabel}');
+  return auto
+      ? '대기 ${r.order}번 ${r.name}에게 자리 제안 · ${win.inMinutes}분 내 수락'
+      : '${r.order}번 ${r.name} — 자리 제안 발송 · ${win.inMinutes}분 내 수락';
+}
+
+// 자리가 비었을 때 (반려·취소·배정 취소) — 대기자가 있고 나가 있는 제안이 없으면 1번에게 자동 제안. 제안했으면 스낵 문구 반환
+String? afterSeatOpened(Job j) {
+  final rows = waitlistOf(j);
+  final now = DateTime.now();
+  final live = rows.any((r) => r.status == 'offered' && r.deadline != null && !r.deadline!.isBefore(now));
+  final next = rows.where((r) => r.status == 'waiting').firstOrNull;
+  if (live || next == null || seatsOf(j) <= 0) return null;
+  return offerSeatTo(j, next, auto: true);
 }
 
 // 신청 대기 시간 라벨 — '대기 5시간 40분', 6시간 넘으면 빨강
@@ -584,6 +670,7 @@ String auditTypeLabel(String t) => switch (t) {
       'point_recover' => '포인트 회수',
       'warning' => '경고 부여',
       'waitlist' => '대기열',
+      'app_to_waitlist' => '대기열 이동',
       'app_cancel_admin' => '관리자 취소',
       'reminder' => '자동 알림',
       'notice' => '공고 공지',
@@ -850,7 +937,7 @@ class Member {
 
 
 // ─── 경고 부여 (관리자 재량 · 3회 누적 → 자동 협의대상) → Supabase warnings 교체 지점 ───
-// ⚠ 미결 N: 앱에서 경고 부여 허용 여부 — 내정보 › 설정 스위치(gWarnOnApp)로 끌 수 있음
+// 확정 (2026-08-30): 앱에서 경고 부여 가능 — 관리자 재량, 3회 누적 시 협의대상 자동
 class WarningEntry {
   final String name, reason, memo, by, jobRef;
   final DateTime at;
@@ -859,7 +946,12 @@ class WarningEntry {
 }
 
 final List<WarningEntry> gWarnings = [];
-bool gWarnOnApp = true; // 앱에서 경고 부여 가능 (사장님 결정 전까지 스위치)
+
+// 알바생 앱에 팝업으로 전달되는 안내 (조퇴 기록 등) → Supabase worker_notices 교체 지점
+final List<({String name, String text, DateTime at, String jobRef})> gWorkerNotes = [];
+const earlyLeaveNote = '조퇴 기록 — 알바비·포인트 지급 대상 아님. 반복 시 경고 대상';
+void noteEarlyLeave(String name, String jobRef) =>
+    gWorkerNotes.add((name: name, text: earlyLeaveNote, at: DateTime.now(), jobRef: jobRef));
 const warningReasons = ['12시간 이내 취소', '지각', '무단결근', '무응답', 'GPS 미검증']; // 기획 5종
 
 int appWarningsOf(String name) => gWarnings.where((w) => w.name == name && !w.reverted).length;
@@ -868,10 +960,6 @@ bool isNegotiation(String name) => memberOf(name).neg || (warningsOf(memberOf(na
 int totalWarningsOf(String name) => warningsOf(memberOf(name)) + appWarningsOf(name);
 
 Future<void> openWarnSheet(BuildContext context, String name, {String jobRef = ''}) async {
-  if (!gWarnOnApp) {
-    jSnack(context, '앱에서 경고 부여가 꺼져 있어요 (내정보 › 설정)');
-    return;
-  }
   String reason = warningReasons.first;
   final memo = TextEditingController();
   final before = totalWarningsOf(name);
@@ -1843,8 +1931,10 @@ class _AttendancePageState extends State<AttendancePage> {
       // 조퇴·이탈 → 출근·지각으로 되돌리면 자동으로 남은 '조퇴/이탈' 기록도 지움 (가짜 퇴근 방지)
       if ((s == 'ok' || s == 'late') && (outs[name] == '조퇴' || outs[name] == '이탈')) outs[name] = '';
     });
-    audit('att_fix', name, '→ ${_stMeta(s).$1}', jobRef: '${widget.job.site} ${widget.job.dateLabel} ${widget.job.slot}');
-    snack('$name — ${_stMeta(s).$1} 처리');
+    final ref = '${widget.job.site} ${widget.job.dateLabel} ${widget.job.slot}';
+    audit('att_fix', name, '→ ${_stMeta(s).$1}', jobRef: ref);
+    if (s == 'early') noteEarlyLeave(name, ref); // 알바생 앱 팝업 — 알바비·포인트 없음, 반복 시 경고
+    snack('$name — ${_stMeta(s).$1} 처리${s == 'early' ? ' · 알바생에게 안내 전달' : ''}');
   }
 
   // 상태 라벨·색 (전 화면 공통)
@@ -1948,7 +2038,7 @@ class _AttendancePageState extends State<AttendancePage> {
               }),
             ],
             // 경고 부여 — 지각·무단이탈·미도착 등 관리자 재량 (3회 → 협의대상 자동)
-            if (!ext && DateTime.now().isAfter(widget.job.start) && gWarnOnApp) ...[
+            if (!ext && DateTime.now().isAfter(widget.job.start)) ...[
               const SizedBox(height: 8),
               _pill('경고 부여 · 누적 ${totalWarningsOf(w.name)}회', bg: Colors.white, fg: JColors.amber, border: JColors.amber, onTap: () {
                 Navigator.pop(ctx);
@@ -2038,32 +2128,18 @@ class _AttendancePageState extends State<AttendancePage> {
     _afterSeatOpened();
   }
 
-  // 자리가 비었을 때 — 대기자가 있고 나가 있는 제안이 없으면 1번에게 자동 제안
+  // 자리가 비었을 때 — 공용 afterSeatOpened() (승인 탭 반려에서도 같은 로직)
   void _afterSeatOpened() {
-    final rows = waitlistOf(widget.job);
-    final now = DateTime.now();
-    final live = rows.any((r) => r.status == 'offered' && r.deadline != null && !r.deadline!.isBefore(now));
-    final next = rows.where((r) => r.status == 'waiting').firstOrNull;
-    if (live || next == null || seatsOf(widget.job) <= 0) return;
-    _offerTo(next, auto: true);
+    final msg = afterSeatOpened(widget.job);
+    if (msg == null) return;
+    setState(() {});
+    snack(msg);
   }
 
-  // 정책: 근무 24시간 전이면 1시간, 이내면 30분 (Policy 상수)
-  Duration _acceptWindow() => widget.job.start.difference(DateTime.now()).inHours >= 24
-      ? const Duration(minutes: Policy.waitAcceptFarMin)
-      : const Duration(minutes: Policy.waitAcceptNearMin);
-
   void _offerTo(WaitRow r, {bool auto = false}) {
-    final win = _acceptWindow();
-    setState(() {
-      r.status = 'offered';
-      r.deadline = DateTime.now().add(win);
-    });
-    audit('waitlist', r.name, '자리 제안 (${auto ? '자동' : '수동'}) · 수락 제한 ${win.inMinutes}분',
-        jobRef: '${widget.job.site} ${widget.job.dateLabel}');
-    snack(auto
-        ? '대기 ${r.order}번 ${r.name}에게 자리 제안 · ${win.inMinutes}분 내 수락'
-        : '${r.order}번 ${r.name} — 자리 제안 발송 · ${win.inMinutes}분 내 수락');
+    final msg = offerSeatTo(widget.job, r, auto: auto);
+    setState(() {});
+    snack(msg);
   }
 
   // 상태 시트 — 라벨 붙은 칩 행 (출근 / 근무 / 퇴근)
@@ -2527,7 +2603,8 @@ class _AttendancePageState extends State<AttendancePage> {
     // 충원 숫자엔 직접 추가 + 외부인력 포함, 외부인력 명단만 분리 표시
     final members = [...base, ...invited];
     final filled = members.length + extWorkers.length;
-    final short = widget.job.cap - filled;
+    final held = heldOf(widget.job); // 승인 대기 홀드
+    final short = widget.job.cap - filled - held;
     final roster = members.map((w) => Worker(w.name, 'wait')).toList()
       ..sort((a, b) => a.name.compareTo(b.name));
 
@@ -2537,7 +2614,7 @@ class _AttendancePageState extends State<AttendancePage> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            _bigCount(filled, widget.job.cap, '확정'),
+            _bigCount(filled, widget.job.cap, '확정', held: held),
             Text(short > 0 ? '$short명 부족' : '충원 완료',
                 style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
                     color: short > 0 ? JColors.red : JColors.green)),
@@ -3019,9 +3096,13 @@ class _AttendancePageState extends State<AttendancePage> {
       if (done && mounted) setState(() {});
     }
 
+    // 반려 = 홀드 해제 → 자리 나면 대기 1번 자동 제안
     Future<void> reject(PendingApp a) async {
       final done = await rejectApp(context, a, mateOf(a), via: '공고 상세에서');
-      if (done && mounted) setState(() {});
+      if (done && mounted) {
+        setState(() {});
+        _afterSeatOpened();
+      }
     }
 
     return [
@@ -3051,6 +3132,16 @@ class _AttendancePageState extends State<AttendancePage> {
                       style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
                           color: a.buddyState == 'pending' ? JColors.amber : JColors.blue)),
                 ),
+              if (overbookedFor(a)) ...[
+                const SizedBox(height: 6),
+                const Text('정원 초과 — 직접 추가로 자리가 찼어요',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: JColors.amber)),
+                const SizedBox(height: 6),
+                _pill('대기열로 이동', bg: Colors.white, fg: JColors.amber, border: JColors.amber, onTap: () {
+                  moveAppToWaitlist(context, a);
+                  setState(() {});
+                }),
+              ],
               const SizedBox(height: 10),
               Row(children: [
                 Expanded(child: _pill('승인', bg: JColors.blue, fg: Colors.white, onTap: () => approve(a))),
@@ -3195,6 +3286,7 @@ class _AttendancePageState extends State<AttendancePage> {
                       });
                       audit('gps_early', r.name, '종료 전 퇴근 사유 → 조퇴 인정 · ${r.time} 제출 · ${r.dist}',
                           jobRef: '${widget.job.site} ${widget.job.dateLabel}');
+                      noteEarlyLeave(r.name, '${widget.job.site} ${widget.job.dateLabel} ${widget.job.slot}');
                       snack('${r.name} — 조퇴 인정 · 포인트 자동 지급 없음');
                     })),
                     const SizedBox(width: 7),
@@ -3285,12 +3377,13 @@ class _AttendancePageState extends State<AttendancePage> {
     final apps = gAdmin == null ? 0 : pendingAppsFor(gAdmin!).where((p) => p.jobId == job.id).length;
     if (!started) {
       final filled = members.length + extWorkers.length;
-      final short = job.cap - filled;
+      final held = heldOf(job); // 승인 대기 홀드 — 정원 계산에 포함
+      final short = job.cap - filled - held;
       countLine = Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          _bigCount(filled, job.cap, '확정'),
+          _bigCount(filled, job.cap, '확정', held: held),
           Text(short > 0 ? '$short명 부족' : '충원 완료',
               style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
                   color: short > 0 ? JColors.red : JColors.green)),
@@ -3416,11 +3509,14 @@ class _AttendancePageState extends State<AttendancePage> {
     ]));
   }
 
-  Widget _bigCount(int a, int b, String label) => Text.rich(TextSpan(children: [
+  // held > 0 이면 '7 / 8 확정 · 홀드 1' (홀드 = 승인 대기 신청이 잡은 자리)
+  Widget _bigCount(int a, int b, String label, {int held = 0}) => Text.rich(TextSpan(children: [
         TextSpan(text: '$a / $b ',
             style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: JColors.ink,
                 fontFeatures: [FontFeature.tabularFigures()])),
         TextSpan(text: label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: JColors.muted)),
+        if (held > 0)
+          TextSpan(text: ' · 홀드 $held', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: JColors.amber)),
       ]));
 
   static const _colHead = TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: JColors.inactive);
@@ -4137,6 +4233,16 @@ class _ApprovalPageState extends State<ApprovalPage> {
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
                         color: a.buddyState == 'pending' ? JColors.amber : JColors.blue)),
               ),
+            if (overbookedFor(a)) ...[
+              const SizedBox(height: 6),
+              const Text('정원 초과 — 직접 추가로 자리가 찼어요',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: JColors.amber)),
+              const SizedBox(height: 6),
+              jPill('대기열로 이동', bg: Colors.white, fg: JColors.amber, border: JColors.amber, onTap: () {
+                moveAppToWaitlist(context, a);
+                setState(() {});
+              }),
+            ],
             const SizedBox(height: 10),
             Row(children: [
               Expanded(child: jPill('승인', bg: JColors.blue, fg: Colors.white, onTap: () async {
@@ -4148,7 +4254,12 @@ class _ApprovalPageState extends State<ApprovalPage> {
               Expanded(child: jPill('거절', bg: Colors.white, fg: JColors.red, border: JColors.red,
                   onTap: () async {
                 final done = await rejectApp(context, a, _mateOf(a), via: '승인 탭');
-                if (done && mounted) setState(() {});
+                if (!done || !mounted) return;
+                // 반려 = 홀드 해제 → 자리 나면 대기 1번 자동 제안
+                final job = jobByRef(a.jobId, a.siteName, a.slotTime);
+                final msg = job == null ? null : afterSeatOpened(job);
+                setState(() {});
+                if (msg != null) jSnack(context, msg);
               })),
             ]),
           ])),
@@ -4461,6 +4572,22 @@ class _CommPageState extends State<CommPage> {
                     Text('"${r.memo}"', style: const TextStyle(fontSize: 12, color: JColors.ink, height: 1.5)),
                     const SizedBox(height: 3),
                     Text('${r.jobRef.isEmpty ? '' : '${r.jobRef} · '}${r.by} · ${r.at.month}/${r.at.day} ${r.at.hour.toString().padLeft(2, '0')}:${r.at.minute.toString().padLeft(2, '0')} · 알바생에게 전송됨',
+                        style: const TextStyle(fontSize: 10.5, color: JColors.inactive)),
+                  ])),
+                )),
+          ],
+          // 조퇴 안내 — 조퇴 기록 시 알바생 앱에 팝업으로 전달된 건
+          if (gWorkerNotes.isNotEmpty) ...[
+            jSect('조퇴 안내 · ${gWorkerNotes.length}건'),
+            ...gWorkerNotes.reversed.map((n) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: jCard(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    jName(context, n.name,
+                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: JColors.ink)),
+                    const SizedBox(height: 4),
+                    Text(n.text, style: const TextStyle(fontSize: 12, color: JColors.muted, height: 1.5)),
+                    const SizedBox(height: 3),
+                    Text('${n.jobRef} · ${hmOf(n.at)} · 앱 팝업으로 전송됨',
                         style: const TextStyle(fontSize: 10.5, color: JColors.inactive)),
                   ])),
                 )),
@@ -4811,10 +4938,9 @@ class _WorkerPageState extends State<WorkerPage> {
                       onTap: () => openRecoverSheet(context, name: name).then((_) { if (mounted) setState(() {}); }))),
                 ]),
                 const SizedBox(height: 7),
-                // 경고 부여 — 관리자 재량 · 3회 누적 시 협의대상 자동 (⚠ 미결: 앱 포함 여부 → 설정 스위치)
-                jPill(gWarnOnApp ? '경고 부여 · ${totalWarningsOf(name)}회 누적' : '경고 부여 (앱에서 꺼짐)',
-                    bg: Colors.white, fg: gWarnOnApp ? JColors.amber : JColors.inactive,
-                    border: gWarnOnApp ? JColors.amber : JColors.hairline,
+                // 경고 부여 — 관리자 재량 · 3회 누적 시 협의대상 자동 (앱 부여 확정 2026-08-30)
+                jPill('경고 부여 · ${totalWarningsOf(name)}회 누적',
+                    bg: Colors.white, fg: JColors.amber, border: JColors.amber,
                     onTap: () => openWarnSheet(context, name).then((_) { if (mounted) setState(() {}); })),
                 if (gWarnings.any((w) => w.name == name)) ...[
                   jSect('경고 이력 (앱) · ${appWarningsOf(name)}회'),
@@ -4905,6 +5031,20 @@ class _WorkerPageState extends State<WorkerPage> {
                       ]),
                     ],
                   ])),
+                if (gWorkerNotes.any((n) => n.name == name)) ...[
+                  jSect('알바생에게 전달된 안내 · ${gWorkerNotes.where((n) => n.name == name).length}건'),
+                  jCard(Column(children: [
+                    for (final (i, n) in gWorkerNotes.where((n) => n.name == name).toList().reversed.indexed) ...[
+                      if (i > 0) const Divider(height: 14, thickness: .5, color: JColors.hairline),
+                      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(n.text, style: const TextStyle(fontSize: 12.5, color: JColors.muted, height: 1.45)),
+                        const SizedBox(height: 2),
+                        Text('${n.jobRef} · ${hmOf(n.at)} · 앱 팝업으로 전송됨',
+                            style: const TextStyle(fontSize: 10.5, color: JColors.inactive)),
+                      ]),
+                    ],
+                  ])),
+                ],
                 const Padding(
                   padding: EdgeInsets.only(top: 10, left: 2),
                   child: Text('경고 이력 상세·협의대상 해제·출금 처리는 PC 관리자 웹에서',
@@ -5007,25 +5147,6 @@ class _MePageState extends State<MePage> {
               onChanged: (v) {
                 setState(() => alarmOn = v);
                 jSnack(context, v ? '인원 부족 알림 켜짐' : '인원 부족 알림 꺼짐');
-              },
-            ),
-          ])),
-          const SizedBox(height: 8),
-          // ⚠ 미결: 앱에서 경고 부여 허용 여부 — 사장님 결정 전까지 스위치
-          jCard(Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            const Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('앱에서 경고 부여', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JColors.ink)),
-                SizedBox(height: 1),
-                Text('끄면 경고는 PC 관리자 웹에서만 · 3회 누적 시 협의대상 자동', style: TextStyle(fontSize: 11, color: JColors.muted)),
-              ]),
-            ),
-            Switch(
-              value: gWarnOnApp,
-              activeTrackColor: JColors.blue,
-              onChanged: (v) {
-                setState(() => gWarnOnApp = v);
-                jSnack(context, v ? '앱에서 경고 부여 켜짐' : '앱에서 경고 부여 꺼짐');
               },
             ),
           ])),
