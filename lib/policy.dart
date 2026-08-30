@@ -20,7 +20,7 @@ class Policy {
 
   // ── 대기열 ──
   static const waitlistFactor = 2; // 대기 정원 = 모집 인원 × 2
-  static const waitAcceptFarMin = 120; // 근무 24시간 전이면 자리 제안 수락 제한 2시간
+  static const waitAcceptFarMin = 60; // 근무 24시간 전이면 자리 제안 수락 제한 1시간 (웹과 통일 2026-08-30)
   static const waitAcceptNearMin = 30; // 근무 24시간 이내면 30분
 
   // ── 포인트 ──

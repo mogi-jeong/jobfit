@@ -2019,7 +2019,7 @@ class _AttendancePageState extends State<AttendancePage> {
     _offerTo(next, auto: true);
   }
 
-  // 정책: 근무 24시간 전이면 2시간, 이내면 30분
+  // 정책: 근무 24시간 전이면 1시간, 이내면 30분 (Policy 상수)
   Duration _acceptWindow() => widget.job.start.difference(DateTime.now()).inHours >= 24
       ? const Duration(minutes: Policy.waitAcceptFarMin)
       : const Duration(minutes: Policy.waitAcceptNearMin);
@@ -3089,7 +3089,7 @@ class _AttendancePageState extends State<AttendancePage> {
       ],
       const Padding(
         padding: EdgeInsets.only(top: 6, left: 2),
-        child: Text('자리가 나면 1번에게 자동 제안 · 수락 제한 24시간 전 2시간 / 이내 30분 · 전원 실패 시 일반 모집 재개',
+        child: Text('자리가 나면 1번에게 자동 제안 · 수락 제한 24시간 전 1시간 / 이내 30분 · 전원 실패 시 일반 모집 재개',
             style: TextStyle(fontSize: 11, color: JColors.inactive)),
       ),
     ];
@@ -4177,7 +4177,7 @@ class _ApprovalPageState extends State<ApprovalPage> {
       }),
       const Padding(
         padding: EdgeInsets.only(left: 2),
-        child: Text('대기열은 자동 처리 (수락 제한: 24시간 전 2시간 · 이내 30분) — 여기선 상황만 확인해요',
+        child: Text('대기열은 자동 처리 (수락 제한: 24시간 전 1시간 · 이내 30분) — 여기선 상황만 확인해요',
             style: TextStyle(fontSize: 11, color: JColors.inactive)),
       ),
     ];
