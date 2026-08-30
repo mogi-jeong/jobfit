@@ -149,13 +149,17 @@ class Job {
   final String desc; // 공고 내용 (템플릿 불러오기 + 수정)
   final int point; // 잡핏 포인트 (기본 1,000P · 공고별 조정) — 종료 후 정상 출근+퇴근자에게만 자동 지급
   final bool closed; // 수동 마감 (알바생 앱 노출 중단, 1급) — HANDOFF setRecruitClosed
+  final bool contract; // 출근 시 계약서 서명 요구 (공고별 토글 · 웹 등록 폼과 동일)
+  final bool safety; // 출근 시 안전교육 서명 요구
   const Job(this.site, this.slot, this.status, this.start, this.end, this.cap, this.ok, this.short,
-      {this.id = '', this.desc = '', this.point = 1000, this.closed = false});
+      {this.id = '', this.desc = '', this.point = 1000, this.closed = false, this.contract = true, this.safety = true});
+  bool get needsSign => contract || safety; // 둘 다 꺼진 공고는 서명 표시 대상 아님
 
   // 1급 공고 수정용 — id 유지 (명단·정정 기록 보존)
   Job copyWith({int? cap, int? short, DateTime? start, DateTime? end, int? point, String? desc, bool? closed}) =>
       Job(site, slot, status, start ?? this.start, end ?? this.end, cap ?? this.cap, ok, short ?? this.short,
-          id: id, desc: desc ?? this.desc, point: point ?? this.point, closed: closed ?? this.closed);
+          id: id, desc: desc ?? this.desc, point: point ?? this.point, closed: closed ?? this.closed,
+          contract: contract, safety: safety);
   String get contact => siteOf(site)?.contact ?? '010-1234-5678'; // 근무지 담당자 전화
 
   String get timeLabel =>
@@ -187,6 +191,17 @@ final Map<String, List<Worker>> gInvitedByJob = {}; // jobKey → 직접 추가�
 final Map<String, List<Worker>> gExtByJob = {}; // jobKey → 외부인력
 final Set<String> gForceCancelled = {}; // 'jobKey|이름' 관리자가 강제 취소한 정식 신청자 (명단에서 제외)
 final Set<String> gReminderOff = {}; // 시작 1시간 전 자동 알림을 끈 공고 (jobKey)
+// 계약서·안전교육 서명 완료자 — jobKey → 이름 집합 (알바생 앱 출근 흐름에서 서명 → Supabase attendance.signed_at 교체 지점)
+// Mock: 출근·지각자의 약 85%가 서명 (이름 해시로 고정) · 직접 추가·앱 승인 합류자는 기본 미서명
+final Map<String, Set<String>> gSignedByJob = {};
+Set<String> signedOf(Job j) => gSignedByJob.putIfAbsent(jobKey(j), () {
+      final set = <String>{};
+      for (final w in rosterOf(j)) {
+        if ((w.status == 'ok' || w.status == 'late') && w.name.codeUnits.fold(0, (a, c) => a * 31 + c) % 100 < 85) set.add(w.name);
+      }
+      return set;
+    });
+bool isSigned(Job j, String name) => signedOf(j).contains(name);
 // 관리자 확인(더블체크) — 기록만, 포인트 무관. jobKey → (이름 → '관리자명 HH:MM')
 final Map<String, Map<String, String>> gVerifiedIn = {}; // 출근 확인
 final Map<String, Map<String, String>> gVerifiedOut = {}; // 퇴근 확인
@@ -250,6 +265,7 @@ Worker? workerOf(Job j, String name) => allOf(j).where((w) => w.name == name).fi
 // 배정 취소 — 합류 명단·승인 기록·정정값 모두 제거
 void unassign(Job j, String name) {
   final k = jobKey(j);
+  noteBuddyCancelled(j, name);
   gInvitedByJob[k]?.removeWhere((w) => w.name == name);
   gApprovedByJob[k]?.remove(name);
   gOverrides[k]?.remove(name);
@@ -482,7 +498,13 @@ Future<bool> rejectApp(BuildContext context, PendingApp a, PendingApp? mate, {St
     return false;
   }
   final reason = ctrl.text.trim();
-  final tail = via.isEmpty ? '' : ' · $via';
+  var tail = via.isEmpty ? '' : ' · $via';
+  // 짝이 이미 확정 명단에 있으면 (짝만 거절) — 남는 짝에게 보너스 소멸 안내
+  final job = jobByRef(a.jobId, a.siteName, a.slotTime);
+  if (mate == null && a.buddy != null && job != null && workerOf(job, a.buddy!) != null) {
+    noteBuddyCancelled(job, a.name);
+    tail += ' · 짝 ${a.buddy} 안내';
+  }
   // 같이하기: 짝꿍도 함께 거절 (cascade) — 짝은 자리 여유 있을 때 단독 재신청 가능
   gDecided.add(appKey(a));
   if (mate != null) gDecided.add(appKey(mate));
@@ -541,6 +563,7 @@ String? afterSeatOpened(Job j) {
   final now = DateTime.now();
   final live = rows.any((r) => r.status == 'offered' && r.deadline != null && !r.deadline!.isBefore(now));
   final next = rows.where((r) => r.status == 'waiting').firstOrNull;
+  if (now.isAfter(j.start)) return null; // 시작 시각 경과 → 대기열 제안 중단 (부족 인원은 현장 직접 추가만)
   if (live || next == null || seatsOf(j) <= 0) return null;
   return offerSeatTo(j, next, auto: true);
 }
@@ -728,17 +751,39 @@ Future<void> openGrantSheet(BuildContext context, String name) async {
 }
 
 // ─── 공고 공지 — 공고별 · 확정자에게만 · 이후 확정되는 사람도 자동 수신 (→ Supabase notifications 교체 지점) ───
+// 단체 발송 알림 로그 (공지 · 자동 리마인더 · 긴급 구인). 개별 메시지(회수·경고·조퇴 안내)는 여기 안 남김
+// → Supabase notifications 보존 항목: 본문·제목·긴급·시각·발송자·등급·종류·수신자 수·읽음 수
 class JobNotice {
   final String jobKey, text, by;
   final DateTime at;
-  final int sentTo; // 발송 당시 확정자 수
+  final int sentTo; // 발송 당시 수신자 수
   final bool urgent; // 긴급 — 야간(22~08시) 발송 제한 우회, 즉시 발송
-  const JobNotice(this.jobKey, this.text, this.by, this.at, this.sentTo, [this.urgent = false]);
+  final String kind; // manual(공지) / auto(자동 리마인더) / urgent_recruit(긴급 구인)
+  final String role; // 발송자 등급 라벨 ('1급' / '2급' / '' = 시스템)
+  final int readCount; // 읽음 수 — 알바생 앱이 알림 열 때 신호를 보내야 집계됨 (선택 사항 · 0이면 표시 안 함, Mock: 60%)
+  const JobNotice(this.jobKey, this.text, this.by, this.at, this.sentTo,
+      {this.urgent = false, this.kind = 'manual', this.role = '', this.readCount = 0});
+  String get kindLabel => switch (kind) { 'auto' => '자동 리마인더', 'urgent_recruit' => '긴급 구인', _ => '공지' };
 }
 
 final List<JobNotice> gNotices = [];
 final List<(String, String, DateTime)> gNoticeLate = []; // (jobKey, 이름, 시각) — 확정 후 자동 수신 기록
-List<JobNotice> noticesOf(String key) => gNotices.where((n) => n.jobKey == key).toList();
+// 공고 공지(수동)만 — 이후 확정자 자동 전달 대상
+List<JobNotice> noticesOf(String key) => gNotices.where((n) => n.jobKey == key && n.kind == 'manual').toList();
+String adminRoleShort() => gAdmin == null ? '' : (gAdmin!.isA1 ? '1급' : '2급');
+final Set<String> _autoReminderSeeded = {};
+// 알림 로그 전체 (시간순) — 시작 1시간 전 자동 리마인더가 이미 지났으면 Mock 항목을 한 번 생성
+List<JobNotice> noticeLogOf(Job j) {
+  final key = jobKey(j);
+  final at = j.start.subtract(const Duration(hours: 1));
+  if (!_autoReminderSeeded.contains(key) && DateTime.now().isAfter(at) && !gReminderOff.contains(key) && j.id.isNotEmpty) {
+    _autoReminderSeeded.add(key);
+    final n = membersOf(j).length;
+    gNotices.add(JobNotice(key, '[잡핏] 1시간 뒤 ${j.site} ${j.slot} 근무 시작 (${j.timeLabel}) — 출근 60분 전부터 앱에서 출근 가능',
+        '시스템', at, n, kind: 'auto', readCount: (n * 0.6).floor()));
+  }
+  return gNotices.where((n) => n.jobKey == key).toList()..sort((a, b) => a.at.compareTo(b.at));
+}
 
 // 승인·직접추가로 확정되는 순간 호출 → 그 공고의 기존 공지를 자동 전달, 전달 건수 반환
 int deliverNotices(String key, String name) {
@@ -806,7 +851,8 @@ Future<void> openNoticeSheet(BuildContext context, Job job, int confirmed) async
     ),
   );
   if (ok != true || ctrl.text.trim().isEmpty || !context.mounted) return;
-  gNotices.add(JobNotice(jobKey(job), ctrl.text.trim(), gAdmin?.name ?? '관리자', DateTime.now(), confirmed, urgent));
+  gNotices.add(JobNotice(jobKey(job), ctrl.text.trim(), gAdmin?.name ?? '관리자', DateTime.now(), confirmed,
+      urgent: urgent, role: adminRoleShort()));
   audit('notice', job.site, '${urgent ? '긴급 ' : ''}공지 · 확정 $confirmed명 · ${ctrl.text.trim()}',
       jobRef: '${job.dateLabel} ${job.slot}');
   jSnack(context, '${urgent ? '긴급 공지 즉시 발송' : '공지 발송'} · 확정 $confirmed명 (이후 확정자도 자동 수신)');
@@ -886,6 +932,8 @@ Future<void> openUrgentRecruitSheet(BuildContext context, Job job, int short) as
     ),
   );
   if (ok != true || ctrl.text.trim().isEmpty || !context.mounted) return;
+  gNotices.add(JobNotice(jobKey(job), '${extra > 0 ? '+${extra}P · ' : ''}${ctrl.text.trim()}', gAdmin?.name ?? '관리자',
+      DateTime.now(), n, urgent: true, kind: 'urgent_recruit', role: adminRoleShort()));
   audit('urgent_recruit', job.site, '동의자 $n명 · ${extra > 0 ? '+${extra}P · ' : ''}${ctrl.text.trim()}',
       jobRef: '${job.dateLabel} ${job.slot}');
   jSnack(context, '긴급 구인 알림 발송 · 동의자 $n명${extra > 0 ? ' · 추가 +${extra}P' : ''}');
@@ -926,6 +974,20 @@ const earlyLeaveNote = '조퇴 기록 — 알바비·포인트 지급 대상 아
 void noteEarlyLeave(String name, String jobRef) =>
     gWorkerNotes.add((name: name, text: earlyLeaveNote, at: DateTime.now(), jobRef: jobRef));
 const warningReasons = ['12시간 이내 취소', '지각', '무단결근', '무응답', 'GPS 미검증']; // 기획 5종
+
+// 같이하기 짝이 취소됐을 때 — 남는 짝에게 보너스 소멸 안내 (근무는 그대로). 짝이 명단에 남아 있으면 그 이름 반환
+String buddyCancelNote(String cancelled) =>
+    '짝 $cancelled가 근무를 취소했어요 — 같이하기 보너스 ${Policy.buddyBonus ~/ 1000},000P는 받을 수 없어요. 근무는 그대로 진행돼요.';
+String? remainingBuddyOf(Job j, String cancelled) {
+  final p = buddyOf(j, cancelled);
+  if (p == null || workerOf(j, p) == null) return null;
+  return p;
+}
+void noteBuddyCancelled(Job j, String cancelled) {
+  final p = remainingBuddyOf(j, cancelled);
+  if (p == null) return;
+  gWorkerNotes.add((name: p, text: buddyCancelNote(cancelled), at: DateTime.now(), jobRef: '${j.site} ${j.dateLabel} ${j.slot}'));
+}
 
 int appWarningsOf(String name) => gWarnings.where((w) => w.name == name && !w.reverted).length;
 // 협의대상 = 등록된 협의대상 OR 경고 3회 이상 (전화번호 기반 · 해제는 마스터 웹 전용)
@@ -1898,7 +1960,33 @@ class _AttendancePageState extends State<AttendancePage> {
     ));
   }
 
-  void mark(String name, String s) {
+  // 수동 출근인데 미서명이면 현장 서명 확인 (알바생 앱 서명 흐름을 관리자가 대신 확인)
+  Future<void> mark(String name, String s) async {
+    var signTail = '';
+    if (s == 'ok' && widget.job.needsSign && !isExt(name) && !isSigned(widget.job, name)) {
+      final r = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: Text('$name — 미서명 상태', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JColors.ink)),
+          content: const Text('미서명 상태 — 현장에서 서명 받았나요?\n(계약서·안전교육 서명은 원래 알바생 앱 출근 흐름에서 처리돼요)',
+              style: TextStyle(fontSize: 12.5, color: JColors.muted, height: 1.5)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx),
+                child: const Text('취소', style: TextStyle(color: JColors.muted, fontWeight: FontWeight.w600))),
+            TextButton(onPressed: () => Navigator.pop(ctx, 'unsigned'),
+                child: const Text('서명 없이 출근', style: TextStyle(color: JColors.red, fontWeight: FontWeight.w700))),
+            TextButton(onPressed: () => Navigator.pop(ctx, 'signed'),
+                child: const Text('서명 확인 · 출근', style: TextStyle(color: JColors.blue, fontWeight: FontWeight.w800))),
+          ],
+        ),
+      );
+      if (!mounted || r == null) return;
+      if (r == 'signed') signedOf(widget.job).add(name);
+      signTail = r == 'signed' ? '수동 출근 · 서명 확인' : '수동 출근 · 미서명';
+    }
     setState(() {
       overrides[name] = s;
       // 퇴근 기록은 별개 — 조퇴·이탈은 이미 떠난 것이라 기록 자동, 결근·미도착이면 기록 제거
@@ -1909,7 +1997,7 @@ class _AttendancePageState extends State<AttendancePage> {
       if ((s == 'ok' || s == 'late') && (outs[name] == '조퇴' || outs[name] == '이탈')) outs[name] = '';
     });
     final ref = '${widget.job.site} ${widget.job.dateLabel} ${widget.job.slot}';
-    audit('att_fix', name, '→ ${_stMeta(s).$1}', jobRef: ref);
+    audit('att_fix', name, '→ ${_stMeta(s).$1}${signTail.isEmpty ? '' : ' · $signTail'}', jobRef: ref);
     if (s == 'early') noteEarlyLeave(name, ref); // 알바생 앱 팝업 — 알바비·포인트 없음, 반복 시 경고
     snack('$name — ${_stMeta(s).$1} 처리${s == 'early' ? ' · 알바생에게 안내 전달' : ''}');
   }
@@ -2046,9 +2134,11 @@ class _AttendancePageState extends State<AttendancePage> {
               const SizedBox(height: 14),
               _pill('배정 취소', bg: Colors.white, fg: JColors.red, border: JColors.red, onTap: () {
                 Navigator.pop(ctx);
+                final mate = remainingBuddyOf(widget.job, w.name);
                 setState(() => unassign(widget.job, w.name));
-                audit('app_cancel_admin', w.name, '배정 취소', jobRef: '${widget.job.site} ${widget.job.dateLabel} ${widget.job.slot}');
-                snack('${w.name} — 배정을 취소했어요');
+                audit('app_cancel_admin', w.name, '배정 취소${mate == null ? '' : ' · 짝 $mate 안내'}',
+                    jobRef: '${widget.job.site} ${widget.job.dateLabel} ${widget.job.slot}');
+                snack('${w.name} — 배정을 취소했어요${mate == null ? '' : ' · 짝 $mate에게 보너스 소멸 안내'}');
                 _afterSeatOpened();
               }),
             ] else if (!DateTime.now().isAfter(widget.job.start)) ...[
@@ -2069,6 +2159,7 @@ class _AttendancePageState extends State<AttendancePage> {
   // 정식 신청자 강제 취소 — 사유 다이얼로그 → gForceCancelled 등록 → 자리 나면 대기 1번에게 자동 제안
   Future<void> _forceCancel(Worker w) async {
     final ctrl = TextEditingController();
+    final mate = remainingBuddyOf(widget.job, w.name); // 같이하기 짝 — 남는 짝에게 보너스 소멸 안내
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -2076,12 +2167,19 @@ class _AttendancePageState extends State<AttendancePage> {
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: Text('${w.name} — 신청 취소', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JColors.ink)),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          style: const TextStyle(fontSize: 14, color: JColors.ink),
-          decoration: const InputDecoration(labelText: '취소 사유 (필수 · 알바생에게 전달돼요)'),
-        ),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            style: const TextStyle(fontSize: 14, color: JColors.ink),
+            decoration: const InputDecoration(labelText: '취소 사유 (필수 · 알바생에게 전달돼요)'),
+          ),
+          if (mate != null) ...[
+            const SizedBox(height: 10),
+            Text('짝 $mate에게 보너스 소멸 안내가 전송돼요',
+                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.amber)),
+          ],
+        ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx),
               child: const Text('닫기', style: TextStyle(color: JColors.muted, fontWeight: FontWeight.w600))),
@@ -2095,11 +2193,12 @@ class _AttendancePageState extends State<AttendancePage> {
       if (ok == true) snack('취소 사유를 입력해야 해요');
       return;
     }
+    noteBuddyCancelled(widget.job, w.name);
     setState(() {
       gForceCancelled.add('${jobKey(widget.job)}|${w.name}');
       overrides.remove(w.name);
     });
-    audit('app_cancel_admin', w.name, '신청 취소 · 사유: ${ctrl.text.trim()}',
+    audit('app_cancel_admin', w.name, '신청 취소 · 사유: ${ctrl.text.trim()}${mate == null ? '' : ' · 짝 $mate 안내'}',
         jobRef: '${widget.job.site} ${widget.job.dateLabel} ${widget.job.slot}');
     snack('${w.name} — 신청 취소 · 사유가 전달됐어요');
     _afterSeatOpened();
@@ -2497,16 +2596,19 @@ class _AttendancePageState extends State<AttendancePage> {
     final short = seatsOf(widget.job);
 
     return [
-      _card(Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          _bigCount(okCount, widget.job.cap, '출근'),
-          Text(none.isEmpty ? '전원 처리' : '${none.length}명 미도착',
-              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
-                  color: none.isEmpty ? JColors.green : JColors.red)),
-        ],
-      )),
+      _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            _bigCount(okCount, widget.job.cap, '출근'),
+            Text(none.isEmpty ? '전원 처리' : '${none.length}명 미도착',
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
+                    color: none.isEmpty ? JColors.green : JColors.red)),
+          ],
+        ),
+        if (widget.job.needsSign) ...[const SizedBox(height: 6), _signLine(members)],
+      ])),
       if (okCount > 0)
         Padding(
           padding: const EdgeInsets.only(left: 2, top: 6),
@@ -2607,6 +2709,7 @@ class _AttendancePageState extends State<AttendancePage> {
                   color: urgent ? JColors.red : JColors.green,
                   fontFeatures: const [FontFeature.tabularFigures()])),
         ]),
+        if (widget.job.needsSign) ...[const SizedBox(height: 6), _signLine(members)],
       ])),
       if (widget.job.closed)
         const Padding(
@@ -3014,6 +3117,15 @@ class _AttendancePageState extends State<AttendancePage> {
     );
   }
 
+  // 서명 현황 한 줄 — 계약서·안전교육 토글이 켜진 공고만 (외부인력 제외)
+  Widget _signLine(List<Worker> members) {
+    final signed = members.where((w) => isSigned(widget.job, w.name)).length;
+    final k = members.length - signed;
+    return Text('서명 $signed/${members.length} · 미서명 $k명',
+        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: k > 0 ? JColors.red : JColors.muted,
+            fontFeatures: const [FontFeature.tabularFigures()]));
+  }
+
   // 미도착자의 짝꿍 상태 → "짝한테 물어보세요" 힌트
   String _buddyHint(Worker w) {
     final p = buddyOf(widget.job, w.name)!;
@@ -3030,8 +3142,9 @@ class _AttendancePageState extends State<AttendancePage> {
   List<Widget> _noticeSection({required bool canSend, required int confirmed}) {
     final key = jobKey(widget.job);
     final list = noticesOf(key).reversed.toList();
+    final log = noticeLogOf(widget.job).reversed.toList(); // 단체 발송만 · 최신순
     final late = gNoticeLate.where((e) => e.$1 == key).map((e) => e.$2).toSet().toList();
-    if (!canSend && list.isEmpty) return const [];
+    if (!canSend && list.isEmpty && log.isEmpty) return const [];
     String hm(DateTime t) => '${t.month}/${t.day} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
     return [
       const SizedBox(height: 12),
@@ -3056,6 +3169,26 @@ class _AttendancePageState extends State<AttendancePage> {
           child: Text('확정 후 자동 수신: ${late.join(', ')}',
               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: JColors.blue)),
         ),
+      if (log.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        _sect('알림 로그 · ${log.length}건 — 단체 발송만 (개별 메시지 제외)'),
+        _card(Column(children: [
+          for (final (i, n) in log.indexed) ...[
+            if (i > 0) const Divider(height: 12, thickness: .5, color: JColors.hairline),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text.rich(TextSpan(children: [
+                TextSpan(text: '${n.at.hour.toString().padLeft(2, '0')}:${n.at.minute.toString().padLeft(2, '0')} · ${n.kindLabel}'),
+                if (n.urgent) const TextSpan(text: ' [긴급]', style: TextStyle(color: JColors.red)),
+                TextSpan(text: ' · 발송 ${n.sentTo}${n.readCount > 0 ? ' · 확인 ${n.readCount}' : ''} · ${n.by}${n.role.isEmpty ? '' : '(${n.role})'}'),
+              ]), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: JColors.ink,
+                  fontFeatures: [FontFeature.tabularFigures()])),
+              const SizedBox(height: 2),
+              Text(n.text, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, color: JColors.muted)),
+            ]),
+          ],
+        ])),
+      ],
     ];
   }
 
@@ -3188,8 +3321,14 @@ class _AttendancePageState extends State<AttendancePage> {
           }(),
         ],
       ])),
+      // 시작 후엔 제안 없음 — 공고가 알바생 앱에서 내려가 신청·대기 불가 (확정 정책)
+      if (now.isAfter(widget.job.start))
+        const Padding(
+          padding: EdgeInsets.only(top: 6, left: 2),
+          child: Text('시작 후 대기열 제안 없음', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: JColors.inactive)),
+        )
       // 수동 제안 — 자리가 비었는데 제안이 안 나가 있을 때 (취소 직후 등) 관리자가 바로 발송
-      if (seats > 0 && liveOffer.isEmpty && waiting.isNotEmpty) ...[
+      else if (seats > 0 && liveOffer.isEmpty && waiting.isNotEmpty) ...[
         const SizedBox(height: 8),
         _pill('지금 자리 제안 → ${waiting.first.order}번 ${waiting.first.name}',
             bg: JColors.blue, fg: Colors.white, onTap: () => offerTo(waiting.first)),
@@ -3388,6 +3527,7 @@ class _AttendancePageState extends State<AttendancePage> {
                   color: none == 0 ? JColors.green : JColors.red)),
         ],
       );
+      todos.add(('모집 마감 · 시작 후 알바생 앱 노출 안 됨 — 직접 추가·외부인력만 가능', JColors.muted));
       if (none > 0) todos.add(('미도착 $none명 — 수동 출근 또는 결근 처리', JColors.red));
       if (gpsReqs.isNotEmpty) todos.add(('퇴근 승인 대기 ${gpsReqs.length}명 — 사유 확인 후 승인·반려', JColors.amber));
       if (short > 0) todos.add(('현장 $short명 부족 — 알바생·외부인력 추가 가능', JColors.amber));
@@ -3502,6 +3642,7 @@ class _AttendancePageState extends State<AttendancePage> {
           if (DateTime.now().isAfter(widget.job.end)) ...[
             Row(children: [
               const Expanded(child: Text('이름', style: _colHead)),
+              const SizedBox(width: 44, child: Text('서명', style: _colHead)),
               const SizedBox(width: 84, child: Text('출근', style: _colHead)),
               const SizedBox(width: 48, child: Text('퇴근', style: _colHead)),
               const SizedBox(width: 92, child: Text('포인트', style: _colHead, textAlign: TextAlign.right)),
@@ -3544,9 +3685,24 @@ class _AttendancePageState extends State<AttendancePage> {
       ])),
       if (w.org != null || w.phone != null)
         Text([?w.org, ?w.phone].join(' '), style: sub),
-      if (buddyOf(widget.job, w.name) != null)
+      if (buddyOf(widget.job, w.name) != null) ...[
         Text('짝 ${buddyOf(widget.job, w.name)}', style: sub),
+        // 짝이 명단에서 빠짐(강제 취소·배정 취소) → 보너스 소멸
+        if (workerOf(widget.job, buddyOf(widget.job, w.name)!) == null)
+          const Text('짝 취소됨 · 보너스 없음',
+              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: JColors.amber)),
+      ],
     ]);
+
+    // 1-1) 서명 (계약서·안전교육) — 공고 토글 둘 다 꺼졌거나 외부인력이면 대상 아님
+    final signCell = !widget.job.needsSign || isExt(w.name)
+        ? const Text('—', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: JColors.inactive))
+        : isSigned(widget.job, w.name)
+            ? const Text('서명', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: JColors.green))
+            : GestureDetector(
+                onTap: () => snack('알바생 앱에서 서명해야 출근 처리돼요 (수동 출근 시 관리자 확인 필요)'),
+                child: const Text('미서명', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: JColors.red)),
+              );
 
     // 2) 출근 (상태 + 시각)
     final inCell = Text(label + (!manual && w.time != null ? ' ${w.time}' : ''),
@@ -3580,6 +3736,7 @@ class _AttendancePageState extends State<AttendancePage> {
 
     return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
       Expanded(child: name),
+      SizedBox(width: 44, child: signCell),
       SizedBox(width: ended ? 84 : 96, child: inCell),
       if (ended) ...[
         SizedBox(width: 48, child: outCell),

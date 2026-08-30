@@ -67,3 +67,25 @@ bool pointEligible(String status, String? checkoutSource) =>
     (status == AttStatus.ok || status == AttStatus.late) &&
     checkoutSource != null &&
     checkoutSource != CheckoutSource.rejected;
+
+/// 취소 사유 분류 코드 — DB · 알바생 앱 · 관리자 앱 동일 키 (UI에는 한국어 라벨만 노출)
+class CancelCategory {
+  CancelCategory._();
+  static const normal = 'normal'; // 단순변심 (−1,000P 자동 차감 대상)
+  static const sick = 'sick'; // 질병
+  static const family = 'family'; // 가족
+  static const transport = 'transport'; // 교통
+  static const weather = 'weather'; // 천재지변
+  static const other = 'other'; // 기타
+  static const labelOf = {
+    normal: '단순변심', sick: '질병', family: '가족', transport: '교통', weather: '천재지변', other: '기타',
+  };
+  static const codes = [normal, sick, family, transport, weather, other];
+  static const labels = ['단순변심', '질병', '가족', '교통', '천재지변', '기타']; // codes 순서와 동일
+  static String codeOf(String label) {
+    for (final e in labelOf.entries) {
+      if (e.value == label) return e.key;
+    }
+    return other;
+  }
+}

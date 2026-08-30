@@ -141,7 +141,7 @@ DateTime _today0() {
 
 // 공고 생성 — dayOffset(일 단위) 기준, startAt 주면 시작 시각을 현재 기준 상대값으로 덮어씀
 Job _mk(String id, String site, String slot, int dayOffset, int cap, int ok, int short,
-    {DateTime? startAt, bool closed = false}) {
+    {DateTime? startAt, bool closed = false, bool contract = true, bool safety = true}) {
   final base = _today0().add(Duration(days: dayOffset));
   final (sh, eh) = _slotHours(slot);
   var start = base.add(Duration(hours: sh));
@@ -159,7 +159,8 @@ Job _mk(String id, String site, String slot, int dayOffset, int cap, int ok, int
           : closed
               ? '수동 마감'
               : (short > 0 ? '모집중' : '마감');
-  return Job(site, slot, st, start, end, cap, ok, short, id: id, desc: _defaultDesc(site, slot), closed: closed);
+  return Job(site, slot, st, start, end, cap, ok, short,
+      id: id, desc: _defaultDesc(site, slot), closed: closed, contract: contract, safety: safety);
 }
 
 // 오늘 + 예정 공고 — 오늘 건은 "항상 그럴듯하게" 현재 시각 기준으로 배치 (진행 중 3 · 시작 전 5 · 종료 3)
@@ -178,8 +179,8 @@ List<Job> buildTodayJobs() {
     _mk('j-t-4', '이천 MpHub', '주간', 0, 6, 6, 0, startAt: ago(9, 30)), // 종료 30분 · 퇴근 미처리
     // ── 오늘 · 1급만 보임 ──
     _mk('j-t-5', '용인 Hub', '주간', 0, 8, 8, 0, startAt: later(0, 25)), // FULL + 대기열
-    _mk('j-t-6', '군포 Hub', '주간', 0, 6, 5, 0, startAt: ago(10)), // 종료 1시간 · 퇴근 미처리
-    _mk('j-t-7', '진천 MegaHub', '주간', 0, 12, 11, 1, startAt: ago(3, 10)), // 진행 중
+    _mk('j-t-6', '군포 Hub', '주간', 0, 6, 5, 0, startAt: ago(10), contract: false), // 종료 1시간 · 퇴근 미처리 · 계약서 끔
+    _mk('j-t-7', '진천 MegaHub', '주간', 0, 12, 11, 1, startAt: ago(3, 10), safety: false), // 진행 중 · 안전교육 서명 끔
     _mk('j-t-8', 'W힐스 웨딩홀', '오후', 0, 14, 11, 3, startAt: later(4)), // 시작 전 · 같이하기 신청
     _mk('j-t-9', '군포 Hub_A', '주간', 0, 6, 5, 0, startAt: ago(16)), // 종료 7시간 → 자동 퇴근 처리됨
     _mk('j-t-10', '안성 MpHub', '주간', 0, 10, 6, 4, startAt: later(20)), // 24시간 안
@@ -187,7 +188,7 @@ List<Job> buildTodayJobs() {
     // ── 예정 (내일 ~ 2주) ──
     _mk('j-u-1', '곤지암 MegaHub', '주간', 1, 8, 5, 3),
     _mk('j-u-2', '이천 MpHub', '야간', 1, 6, 6, 0), // FULL + 대기열
-    _mk('j-u-3', '남양주 Hub', '주간', 1, 6, 2, 4),
+    _mk('j-u-3', '남양주 Hub', '주간', 1, 6, 2, 4, safety: false), // 안전교육 서명 끔
     _mk('j-u-4', 'L타워 웨딩홀', '오후', 2, 12, 9, 3),
     _mk('j-u-5', '곤지암 MegaHub', '주간', 2, 8, 8, 0), // FULL + 대기열
     _mk('j-u-6', '안성 MpHub', '주간', 3, 10, 4, 6),
@@ -368,12 +369,12 @@ String? buddyOf(Job job, String name) => buddyMapOf(job)[name];
 class CancelReq {
   final String name, siteName, slotTime, reason, appliedAt, cancelledAt;
   final int beforeMin; // 근무 시작 몇 분 전에 취소했나 (12시간 이내만 검토 대상)
-  final String category; // 단순변심 / 질병 / 가족 / 교통 / 천재지변 / 기타 — 권고 처리 기준
+  final String category; // 단순변심 / 질병 / 가족 / 교통 / 천재지변 / 기타 — 권고 처리 기준 (코드 키는 CancelCategory · UI는 한국어 라벨)
   const CancelReq(this.name, this.siteName, this.slotTime, this.reason, this.beforeMin,
       this.appliedAt, this.cancelledAt, [this.category = '기타']);
 }
 
-const cancelCategories = ['단순변심', '질병', '가족', '교통', '천재지변', '기타'];
+const cancelCategories = CancelCategory.labels; // 한국어 라벨 (코드 키 → CancelCategory.codes)
 
 // 40 → '40분', 200 → '3시간 20분', 660 → '11시간'
 String beforeLabel(int m) {
