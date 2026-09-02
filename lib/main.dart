@@ -195,21 +195,12 @@ final Set<String> gReminderOff = {}; // 시작 1시간 전 자동 알림을 끈 
 // 기획 확정: 켜진 항목은 **둘 다 O여야 출근 시작 가능** (알바생 앱이 강제, 관리자 수동 출근은 확인 다이얼로그)
 final Map<String, Set<String>> gContractSigned = {};
 final Map<String, Set<String>> gSafetySigned = {};
-// Mock 규칙: GPS 출근(출근·지각)한 사람은 반드시 서명 완료 (알바생 앱이 서명 없이 출근을 막음 — 기획 확정)
-// X는 아직 안 온 사람(출근 전·미도착)에게만 — 서명은 출근 흐름에서 하므로 안 온 사람 일부는 미서명이 자연스러움
-Set<String> _seedSigned(Job j, int salt, int pct) {
-  final set = <String>{};
-  for (final w in rosterOf(j)) {
-    if (w.status == 'ok' || w.status == 'late') {
-      set.add(w.name); // 출근자는 전원 서명 완료
-    } else if ((w.name.codeUnits.fold(salt, (a, c) => a * 31 + c)) % 100 < pct) {
-      set.add(w.name); // 안 온 사람은 일부만 미리 서명해 둠
-    }
-  }
-  return set;
-}
-Set<String> contractSignedOf(Job j) => gContractSigned.putIfAbsent(jobKey(j), () => _seedSigned(j, 7, 55));
-Set<String> safetySignedOf(Job j) => gSafetySigned.putIfAbsent(jobKey(j), () => _seedSigned(j, 13, 50));
+// Mock 규칙: 서명은 출근 흐름의 일부 (버튼 → 서명 → GPS 재검증 → 출근) — 기획 확정
+// 따라서 출근·지각자 = 전원 서명 O · 출근 전(wait) = 아직 서명 전(—) · 시작 후 미도착 = X
+Set<String> _seedSigned(Job j) =>
+    {for (final w in rosterOf(j)) if (w.status == 'ok' || w.status == 'late') w.name};
+Set<String> contractSignedOf(Job j) => gContractSigned.putIfAbsent(jobKey(j), () => _seedSigned(j));
+Set<String> safetySignedOf(Job j) => gSafetySigned.putIfAbsent(jobKey(j), () => _seedSigned(j));
 // 요구되는 항목이 전부 서명됐나 (토글 꺼진 항목은 무시)
 bool isSigned(Job j, String name) =>
     (!j.contract || contractSignedOf(j).contains(name)) && (!j.safety || safetySignedOf(j).contains(name));
@@ -3707,6 +3698,14 @@ class _AttendancePageState extends State<AttendancePage> {
         ]));
     final signCell = !widget.job.needsSign || isExt(w.name)
         ? const Text('—', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: JColors.inactive))
+        // 출근 전엔 서명 자체가 아직 없음 — 출근 버튼 누를 때 서명함
+        : s == 'wait'
+            ? GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => snack('서명은 출근할 때 진행돼요 (서명 → GPS 검증 → 출근)'),
+                child: const Text('출근 시
+서명', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: JColors.inactive, height: 1.3)),
+              )
         : GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: isSigned(widget.job, w.name)
