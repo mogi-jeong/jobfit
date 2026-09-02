@@ -1950,15 +1950,7 @@ class _AttendancePageState extends State<AttendancePage> {
   bool isExt(String name) => extWorkers.any((e) => e.name == name);
   bool isInvited(String name) => invited.any((e) => e.name == name);
 
-  void snack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-      behavior: SnackBarBehavior.floating,
-      backgroundColor: JColors.ink,
-      duration: const Duration(milliseconds: 1300),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-    ));
-  }
+  void snack(String msg) => jSnack(context, msg); // 상단 토스트 공용
 
   // 수동 출근인데 미서명이면 현장 서명 확인 (알바생 앱 서명 흐름을 관리자가 대신 확인)
   Future<void> mark(String name, String s) async {
@@ -3955,14 +3947,43 @@ class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
       );
 }
 
+// 상단 토스트 — 하단 스낵바가 탭 독을 가려서 상단으로 (자동 소멸, 터치 통과)
+OverlayEntry? _toastEntry;
 void jSnack(BuildContext context, String msg) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-    content: Text(msg, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-    behavior: SnackBarBehavior.floating,
-    backgroundColor: JColors.ink,
-    duration: const Duration(milliseconds: 1300),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-  ));
+  _toastEntry?.remove();
+  _toastEntry = null;
+  final overlay = Overlay.maybeOf(context, rootOverlay: true);
+  if (overlay == null) return;
+  final entry = OverlayEntry(
+    builder: (ctx) => Positioned(
+      top: MediaQuery.of(ctx).padding.top + 10,
+      left: 16,
+      right: 16,
+      child: IgnorePointer(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: JColors.ink,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .22), blurRadius: 18, offset: const Offset(0, 6))],
+            ),
+            child: Text(msg,
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.white, height: 1.4)),
+          ),
+        ),
+      ),
+    ),
+  );
+  _toastEntry = entry;
+  overlay.insert(entry);
+  Future.delayed(const Duration(milliseconds: 1600), () {
+    if (_toastEntry == entry) {
+      entry.remove();
+      _toastEntry = null;
+    }
+  });
 }
 
 // ═══════════ 일정 탭 — 월 달력 + 날짜별 공고 ═══════════
