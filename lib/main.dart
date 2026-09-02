@@ -3704,9 +3704,16 @@ class _AttendancePageState extends State<AttendancePage> {
                 child: const Text('미서명', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: JColors.red)),
               );
 
-    // 2) 출근 (상태 + 시각)
-    final inCell = Text(label + (!manual && w.time != null ? ' ${w.time}' : ''),
+    // 2) 출근 (상태 + 시각) — 종료 후엔 출근 확인 기록을 바로 아래에 (퇴근 확인과 헷갈리지 않게)
+    final vt = _verifyTarget(w);
+    Widget inCell = Text(label + (!manual && w.time != null ? ' ${w.time}' : ''),
         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color, fontFeatures: tab));
+    if (ended && vt != null) {
+      inCell = Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+        inCell,
+        _verifyText(w, false),
+      ]);
+    }
 
     // 3) 퇴근 (종료 후)
     final outCell = pendingOut
@@ -3730,9 +3737,8 @@ class _AttendancePageState extends State<AttendancePage> {
                       color: buddyBonusEligible(widget.job, w) ? JColors.green : JColors.inactive, fontFeatures: tab)),
           ]);
 
-    // 5) 확인 (더블체크)
-    final vt = _verifyTarget(w);
-    final verifyCell = vt == null ? const SizedBox() : _verifyText(w, vt);
+    // 5) 확인 (더블체크) — 진행 중: 출근 확인 / 종료 후: 퇴근 확인만
+    final verifyCell = vt == null ? const SizedBox() : _verifyText(w, ended);
 
     return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
       Expanded(child: name),
@@ -3806,11 +3812,7 @@ class _AttendancePageState extends State<AttendancePage> {
         ),
       );
     }
-    if (!ended) return line(out);
-    return Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
-      line(false), // 출근 확인 (진행 중에 누른 기록)
-      line(true), // 퇴근 확인
-    ]);
+    return line(out); // 출근 확인은 출근 열 아래에, 퇴근 확인은 확인 열에 — 오누름 방지
   }
 
   // 섹션 제목 + 미확인 인원 있으면 [전원 확인]
