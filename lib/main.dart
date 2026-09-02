@@ -195,18 +195,21 @@ final Set<String> gReminderOff = {}; // 시작 1시간 전 자동 알림을 끈 
 // 기획 확정: 켜진 항목은 **둘 다 O여야 출근 시작 가능** (알바생 앱이 강제, 관리자 수동 출근은 확인 다이얼로그)
 final Map<String, Set<String>> gContractSigned = {};
 final Map<String, Set<String>> gSafetySigned = {};
+// Mock 규칙: GPS 출근(출근·지각)한 사람은 반드시 서명 완료 (알바생 앱이 서명 없이 출근을 막음 — 기획 확정)
+// X는 아직 안 온 사람(출근 전·미도착)에게만 — 서명은 출근 흐름에서 하므로 안 온 사람 일부는 미서명이 자연스러움
 Set<String> _seedSigned(Job j, int salt, int pct) {
   final set = <String>{};
   for (final w in rosterOf(j)) {
-    if ((w.status == 'ok' || w.status == 'late') &&
-        (w.name.codeUnits.fold(salt, (a, c) => a * 31 + c)) % 100 < pct) {
-      set.add(w.name);
+    if (w.status == 'ok' || w.status == 'late') {
+      set.add(w.name); // 출근자는 전원 서명 완료
+    } else if ((w.name.codeUnits.fold(salt, (a, c) => a * 31 + c)) % 100 < pct) {
+      set.add(w.name); // 안 온 사람은 일부만 미리 서명해 둠
     }
   }
   return set;
 }
-Set<String> contractSignedOf(Job j) => gContractSigned.putIfAbsent(jobKey(j), () => _seedSigned(j, 7, 90));
-Set<String> safetySignedOf(Job j) => gSafetySigned.putIfAbsent(jobKey(j), () => _seedSigned(j, 13, 88));
+Set<String> contractSignedOf(Job j) => gContractSigned.putIfAbsent(jobKey(j), () => _seedSigned(j, 7, 55));
+Set<String> safetySignedOf(Job j) => gSafetySigned.putIfAbsent(jobKey(j), () => _seedSigned(j, 13, 50));
 // 요구되는 항목이 전부 서명됐나 (토글 꺼진 항목은 무시)
 bool isSigned(Job j, String name) =>
     (!j.contract || contractSignedOf(j).contains(name)) && (!j.safety || safetySignedOf(j).contains(name));
