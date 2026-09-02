@@ -3643,10 +3643,9 @@ class _AttendancePageState extends State<AttendancePage> {
             Row(children: [
               const Expanded(child: Text('이름', style: _colHead)),
               const SizedBox(width: 44, child: Text('서명', style: _colHead)),
-              const SizedBox(width: 84, child: Text('출근', style: _colHead)),
-              const SizedBox(width: 48, child: Text('퇴근', style: _colHead)),
-              const SizedBox(width: 92, child: Text('포인트', style: _colHead, textAlign: TextAlign.right)),
-              const SizedBox(width: 118, child: Text('확인', style: _colHead, textAlign: TextAlign.right)),
+              const SizedBox(width: 110, child: Text('출근 · 확인', style: _colHead)),
+              const SizedBox(width: 104, child: Text('퇴근 · 확인', style: _colHead)),
+              const SizedBox(width: 84, child: Text('포인트', style: _colHead, textAlign: TextAlign.right)),
             ]),
             const Divider(height: 12, thickness: .5, color: JColors.hairline),
           ],
@@ -3715,12 +3714,18 @@ class _AttendancePageState extends State<AttendancePage> {
       ]);
     }
 
-    // 3) 퇴근 (종료 후)
-    final outCell = pendingOut
+    // 3) 퇴근 (종료 후) — 확인 기록을 시각 아래에 (별도 확인 열 없음, 오누름 방지)
+    Widget outCell = pendingOut
         ? const Text('미처리', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: JColors.amber))
         : Text(o ?? '—',
             style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600,
                 color: o == null ? JColors.inactive : JColors.muted, fontFeatures: tab));
+    if (ended && vt == true) {
+      outCell = Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+        outCell,
+        _verifyText(w, true),
+      ]);
+    }
 
     // 4) 포인트 (종료 후) — 근무 보상 + 같이하기 보너스 두 줄
     final showPoint = ended && !pendingOut && (s == 'ok' || s == 'late' || s == 'early' || s == 'runaway');
@@ -3737,18 +3742,18 @@ class _AttendancePageState extends State<AttendancePage> {
                       color: buddyBonusEligible(widget.job, w) ? JColors.green : JColors.inactive, fontFeatures: tab)),
           ]);
 
-    // 5) 확인 (더블체크) — 진행 중: 출근 확인 / 종료 후: 퇴근 확인만
-    final verifyCell = vt == null ? const SizedBox() : _verifyText(w, ended);
-
+    // 5) 확인 열 — 진행 중에만 (종료 후엔 출근·퇴근 시각 아래로 흡수)
     return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
       Expanded(child: name),
       SizedBox(width: 44, child: signCell),
-      SizedBox(width: ended ? 84 : 96, child: inCell),
+      SizedBox(width: ended ? 110 : 96, child: inCell),
       if (ended) ...[
-        SizedBox(width: 48, child: outCell),
-        SizedBox(width: 92, child: Align(alignment: Alignment.centerRight, child: pointCell)),
-      ],
-      SizedBox(width: ended ? 118 : 110, child: Align(alignment: Alignment.centerRight, child: verifyCell)),
+        SizedBox(width: 104, child: outCell),
+        SizedBox(width: 84, child: Align(alignment: Alignment.centerRight, child: pointCell)),
+      ] else
+        SizedBox(width: 110,
+            child: Align(alignment: Alignment.centerRight,
+                child: vt == null ? const SizedBox() : _verifyText(w, false))),
     ]);
   }
 
@@ -3805,7 +3810,6 @@ class _AttendancePageState extends State<AttendancePage> {
               v == null
                   ? (ended ? '$label 확인' : '확인')
                   : (ended ? '$label $v' : '확인됨 · $v'),
-              textAlign: TextAlign.right,
               style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700,
                   color: v == null ? JColors.blue : JColors.inactive,
                   fontFeatures: const [FontFeature.tabularFigures()])),
