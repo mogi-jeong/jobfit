@@ -191,17 +191,25 @@ final Map<String, List<Worker>> gInvitedByJob = {}; // jobKey → 직접 추가�
 final Map<String, List<Worker>> gExtByJob = {}; // jobKey → 외부인력
 final Set<String> gForceCancelled = {}; // 'jobKey|이름' 관리자가 강제 취소한 정식 신청자 (명단에서 제외)
 final Set<String> gReminderOff = {}; // 시작 1시간 전 자동 알림을 끈 공고 (jobKey)
-// 계약서·안전교육 서명 완료자 — jobKey → 이름 집합 (알바생 앱 출근 흐름에서 서명 → Supabase attendance.signed_at 교체 지점)
-// Mock: 출근·지각자의 약 85%가 서명 (이름 해시로 고정) · 직접 추가·앱 승인 합류자는 기본 미서명
-final Map<String, Set<String>> gSignedByJob = {};
-Set<String> signedOf(Job j) => gSignedByJob.putIfAbsent(jobKey(j), () {
-      final set = <String>{};
-      for (final w in rosterOf(j)) {
-        if ((w.status == 'ok' || w.status == 'late') && w.name.codeUnits.fold(0, (a, c) => a * 31 + c) % 100 < 85) set.add(w.name);
-      }
-      return set;
-    });
-bool isSigned(Job j, String name) => signedOf(j).contains(name);
+// 근로계약서·안전교육 서명 완료자 — jobKey → 이름 집합 (알바생 앱 출근 흐름에서 각각 서명 → attendance.contract_signed_at / safety_signed_at)
+// 기획 확정: 켜진 항목은 **둘 다 O여야 출근 시작 가능** (알바생 앱이 강제, 관리자 수동 출근은 확인 다이얼로그)
+final Map<String, Set<String>> gContractSigned = {};
+final Map<String, Set<String>> gSafetySigned = {};
+Set<String> _seedSigned(Job j, int salt, int pct) {
+  final set = <String>{};
+  for (final w in rosterOf(j)) {
+    if ((w.status == 'ok' || w.status == 'late') &&
+        (w.name.codeUnits.fold(salt, (a, c) => a * 31 + c)) % 100 < pct) {
+      set.add(w.name);
+    }
+  }
+  return set;
+}
+Set<String> contractSignedOf(Job j) => gContractSigned.putIfAbsent(jobKey(j), () => _seedSigned(j, 7, 90));
+Set<String> safetySignedOf(Job j) => gSafetySigned.putIfAbsent(jobKey(j), () => _seedSigned(j, 13, 88));
+// 요구되는 항목이 전부 서명됐나 (토글 꺼진 항목은 무시)
+bool isSigned(Job j, String name) =>
+    (!j.contract || contractSignedOf(j).contains(name)) && (!j.safety || safetySignedOf(j).contains(name));
 // 관리자 확인(더블체크) — 기록만, 포인트 무관. jobKey → (이름 → '관리자명 HH:MM')
 final Map<String, Map<String, String>> gVerifiedIn = {}; // 출근 확인
 final Map<String, Map<String, String>> gVerifiedOut = {}; // 퇴근 확인
@@ -1963,7 +1971,7 @@ class _AttendancePageState extends State<AttendancePage> {
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
           title: Text('$name — 미서명 상태', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JColors.ink)),
-          content: const Text('미서명 상태 — 현장에서 서명 받았나요?\n(계약서·안전교육 서명은 원래 알바생 앱 출근 흐름에서 처리돼요)',
+          content: const Text('근로계약서·안전교육 중 서명 안 된 항목이 있어요 — 현장에서 받았나요?\n(계약서·안전교육 서명은 원래 알바생 앱 출근 흐름에서 처리돼요)',
               style: TextStyle(fontSize: 12.5, color: JColors.muted, height: 1.5)),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx),
@@ -1976,7 +1984,10 @@ class _AttendancePageState extends State<AttendancePage> {
         ),
       );
       if (!mounted || r == null) return;
-      if (r == 'signed') signedOf(widget.job).add(name);
+      if (r == 'signed') {
+        contractSignedOf(widget.job).add(name);
+        safetySignedOf(widget.job).add(name);
+      }
       signTail = r == 'signed' ? '수동 출근 · 서명 확인' : '수동 출근 · 미서명';
     }
     setState(() {
@@ -3634,7 +3645,7 @@ class _AttendancePageState extends State<AttendancePage> {
           if (DateTime.now().isAfter(widget.job.end)) ...[
             Row(children: [
               const Expanded(child: Text('이름', style: _colHead)),
-              const SizedBox(width: 44, child: Text('서명', style: _colHead)),
+              const SizedBox(width: 58, child: Text('서명', style: _colHead)),
               const SizedBox(width: 110, child: Text('출근 · 확인', style: _colHead)),
               const SizedBox(width: 104, child: Text('퇴근 · 확인', style: _colHead)),
               const SizedBox(width: 84, child: Text('포인트', style: _colHead, textAlign: TextAlign.right)),
@@ -3685,15 +3696,24 @@ class _AttendancePageState extends State<AttendancePage> {
       ],
     ]);
 
-    // 1-1) 서명 (계약서·안전교육) — 공고 토글 둘 다 꺼졌거나 외부인력이면 대상 아님
+    // 1-1) 서명 — 근로계약서 / 안전교육 각각 O·X (켜진 항목은 둘 다 O여야 출근 시작, 기획 확정)
+    Widget signMini(String label, bool on) => Text.rich(TextSpan(children: [
+          TextSpan(text: '$label ', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: JColors.muted)),
+          TextSpan(text: on ? 'O' : 'X',
+              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: on ? JColors.green : JColors.red)),
+        ]));
     final signCell = !widget.job.needsSign || isExt(w.name)
         ? const Text('—', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: JColors.inactive))
-        : isSigned(widget.job, w.name)
-            ? const Text('서명', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: JColors.green))
-            : GestureDetector(
-                onTap: () => snack('알바생 앱에서 서명해야 출근 처리돼요 (수동 출근 시 관리자 확인 필요)'),
-                child: const Text('미서명', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: JColors.red)),
-              );
+        : GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: isSigned(widget.job, w.name)
+                ? null
+                : () => snack('켜진 항목 모두 서명(O)해야 출근이 시작돼요 — 알바생 앱에서 서명 (수동 출근 시 관리자 확인)'),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              if (widget.job.contract) signMini('근로', contractSignedOf(widget.job).contains(w.name)),
+              if (widget.job.safety) signMini('안전', safetySignedOf(widget.job).contains(w.name)),
+            ]),
+          );
 
     // 2) 출근 (상태 + 시각) — 종료 후엔 출근 확인 기록을 바로 아래에 (퇴근 확인과 헷갈리지 않게)
     final vt = _verifyTarget(w);
@@ -3737,7 +3757,7 @@ class _AttendancePageState extends State<AttendancePage> {
     // 5) 확인 열 — 진행 중에만 (종료 후엔 출근·퇴근 시각 아래로 흡수)
     return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
       Expanded(child: name),
-      SizedBox(width: 44, child: signCell),
+      SizedBox(width: 58, child: signCell),
       SizedBox(width: ended ? 110 : 96, child: inCell),
       if (ended) ...[
         SizedBox(width: 104, child: outCell),
