@@ -3703,8 +3703,7 @@ class _AttendancePageState extends State<AttendancePage> {
             ? GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => snack('서명은 출근할 때 진행돼요 (서명 → GPS 검증 → 출근)'),
-                child: const Text('출근 시
-서명', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: JColors.inactive, height: 1.3)),
+                child: const Text('출근 시\n서명', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: JColors.inactive, height: 1.3)),
               )
         : GestureDetector(
             behavior: HitTestBehavior.opaque,
