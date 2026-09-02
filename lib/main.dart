@@ -3785,18 +3785,32 @@ class _AttendancePageState extends State<AttendancePage> {
   }
 
   Widget _verifyText(Worker w, bool out) {
-    final v = _verifyMap(out)[w.name];
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _verify(w, out),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Text(v == null ? (out ? '퇴근 확인' : '확인') : '확인됨 · $v',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                color: v == null ? JColors.blue : JColors.inactive,
-                fontFeatures: const [FontFeature.tabularFigures()])),
-      ),
-    );
+    // 종료 후엔 출근 확인 기록도 같이 — 진행 중에 누가 언제 확인했는지 로그가 보여야 함
+    final ended = DateTime.now().isAfter(widget.job.end);
+    Widget line(bool o) {
+      final v = _verifyMap(o)[w.name];
+      final label = o ? '퇴근' : '출근';
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _verify(w, o),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Text(
+              v == null
+                  ? (ended ? '$label 확인' : '확인')
+                  : (ended ? '$label $v' : '확인됨 · $v'),
+              textAlign: TextAlign.right,
+              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700,
+                  color: v == null ? JColors.blue : JColors.inactive,
+                  fontFeatures: const [FontFeature.tabularFigures()])),
+        ),
+      );
+    }
+    if (!ended) return line(out);
+    return Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
+      line(false), // 출근 확인 (진행 중에 누른 기록)
+      line(true), // 퇴근 확인
+    ]);
   }
 
   // 섹션 제목 + 미확인 인원 있으면 [전원 확인]
