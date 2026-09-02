@@ -1528,7 +1528,7 @@ class _JobListPageState extends State<JobListPage> {
                     borderRadius: BorderRadius.circular(10),
                     child: const Padding(
                       padding: EdgeInsets.all(6),
-                      child: Text('＋ 공고 등록',
+                      child: Text('＋ 공고 등록 · 테스트용',
                           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JColors.blue)),
                     ),
                   ),
@@ -4137,7 +4137,7 @@ class _SchedulePageState extends State<SchedulePage> {
                   borderRadius: BorderRadius.circular(10),
                   child: const Padding(
                     padding: EdgeInsets.all(6),
-                    child: Text('＋ 공고 등록',
+                    child: Text('＋ 공고 등록 · 테스트용',
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JColors.blue)),
                   ),
                 ),
@@ -5415,10 +5415,10 @@ Future<bool> openRegisterSheet(BuildContext context, {Set<DateTime>? preselected
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                const Text('공고 등록',
+                const Text('공고 등록 · 테스트용',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JColors.ink)),
                 const SizedBox(height: 2),
-                const Text('등록하면 알바생 앱에 바로 게시돼요 · 마스터·1등급 전용',
+                const Text('실제 등록은 관리자 웹에서 — 여기선 테스트용 (일정·공고 목록에 반영)',
                     style: TextStyle(fontSize: 11.5, color: JColors.muted)),
                 label('근무지'),
                 chips(allSites.map((s) => (s, s.split(' ').first)).toList(), site, (v) {
